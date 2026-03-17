@@ -68,6 +68,35 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
 
+  // Git
+  git: {
+    status: (dirPath: string) => ipcRenderer.invoke('git:status', dirPath),
+  },
+
+  // Window management
+  window: {
+    new: () => ipcRenderer.invoke('window:new'),
+    newTab: () => ipcRenderer.invoke('window:newTab'),
+  },
+
+  browserTile: {
+    sync: (payload: { tileId: string; url: string; mode: 'desktop' | 'mobile'; zIndex: number; visible: boolean; bounds: { left: number; top: number; width: number; height: number } }) =>
+      ipcRenderer.invoke('browserTile:sync', payload),
+    command: (payload: { tileId: string; command: 'back' | 'forward' | 'reload' | 'stop' | 'home' | 'navigate' | 'mode'; url?: string; mode?: 'desktop' | 'mobile' }) =>
+      ipcRenderer.invoke('browserTile:command', payload),
+    destroy: (tileId: string) => ipcRenderer.invoke('browserTile:destroy', tileId),
+    onEvent: (cb: (event: { tileId: string; currentUrl: string; canGoBack: boolean; canGoForward: boolean; isLoading: boolean; mode: 'desktop' | 'mobile' }) => void) => {
+      ipcRenderer.on('browserTile:event', (_, evt) => cb(evt))
+      return () => ipcRenderer.removeAllListeners('browserTile:event')
+    }
+  },
+
+  // App settings
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (settings: any) => ipcRenderer.invoke('settings:set', settings),
+  },
+
   // Update checker (stub)
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
@@ -77,6 +106,11 @@ contextBridge.exposeInMainWorld('electron', {
   // MCP server
   mcp: {
     getPort: () => ipcRenderer.invoke('mcp:getPort'),
+    getConfig: () => ipcRenderer.invoke('mcp:getConfig'),
+    saveServers: (servers: Record<string, unknown>) => ipcRenderer.invoke('mcp:saveServers', servers),
+    getWorkspaceServers: (workspaceId: string) => ipcRenderer.invoke('mcp:getWorkspaceServers', workspaceId),
+    saveWorkspaceServers: (workspaceId: string, servers: Record<string, unknown>) => ipcRenderer.invoke('mcp:saveWorkspaceServers', workspaceId, servers),
+    getMergedConfig: (workspaceId: string) => ipcRenderer.invoke('mcp:getMergedConfig', workspaceId),
     onKanban: (cb: (event: string, data: unknown) => void) => {
       ipcRenderer.on('mcp:kanban', (_, payload) => cb(payload.event, payload.data))
       return () => ipcRenderer.removeAllListeners('mcp:kanban')

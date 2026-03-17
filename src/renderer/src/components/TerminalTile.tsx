@@ -8,9 +8,11 @@ interface Props {
   workspaceDir: string
   width: number
   height: number
+  fontSize?: number
+  fontFamily?: string
 }
 
-export function TerminalTile({ tileId, workspaceDir, width, height }: Props): JSX.Element {
+export function TerminalTile({ tileId, workspaceDir, width, height, fontSize = 13, fontFamily = '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", monospace' }: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -46,8 +48,8 @@ export function TerminalTile({ tileId, workspaceDir, width, height }: Props): JS
         brightYellow: '#d7ba7d', brightBlue: '#569cd6', brightMagenta: '#c586c0',
         brightCyan: '#4ec9b0', brightWhite: '#ffffff'
       },
-      fontFamily: '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", monospace',
-      fontSize: 13,
+      fontFamily,
+      fontSize,
       lineHeight: 1,
       cursorBlink: true,
       allowProposedApi: true,

@@ -1,3 +1,4 @@
+var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
@@ -3083,15 +3084,15 @@ function requireReactDomClient_production() {
     return value;
   }
   var AbortControllerLocal = "undefined" !== typeof AbortController ? AbortController : function() {
-    var listeners = [], signal = this.signal = {
+    var listeners2 = [], signal = this.signal = {
       aborted: false,
       addEventListener: function(type, listener) {
-        listeners.push(listener);
+        listeners2.push(listener);
       }
     };
     this.abort = function() {
       signal.aborted = true;
-      listeners.forEach(function(listener) {
+      listeners2.forEach(function(listener) {
         return listener();
       });
     };
@@ -3137,33 +3138,33 @@ function requireReactDomClient_production() {
   function pingEngtangledActionScope() {
     if (0 === --currentEntangledPendingCount && null !== currentEntangledListeners) {
       null !== currentEntangledActionThenable && (currentEntangledActionThenable.status = "fulfilled");
-      var listeners = currentEntangledListeners;
+      var listeners2 = currentEntangledListeners;
       currentEntangledListeners = null;
       currentEntangledLane = 0;
       currentEntangledActionThenable = null;
-      for (var i = 0; i < listeners.length; i++) (0, listeners[i])();
+      for (var i = 0; i < listeners2.length; i++) (0, listeners2[i])();
     }
   }
   function chainThenableValue(thenable, result) {
-    var listeners = [], thenableWithOverride = {
+    var listeners2 = [], thenableWithOverride = {
       status: "pending",
       value: null,
       reason: null,
       then: function(resolve) {
-        listeners.push(resolve);
+        listeners2.push(resolve);
       }
     };
     thenable.then(
       function() {
         thenableWithOverride.status = "fulfilled";
         thenableWithOverride.value = result;
-        for (var i = 0; i < listeners.length; i++) (0, listeners[i])(result);
+        for (var i = 0; i < listeners2.length; i++) (0, listeners2[i])(result);
       },
       function(error) {
         thenableWithOverride.status = "rejected";
         thenableWithOverride.reason = error;
-        for (error = 0; error < listeners.length; error++)
-          (0, listeners[error])(void 0);
+        for (error = 0; error < listeners2.length; error++)
+          (0, listeners2[error])(void 0);
       }
     );
     return thenableWithOverride;
@@ -10104,15 +10105,15 @@ function requireReactDomClient_production() {
     };
   }
   function accumulateTwoPhaseListeners(targetFiber, reactName) {
-    for (var captureName = reactName + "Capture", listeners = []; null !== targetFiber; ) {
+    for (var captureName = reactName + "Capture", listeners2 = []; null !== targetFiber; ) {
       var _instance2 = targetFiber, stateNode = _instance2.stateNode;
       _instance2 = _instance2.tag;
-      5 !== _instance2 && 26 !== _instance2 && 27 !== _instance2 || null === stateNode || (_instance2 = getListener(targetFiber, captureName), null != _instance2 && listeners.unshift(
+      5 !== _instance2 && 26 !== _instance2 && 27 !== _instance2 || null === stateNode || (_instance2 = getListener(targetFiber, captureName), null != _instance2 && listeners2.unshift(
         createDispatchListener(targetFiber, _instance2, stateNode)
-      ), _instance2 = getListener(targetFiber, reactName), null != _instance2 && listeners.push(
+      ), _instance2 = getListener(targetFiber, reactName), null != _instance2 && listeners2.push(
         createDispatchListener(targetFiber, _instance2, stateNode)
       ));
-      if (3 === targetFiber.tag) return listeners;
+      if (3 === targetFiber.tag) return listeners2;
       targetFiber = targetFiber.return;
     }
     return [];
@@ -10125,18 +10126,18 @@ function requireReactDomClient_production() {
     return inst ? inst : null;
   }
   function accumulateEnterLeaveListenersForEvent(dispatchQueue, event, target, common, inCapturePhase) {
-    for (var registrationName = event._reactName, listeners = []; null !== target && target !== common; ) {
+    for (var registrationName = event._reactName, listeners2 = []; null !== target && target !== common; ) {
       var _instance3 = target, alternate = _instance3.alternate, stateNode = _instance3.stateNode;
       _instance3 = _instance3.tag;
       if (null !== alternate && alternate === common) break;
-      5 !== _instance3 && 26 !== _instance3 && 27 !== _instance3 || null === stateNode || (alternate = stateNode, inCapturePhase ? (stateNode = getListener(target, registrationName), null != stateNode && listeners.unshift(
+      5 !== _instance3 && 26 !== _instance3 && 27 !== _instance3 || null === stateNode || (alternate = stateNode, inCapturePhase ? (stateNode = getListener(target, registrationName), null != stateNode && listeners2.unshift(
         createDispatchListener(target, stateNode, alternate)
-      )) : inCapturePhase || (stateNode = getListener(target, registrationName), null != stateNode && listeners.push(
+      )) : inCapturePhase || (stateNode = getListener(target, registrationName), null != stateNode && listeners2.push(
         createDispatchListener(target, stateNode, alternate)
       )));
       target = target.return;
     }
-    0 !== listeners.length && dispatchQueue.push({ event, listeners });
+    0 !== listeners2.length && dispatchQueue.push({ event, listeners: listeners2 });
   }
   var NORMALIZE_NEWLINES_REGEX = /\r\n?/g, NORMALIZE_NULL_AND_REPLACEMENT_REGEX = /\u0000|\uFFFD/g;
   function normalizeMarkupForTextOrAttribute(markup) {
@@ -11221,7 +11222,7 @@ function requireReactDomClient_production() {
     r: requestFormReset,
     D: prefetchDNS,
     C: preconnect,
-    L: preload,
+    L: preload2,
     m: preloadModule,
     X: preinitScript,
     S: preinitStyle,
@@ -11253,7 +11254,7 @@ function requireReactDomClient_production() {
     previousDispatcher.C(href, crossOrigin);
     preconnectAs("preconnect", href, crossOrigin);
   }
-  function preload(href, as2, options2) {
+  function preload2(href, as2, options2) {
     previousDispatcher.L(href, as2, options2);
     var ownerDocument = globalDocument;
     if (ownerDocument && href && as2) {
@@ -12454,61 +12455,543 @@ function requireClient() {
 }
 var clientExports = requireClient();
 const ReactDOM = /* @__PURE__ */ getDefaultExportFromCjs(clientExports);
-function FileIcon({ ext, isDir, expanded }) {
-  if (isDir) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 14, lineHeight: 1, flexShrink: 0, marginRight: 5, color: "#c5a44f" }, children: expanded ? "▾" : "▸" });
+const toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+const mergeClasses = (...classes) => classes.filter((className, index2, array) => {
+  return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index2;
+}).join(" ").trim();
+var defaultAttributes = {
+  xmlns: "http://www.w3.org/2000/svg",
+  width: 24,
+  height: 24,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round"
+};
+const Icon = reactExports.forwardRef(
+  ({
+    color = "currentColor",
+    size = 24,
+    strokeWidth = 2,
+    absoluteStrokeWidth,
+    className = "",
+    children,
+    iconNode,
+    ...rest
+  }, ref) => {
+    return reactExports.createElement(
+      "svg",
+      {
+        ref,
+        ...defaultAttributes,
+        width: size,
+        height: size,
+        stroke: color,
+        strokeWidth: absoluteStrokeWidth ? Number(strokeWidth) * 24 / Number(size) : strokeWidth,
+        className: mergeClasses("lucide", className),
+        ...rest
+      },
+      [
+        ...iconNode.map(([tag, attrs]) => reactExports.createElement(tag, attrs)),
+        ...Array.isArray(children) ? children : [children]
+      ]
+    );
   }
-  const colors = {
-    ".ts": "#3178c6",
-    ".tsx": "#3178c6",
-    ".js": "#f7df1e",
-    ".jsx": "#f7df1e",
-    ".json": "#f5de19",
-    ".md": "#6db33f",
-    ".markdown": "#6db33f",
-    ".txt": "#6db33f",
-    ".mdx": "#6db33f",
-    ".css": "#563d7c",
-    ".html": "#e34c26",
-    ".py": "#3572a5",
-    ".rs": "#dea584",
-    ".go": "#00acd7",
-    ".png": "#ff6b6b",
-    ".jpg": "#ff6b6b",
-    ".jpeg": "#ff6b6b",
-    ".gif": "#ff6b6b",
-    ".webp": "#ff6b6b",
-    ".svg": "#ff6b6b",
-    ".sh": "#89e051",
-    ".bash": "#89e051",
-    ".zsh": "#89e051",
-    ".yaml": "#cb171e",
-    ".yml": "#cb171e",
-    ".toml": "#9c4221"
+);
+const createLucideIcon = (iconName, iconNode) => {
+  const Component = reactExports.forwardRef(
+    ({ className, ...props }, ref) => reactExports.createElement(Icon, {
+      ref,
+      iconNode,
+      className: mergeClasses(`lucide-${toKebabCase(iconName)}`, className),
+      ...props
+    })
+  );
+  Component.displayName = `${iconName}`;
+  return Component;
+};
+const AppWindow = createLucideIcon("AppWindow", [
+  ["rect", { x: "2", y: "4", width: "20", height: "16", rx: "2", key: "izxlao" }],
+  ["path", { d: "M10 4v4", key: "pp8u80" }],
+  ["path", { d: "M2 8h20", key: "d11cs7" }],
+  ["path", { d: "M6 4v4", key: "1svtjw" }]
+]);
+const ArrowLeft = createLucideIcon("ArrowLeft", [
+  ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
+  ["path", { d: "M19 12H5", key: "x3x0zl" }]
+]);
+const ArrowRight = createLucideIcon("ArrowRight", [
+  ["path", { d: "M5 12h14", key: "1ays0h" }],
+  ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
+]);
+const ChevronDown = createLucideIcon("ChevronDown", [
+  ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
+]);
+const ChevronRight = createLucideIcon("ChevronRight", [
+  ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
+]);
+const ClipboardPaste = createLucideIcon("ClipboardPaste", [
+  [
+    "path",
+    { d: "M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z", key: "1pp7kr" }
+  ],
+  [
+    "path",
+    {
+      d: "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10",
+      key: "2ik1ml"
+    }
+  ],
+  ["path", { d: "m17 10 4 4-4 4", key: "vp2hj1" }]
+]);
+const FolderOpen = createLucideIcon("FolderOpen", [
+  [
+    "path",
+    {
+      d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+      key: "usdka0"
+    }
+  ]
+]);
+const Globe = createLucideIcon("Globe", [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
+  ["path", { d: "M2 12h20", key: "9i4pu4" }]
+]);
+const House = createLucideIcon("House", [
+  ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
+  [
+    "path",
+    {
+      d: "M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+      key: "1d0kgt"
+    }
+  ]
+]);
+const Layers = createLucideIcon("Layers", [
+  [
+    "path",
+    {
+      d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
+      key: "zw3jo"
+    }
+  ],
+  [
+    "path",
+    {
+      d: "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
+      key: "1wduqc"
+    }
+  ],
+  [
+    "path",
+    {
+      d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
+      key: "kqbvx6"
+    }
+  ]
+]);
+const Map$1 = createLucideIcon("Map", [
+  [
+    "path",
+    {
+      d: "M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z",
+      key: "169xi5"
+    }
+  ],
+  ["path", { d: "M15 5.764v15", key: "1pn4in" }],
+  ["path", { d: "M9 3.236v15", key: "1uimfh" }]
+]);
+const Monitor = createLucideIcon("Monitor", [
+  ["rect", { width: "20", height: "14", x: "2", y: "3", rx: "2", key: "48i651" }],
+  ["line", { x1: "8", x2: "16", y1: "21", y2: "21", key: "1svkeh" }],
+  ["line", { x1: "12", x2: "12", y1: "17", y2: "21", key: "vw1qmm" }]
+]);
+const Network = createLucideIcon("Network", [
+  ["rect", { x: "16", y: "16", width: "6", height: "6", rx: "1", key: "4q2zg0" }],
+  ["rect", { x: "2", y: "16", width: "6", height: "6", rx: "1", key: "8cvhb9" }],
+  ["rect", { x: "9", y: "2", width: "6", height: "6", rx: "1", key: "1egb70" }],
+  ["path", { d: "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3", key: "1jsf9p" }],
+  ["path", { d: "M12 12V8", key: "2874zd" }]
+]);
+const PanelsTopLeft = createLucideIcon("PanelsTopLeft", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
+  ["path", { d: "M3 9h18", key: "1pudct" }],
+  ["path", { d: "M9 21V9", key: "1oto5p" }]
+]);
+const Plus = createLucideIcon("Plus", [
+  ["path", { d: "M5 12h14", key: "1ays0h" }],
+  ["path", { d: "M12 5v14", key: "s699le" }]
+]);
+const RotateCcw = createLucideIcon("RotateCcw", [
+  ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
+  ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
+]);
+const RotateCw = createLucideIcon("RotateCw", [
+  ["path", { d: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8", key: "1p45f6" }],
+  ["path", { d: "M21 3v5h-5", key: "1q7to0" }]
+]);
+const Scissors = createLucideIcon("Scissors", [
+  ["circle", { cx: "6", cy: "6", r: "3", key: "1lh9wr" }],
+  ["path", { d: "M8.12 8.12 12 12", key: "1alkpv" }],
+  ["path", { d: "M20 4 8.12 15.88", key: "xgtan2" }],
+  ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
+  ["path", { d: "M14.8 14.8 20 20", key: "ptml3r" }]
+]);
+const Server = createLucideIcon("Server", [
+  ["rect", { width: "20", height: "8", x: "2", y: "2", rx: "2", ry: "2", key: "ngkwjq" }],
+  ["rect", { width: "20", height: "8", x: "2", y: "14", rx: "2", ry: "2", key: "iecqi9" }],
+  ["line", { x1: "6", x2: "6.01", y1: "6", y2: "6", key: "16zg32" }],
+  ["line", { x1: "6", x2: "6.01", y1: "18", y2: "18", key: "nzw8ys" }]
+]);
+const Settings2 = createLucideIcon("Settings2", [
+  ["path", { d: "M20 7h-9", key: "3s1dr2" }],
+  ["path", { d: "M14 17H5", key: "gfn3mx" }],
+  ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
+  ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
+]);
+const Settings = createLucideIcon("Settings", [
+  [
+    "path",
+    {
+      d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+      key: "1qme2f"
+    }
+  ],
+  ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
+]);
+const SlidersVertical = createLucideIcon("SlidersVertical", [
+  ["line", { x1: "4", x2: "4", y1: "21", y2: "14", key: "1p332r" }],
+  ["line", { x1: "4", x2: "4", y1: "10", y2: "3", key: "gb41h5" }],
+  ["line", { x1: "12", x2: "12", y1: "21", y2: "12", key: "hf2csr" }],
+  ["line", { x1: "12", x2: "12", y1: "8", y2: "3", key: "1kfi7u" }],
+  ["line", { x1: "20", x2: "20", y1: "21", y2: "16", key: "1lhrwl" }],
+  ["line", { x1: "20", x2: "20", y1: "12", y2: "3", key: "16vvfq" }],
+  ["line", { x1: "2", x2: "6", y1: "14", y2: "14", key: "1uebub" }],
+  ["line", { x1: "10", x2: "14", y1: "8", y2: "8", key: "1yglbp" }],
+  ["line", { x1: "18", x2: "22", y1: "16", y2: "16", key: "1jxqpz" }]
+]);
+const Smartphone = createLucideIcon("Smartphone", [
+  ["rect", { width: "14", height: "20", x: "5", y: "2", rx: "2", ry: "2", key: "1yt0o3" }],
+  ["path", { d: "M12 18h.01", key: "mhygvu" }]
+]);
+const SquarePlus = createLucideIcon("SquarePlus", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
+  ["path", { d: "M8 12h8", key: "1wcyev" }],
+  ["path", { d: "M12 8v8", key: "napkw2" }]
+]);
+const Terminal = createLucideIcon("Terminal", [
+  ["polyline", { points: "4 17 10 11 4 5", key: "akl6gq" }],
+  ["line", { x1: "12", x2: "20", y1: "19", y2: "19", key: "q2wloq" }]
+]);
+const Trash2 = createLucideIcon("Trash2", [
+  ["path", { d: "M3 6h18", key: "d0wm0j" }],
+  ["path", { d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", key: "4alrt4" }],
+  ["path", { d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2", key: "v07s0e" }],
+  ["line", { x1: "10", x2: "10", y1: "11", y2: "17", key: "1uufr5" }],
+  ["line", { x1: "14", x2: "14", y1: "11", y2: "17", key: "xtxkd" }]
+]);
+const Unlink = createLucideIcon("Unlink", [
+  [
+    "path",
+    {
+      d: "m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71",
+      key: "yqzxt4"
+    }
+  ],
+  [
+    "path",
+    {
+      d: "m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71",
+      key: "4qinb0"
+    }
+  ],
+  ["line", { x1: "8", x2: "8", y1: "2", y2: "5", key: "1041cp" }],
+  ["line", { x1: "2", x2: "5", y1: "8", y2: "8", key: "14m1p5" }],
+  ["line", { x1: "16", x2: "16", y1: "19", y2: "22", key: "rzdirn" }],
+  ["line", { x1: "19", x2: "22", y1: "16", y2: "16", key: "ox905f" }]
+]);
+function Tooltip({ label, children, side = "bottom" }) {
+  const [visible, setVisible] = reactExports.useState(false);
+  const timer = reactExports.useRef(null);
+  const show = () => {
+    timer.current = setTimeout(() => setVisible(true), 400);
   };
-  const color = colors[ext] ?? "#888";
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block", marginRight: 7, marginLeft: 2 } });
+  const hide = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setVisible(false);
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      style: { position: "relative", display: "inline-flex" },
+      onMouseEnter: show,
+      onMouseLeave: hide,
+      children: [
+        children,
+        visible && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+          position: "absolute",
+          [side === "bottom" ? "top" : "bottom"]: "100%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          marginTop: side === "bottom" ? 5 : void 0,
+          marginBottom: side === "top" ? 5 : void 0,
+          background: "#1a1a1a",
+          border: "1px solid #333",
+          borderRadius: 4,
+          padding: "3px 7px",
+          fontSize: 11,
+          color: "#ccc",
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+          zIndex: 99999,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.4)"
+        }, children: label })
+      ]
+    }
+  );
+}
+const DEFAULT_SETTINGS = {
+  gridSize: 20,
+  snapToGrid: true,
+  canvasBackground: "#3c3c3c",
+  terminalFontSize: 13,
+  terminalFontFamily: '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", monospace',
+  uiFontSize: 12,
+  sidebarDefaultSort: "name",
+  sidebarIgnored: [".git", "node_modules", ".next", "dist", "dist-electron", ".DS_Store", "__pycache__", ".cache", "out"],
+  autoSaveIntervalMs: 500,
+  defaultTileSizes: {
+    terminal: { w: 600, h: 400 },
+    code: { w: 680, h: 500 },
+    note: { w: 500, h: 400 },
+    image: { w: 440, h: 360 },
+    kanban: { w: 900, h: 560 },
+    browser: { w: 1e3, h: 700 }
+  }
+};
+function withDefaultSettings(input) {
+  const settings = input ?? {};
+  return {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    sidebarIgnored: settings.sidebarIgnored ?? DEFAULT_SETTINGS.sidebarIgnored,
+    defaultTileSizes: {
+      ...DEFAULT_SETTINGS.defaultTileSizes,
+      ...settings.defaultTileSizes ?? {}
+    }
+  };
+}
+function ContextMenu({ x, y, items, onClose }) {
+  const ref = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    const closeKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeKey);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeKey);
+    };
+  }, [onClose]);
+  const style = {
+    position: "fixed",
+    top: y,
+    left: x,
+    zIndex: 99999,
+    background: "#252526",
+    border: "1px solid #3a3a3a",
+    borderRadius: 6,
+    padding: "4px 0",
+    minWidth: 180,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+    userSelect: "none"
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, style, children: items.map(
+    (item, i) => item.divider ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 1, background: "#333", margin: "3px 0" } }, i) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          padding: "5px 14px",
+          fontSize: 12,
+          color: item.danger ? "#f44747" : "#cccccc",
+          cursor: "pointer",
+          borderRadius: 3,
+          margin: "0 2px"
+        },
+        onMouseEnter: (e) => e.currentTarget.style.background = item.danger ? "#3a1a1a" : "#2a2d2e",
+        onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
+        onClick: () => {
+          item.action();
+          onClose();
+        },
+        children: item.label
+      },
+      i
+    )
+  ) });
+}
+const GIT_COLORS = {
+  modified: "#e2c08d",
+  untracked: "#73c991",
+  added: "#73c991",
+  deleted: "#f44747",
+  renamed: "#e2c08d",
+  conflict: "#f44747"
+};
+const GIT_LABELS = {
+  modified: "M",
+  untracked: "U",
+  added: "A",
+  deleted: "D",
+  renamed: "R",
+  conflict: "!"
+};
+const SORT_MODES = ["name", "type", "ext"];
+const SORT_LABELS = { name: "Name Z-A", type: "Type", ext: "Ext" };
+const IGNORED = /* @__PURE__ */ new Set([".git", "node_modules", ".next", "dist", "dist-electron", ".DS_Store", "__pycache__", ".cache", "out"]);
+function sortEntries(entries, mode) {
+  const dirs = [...entries.filter((e) => e.isDir)].sort((a, b2) => a.name.localeCompare(b2.name));
+  const files = entries.filter((e) => !e.isDir);
+  let sorted;
+  if (mode === "name") {
+    sorted = [...files].sort((a, b2) => a.name.localeCompare(b2.name));
+  } else if (mode === "ext") {
+    sorted = [...files].sort((a, b2) => {
+      const e = a.ext.localeCompare(b2.ext);
+      return e !== 0 ? e : a.name.localeCompare(b2.name);
+    });
+  } else {
+    sorted = [...files].sort((a, b2) => a.name.localeCompare(b2.name));
+  }
+  return [...dirs, ...sorted];
+}
+const EXT_META = {
+  ".ts": { label: "TS", color: "#fff", bg: "#3178c6" },
+  ".tsx": { label: "TX", color: "#fff", bg: "#3178c6" },
+  ".js": { label: "JS", color: "#000", bg: "#f7df1e" },
+  ".jsx": { label: "JX", color: "#000", bg: "#f7df1e" },
+  ".json": { label: "{ }", color: "#f7df1e", bg: "#2a2a1a" },
+  ".md": { label: "MD", color: "#fff", bg: "#4a7a3a" },
+  ".mdx": { label: "MX", color: "#fff", bg: "#4a7a3a" },
+  ".txt": { label: "TXT", color: "#888", bg: "#252525" },
+  ".css": { label: "CSS", color: "#fff", bg: "#563d7c" },
+  ".html": { label: "HTM", color: "#fff", bg: "#e34c26" },
+  ".py": { label: "PY", color: "#fff", bg: "#3572a5" },
+  ".rs": { label: "RS", color: "#fff", bg: "#a95028" },
+  ".go": { label: "GO", color: "#fff", bg: "#00acd7" },
+  ".sh": { label: "SH", color: "#fff", bg: "#4a6a1a" },
+  ".yaml": { label: "YML", color: "#fff", bg: "#7a1a1a" },
+  ".yml": { label: "YML", color: "#fff", bg: "#7a1a1a" },
+  ".toml": { label: "TOM", color: "#fff", bg: "#6a2a1a" },
+  ".svg": { label: "SVG", color: "#fff", bg: "#e67e22" },
+  ".png": { label: "PNG", color: "#fff", bg: "#7a2a2a" },
+  ".jpg": { label: "JPG", color: "#fff", bg: "#7a2a2a" },
+  ".jpeg": { label: "JPG", color: "#fff", bg: "#7a2a2a" },
+  ".gif": { label: "GIF", color: "#fff", bg: "#7a2a2a" },
+  ".webp": { label: "WBP", color: "#fff", bg: "#7a2a2a" },
+  ".lock": { label: "LCK", color: "#888", bg: "#252525" },
+  ".env": { label: "ENV", color: "#fff", bg: "#3a4a1a" }
+};
+function FileIcon({ ext }) {
+  const meta = EXT_META[ext] ?? { label: ext.replace(".", "").slice(0, 3).toUpperCase() || "TXT", color: "#888", bg: "#252525" };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+    width: 22,
+    height: 14,
+    flexShrink: 0,
+    marginRight: 6,
+    background: meta.bg,
+    borderRadius: 2,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+    fontSize: 7,
+    fontWeight: 700,
+    color: meta.color,
+    fontFamily: "monospace",
+    letterSpacing: "-0.02em",
+    lineHeight: 1
+  }, children: meta.label }) });
+}
+function DirIcon({ expanded }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+    fontSize: 14,
+    color: expanded ? "#bbb" : "#666",
+    marginRight: 5,
+    display: "inline-block",
+    width: 12,
+    transform: expanded ? "rotate(90deg)" : "none",
+    transition: "transform 0.12s",
+    userSelect: "none",
+    lineHeight: 1
+  }, children: "›" });
+}
+function Badge({ count }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+    fontSize: 10,
+    color: "#aaa",
+    background: "#2a2a2a",
+    borderRadius: 8,
+    padding: "1px 6px",
+    marginLeft: 6,
+    fontFamily: "monospace",
+    flexShrink: 0
+  }, children: count });
+}
+function formatDate(mtime) {
+  if (!mtime) return "";
+  const d = new Date(mtime);
+  const day = d.getDate();
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+  return `${day} ${mon}`;
 }
 function TreeNode({
   entry,
-  depth = 0,
+  depth,
+  sortMode,
+  gitStatus,
   onOpenFile,
-  onDragStart
+  onCtxMenu,
+  onRefresh
 }) {
   const [expanded, setExpanded] = reactExports.useState(false);
   const [children, setChildren] = reactExports.useState([]);
+  const [childCount, setChildCount] = reactExports.useState(null);
   const [hovered, setHovered] = reactExports.useState(false);
+  const loadChildren = reactExports.useCallback(async () => {
+    const items = await window.electron.fs.readDir(entry.path).catch(() => []);
+    const filtered = items.filter((e) => !IGNORED.has(e.name));
+    setChildren(sortEntries(filtered, sortMode));
+    setChildCount(filtered.length);
+  }, [entry.path, sortMode]);
+  reactExports.useEffect(() => {
+    if (entry.isDir && childCount === null) {
+      window.electron.fs.readDir(entry.path).then((items) => {
+        setChildCount(items.filter((e) => !IGNORED.has(e.name)).length);
+      }).catch(() => setChildCount(0));
+    }
+  }, [entry.path, entry.isDir, childCount]);
+  reactExports.useEffect(() => {
+    if (expanded) {
+      setChildren((prev) => sortEntries(prev, sortMode));
+    }
+  }, [sortMode]);
   const toggle = reactExports.useCallback(async () => {
     if (!entry.isDir) {
       onOpenFile(entry.path);
       return;
     }
-    if (!expanded) {
-      const items = await window.electron.fs.readDir(entry.path);
-      setChildren(items);
-    }
-    setExpanded((prev) => !prev);
-  }, [entry, expanded, onOpenFile]);
+    if (!expanded) await loadChildren();
+    setExpanded((p) => !p);
+  }, [entry, expanded, loadChildren, onOpenFile]);
+  const indent = depth * 16;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
@@ -12516,34 +12999,82 @@ function TreeNode({
         style: {
           display: "flex",
           alignItems: "center",
-          paddingLeft: `${12 + depth * 16}px`,
-          paddingRight: 8,
-          height: 24,
+          height: 26,
+          paddingLeft: 8 + indent,
+          paddingRight: 12,
           cursor: "pointer",
           userSelect: "none",
-          background: hovered ? "#2a2d2e" : "transparent",
-          borderRadius: 4,
-          margin: "0 4px"
+          background: hovered ? "rgba(255,255,255,0.04)" : "transparent"
         },
         onMouseEnter: () => setHovered(true),
         onMouseLeave: () => setHovered(false),
         onClick: toggle,
+        onContextMenu: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onCtxMenu(e, entry);
+        },
         draggable: !entry.isDir,
-        onDragStart: () => onDragStart(entry.path),
+        onDragStart: (e) => {
+          e.dataTransfer.setData("text/plain", entry.path);
+          e.dataTransfer.effectAllowed = "copy";
+        },
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(FileIcon, { ext: entry.ext, isDir: entry.isDir, expanded }),
+          Array.from({ length: depth }).map((_2, i) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+            position: "absolute",
+            left: 8 + i * 16 + 5,
+            width: 1,
+            top: 0,
+            bottom: 0,
+            background: "rgba(255,255,255,0.05)",
+            pointerEvents: "none"
+          } }, i)),
+          entry.isDir ? /* @__PURE__ */ jsxRuntimeExports.jsx(DirIcon, { expanded }) : /* @__PURE__ */ jsxRuntimeExports.jsx(FileIcon, { ext: entry.ext }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
-            fontSize: 13,
-            color: entry.isDir ? "#cccccc" : "#c8c8c8",
+            fontSize: 11,
+            fontFamily: "monospace",
+            color: entry.isDir ? "#d4d4d4" : "#b8b8b8",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
-          }, children: entry.name })
+            flex: 1
+          }, children: entry.isDir ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontWeight: 500 }, children: entry.name }),
+            childCount !== null && childCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { count: childCount })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontWeight: 400 }, children: entry.name.replace(entry.ext, "") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#4a4a4a" }, children: entry.ext })
+          ] }) }),
+          (() => {
+            const s15 = gitStatus[entry.path];
+            if (!s15) return null;
+            return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+              fontSize: 10,
+              fontWeight: 700,
+              color: GIT_COLORS[s15],
+              marginLeft: 6,
+              flexShrink: 0,
+              fontFamily: "monospace",
+              lineHeight: 1
+            }, title: s15, children: GIT_LABELS[s15] });
+          })(),
+          !entry.isDir && entry.mtime && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#3a3a3a", fontFamily: "monospace", flexShrink: 0, marginLeft: 6 }, children: formatDate(entry.mtime) })
         ]
       }
     ),
-    entry.isDir && expanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: children.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { paddingLeft: `${12 + (depth + 1) * 16 + 15}px`, height: 20, fontSize: 11, color: "#555", display: "flex", alignItems: "center" }, children: "Empty" }) : children.map((child) => /* @__PURE__ */ jsxRuntimeExports.jsx(TreeNode, { entry: child, depth: depth + 1, onOpenFile, onDragStart }, child.path)) })
+    entry.isDir && expanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "relative" }, children: children.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { paddingLeft: 8 + (depth + 1) * 16 + 16, height: 24, fontSize: 11, color: "#3a3a3a", display: "flex", alignItems: "center" }, children: "empty" }) : children.map((child) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      TreeNode,
+      {
+        entry: child,
+        depth: depth + 1,
+        sortMode,
+        gitStatus,
+        onOpenFile,
+        onCtxMenu,
+        onRefresh: loadChildren
+      },
+      child.path
+    )) })
   ] });
 }
 function Sidebar({
@@ -12552,25 +13083,72 @@ function Sidebar({
   onSwitchWorkspace,
   onNewWorkspace,
   onOpenFile,
-  onNewTerminal
+  onNewTerminal,
+  onNewKanban,
+  onNewBrowser,
+  collapsed,
+  onToggleCollapse
 }) {
   const [rootEntries, setRootEntries] = reactExports.useState([]);
+  const [sortMode, setSortMode] = reactExports.useState("name");
+  const [search, setSearch] = reactExports.useState("");
+  const [gitStatus, setGitStatus] = reactExports.useState({});
   const [width, setWidth] = reactExports.useState(260);
+  const [refreshKey, setRefreshKey] = reactExports.useState(0);
   const resizing = reactExports.useRef(false);
   const startX = reactExports.useRef(0);
   const startWidth = reactExports.useRef(0);
   const [wsDropdownOpen, setWsDropdownOpen] = reactExports.useState(false);
   const [newWsInput, setNewWsInput] = reactExports.useState(false);
   const [newWsName, setNewWsName] = reactExports.useState("");
+  const [ctx, setCtx] = reactExports.useState(null);
+  const [creatingIn, setCreatingIn] = reactExports.useState(null);
+  const [createName, setCreateName] = reactExports.useState("");
+  const refresh = reactExports.useCallback(() => setRefreshKey((k2) => k2 + 1), []);
+  const loadRoot = reactExports.useCallback(() => {
+    if (!workspace) return;
+    window.electron.fs.readDir(workspace.path).then((items) => {
+      const filtered = items.filter((e) => !IGNORED.has(e.name));
+      setRootEntries(sortEntries(filtered, sortMode));
+    }).catch(() => setRootEntries([]));
+  }, [workspace, sortMode]);
+  reactExports.useEffect(() => {
+    loadRoot();
+  }, [loadRoot]);
+  reactExports.useEffect(() => {
+    setRootEntries((prev) => sortEntries(prev, sortMode));
+  }, [sortMode]);
+  const loadGit = reactExports.useCallback(() => {
+    if (!workspace) return;
+    window.electron.git?.status(workspace.path).then((result) => {
+      if (!result.isRepo) return;
+      const map = {};
+      for (const f of result.files) {
+        map[`${result.root}/${f.path}`] = f.status;
+        const parts = f.path.split("/");
+        for (let i = 1; i < parts.length; i++) {
+          const dir = `${result.root}/${parts.slice(0, i).join("/")}`;
+          if (!map[dir]) map[dir] = "modified";
+        }
+      }
+      setGitStatus(map);
+    }).catch(() => {
+    });
+  }, [workspace]);
+  reactExports.useEffect(() => {
+    loadGit();
+    const interval = setInterval(loadGit, 5e3);
+    return () => clearInterval(interval);
+  }, [loadGit]);
   reactExports.useEffect(() => {
     if (!workspace) return;
-    window.electron.fs.readDir(workspace.path).then(setRootEntries).catch(() => setRootEntries([]));
-  }, [workspace]);
+    const unsub = window.electron.fs.watch?.(workspace.path, refresh);
+    return () => unsub?.();
+  }, [workspace, refresh]);
   reactExports.useEffect(() => {
     const onMove = (e) => {
       if (!resizing.current) return;
-      const newW = Math.max(180, Math.min(500, startWidth.current + e.clientX - startX.current));
-      setWidth(newW);
+      setWidth(Math.max(180, Math.min(500, startWidth.current + e.clientX - startX.current)));
     };
     const onUp = () => {
       resizing.current = false;
@@ -12582,8 +13160,72 @@ function Sidebar({
       window.removeEventListener("mouseup", onUp);
     };
   }, []);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { width, flexShrink: 0, background: "#1e1e1e", borderRight: "1px solid #2d2d2d", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "8px 10px 6px", borderBottom: "1px solid #2d2d2d" }, children: [
+  const cycleSortMode = reactExports.useCallback(() => {
+    setSortMode((prev) => SORT_MODES[(SORT_MODES.indexOf(prev) + 1) % SORT_MODES.length]);
+  }, []);
+  const handleCtxMenu = reactExports.useCallback((e, entry) => {
+    setCtx({ x: e.clientX, y: e.clientY, entry });
+  }, []);
+  const handleBgCtxMenu = reactExports.useCallback((e) => {
+    if (!workspace) return;
+    e.preventDefault();
+    setCtx({ x: e.clientX, y: e.clientY, entry: { name: workspace.name, path: workspace.path, isDir: true, ext: "" } });
+  }, [workspace]);
+  const submitCreate = reactExports.useCallback(async () => {
+    if (!creatingIn || !createName.trim()) {
+      setCreatingIn(null);
+      return;
+    }
+    const fullPath = `${creatingIn.dir}/${createName.trim()}`;
+    if (creatingIn.type === "file") await window.electron.fs.createFile(fullPath);
+    else await window.electron.fs.createDir?.(fullPath);
+    setCreatingIn(null);
+    setCreateName("");
+    refresh();
+  }, [creatingIn, createName, refresh]);
+  const ctxItems = reactExports.useCallback(() => {
+    if (!ctx) return [];
+    const { entry } = ctx;
+    const dir = entry.isDir ? entry.path : entry.path.split("/").slice(0, -1).join("/");
+    const items = [];
+    if (!entry.isDir) items.push({ label: "Open", action: () => onOpenFile(entry.path) });
+    items.push({ label: "New File", action: () => {
+      setCreatingIn({ dir, type: "file" });
+      setCreateName("");
+    } });
+    items.push({ label: "New Folder", action: () => {
+      setCreatingIn({ dir, type: "folder" });
+      setCreateName("");
+    } });
+    items.push({ label: "", action: () => {
+    }, divider: true });
+    items.push({ label: "Copy Path", action: () => navigator.clipboard.writeText(entry.path) });
+    items.push({ label: "Reveal in Finder", action: () => window.electron.fs.revealInFinder?.(entry.path) });
+    items.push({ label: "", action: () => {
+    }, divider: true });
+    items.push({
+      label: `Delete ${entry.isDir ? "Folder" : "File"}`,
+      danger: true,
+      action: async () => {
+        await window.electron.fs.deleteFile?.(entry.path);
+        refresh();
+      }
+    });
+    return items;
+  }, [ctx, onOpenFile, refresh]);
+  const filteredEntries = search.trim() ? rootEntries.filter((e) => e.name.toLowerCase().includes(search.toLowerCase())) : rootEntries;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+    width: collapsed ? 0 : width,
+    flexShrink: 0,
+    background: "#1a1a1a",
+    borderRight: collapsed ? "none" : "1px solid #252525",
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
+    overflow: "hidden",
+    transition: "width 0.15s ease"
+  }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "10px 12px 8px", borderBottom: "1px solid #252525" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
@@ -12592,29 +13234,33 @@ function Sidebar({
             alignItems: "center",
             gap: 6,
             cursor: "pointer",
-            padding: "4px 8px",
-            borderRadius: 6,
-            background: wsDropdownOpen ? "#2a2d2e" : "transparent"
+            padding: "5px 10px",
+            borderRadius: 8,
+            background: "#252525",
+            border: "1px solid #2d2d2d"
           },
           onClick: () => setWsDropdownOpen((p) => !p),
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 13, color: "#cccccc", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: workspace?.name ?? "No workspace" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#666" }, children: wsDropdownOpen ? "▴" : "▾" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+              fontSize: 11,
+              color: "#d4d4d4",
+              fontWeight: 500,
+              flex: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontFamily: "monospace"
+            }, children: workspace?.name ?? "No workspace" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#555" }, children: wsDropdownOpen ? "▴" : "▾" })
           ]
         }
       ),
-      wsDropdownOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 4, background: "#252526", border: "1px solid #3a3a3a", borderRadius: 6, overflow: "hidden" }, children: [
+      wsDropdownOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 4, background: "#222", border: "1px solid #333", borderRadius: 8, overflow: "hidden" }, children: [
         workspaces.map((ws2) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
-            style: {
-              padding: "6px 12px",
-              fontSize: 12,
-              color: ws2.id === workspace?.id ? "#4a9eff" : "#cccccc",
-              cursor: "pointer",
-              background: "transparent"
-            },
-            onMouseEnter: (e) => e.currentTarget.style.background = "#2a2d2e",
+            style: { padding: "7px 14px", fontSize: 12, fontFamily: "monospace", color: ws2.id === workspace?.id ? "#4a9eff" : "#ccc", cursor: "pointer" },
+            onMouseEnter: (e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)",
             onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
             onClick: () => {
               onSwitchWorkspace(ws2.id);
@@ -12624,7 +13270,7 @@ function Sidebar({
           },
           ws2.id
         )),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 1, background: "#333", margin: "2px 0" } }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 1, background: "#2d2d2d", margin: "2px 0" } }),
         newWsInput ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "4px 8px" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           "input",
           {
@@ -12644,22 +13290,13 @@ function Sidebar({
               }
             },
             placeholder: "Workspace name…",
-            style: {
-              width: "100%",
-              padding: "4px 8px",
-              fontSize: 12,
-              borderRadius: 4,
-              background: "#1e1e1e",
-              color: "#ccc",
-              border: "1px solid #4a9eff",
-              outline: "none"
-            }
+            style: { width: "100%", padding: "4px 8px", fontSize: 12, borderRadius: 4, background: "#1a1a1a", color: "#ccc", border: "1px solid #4a9eff", outline: "none", fontFamily: "monospace" }
           }
         ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
-            style: { padding: "6px 12px", fontSize: 12, color: "#888", cursor: "pointer" },
-            onMouseEnter: (e) => e.currentTarget.style.background = "#2a2d2e",
+            style: { padding: "7px 14px", fontSize: 12, color: "#555", cursor: "pointer", fontFamily: "monospace" },
+            onMouseEnter: (e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)",
             onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
             onClick: () => setNewWsInput(true),
             children: "+ Add workspace"
@@ -12667,51 +13304,139 @@ function Sidebar({
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, overflowY: "auto", padding: "4px 0" }, children: !workspace ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "16px 16px", fontSize: 12, color: "#555" }, children: "No workspace open" }) : rootEntries.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "16px 16px", fontSize: 12, color: "#555" }, children: "Empty" }) : rootEntries.map((entry) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-      TreeNode,
-      {
-        entry,
-        onOpenFile: (p) => {
-          onOpenFile(p);
-        },
-        onDragStart: () => {
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "8px 12px 6px", borderBottom: "1px solid #1f1f1f", display: "flex", gap: 6, alignItems: "center" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: search,
+          onChange: (e) => setSearch(e.target.value),
+          placeholder: "Search  ⌘K",
+          style: {
+            flex: 1,
+            padding: "4px 10px",
+            fontSize: 11,
+            background: "#222",
+            color: "#ccc",
+            border: "1px solid #2d2d2d",
+            borderRadius: 6,
+            outline: "none",
+            fontFamily: "monospace"
+          }
         }
-      },
-      entry.path
-    )) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { borderTop: "1px solid #2d2d2d", padding: "8px 10px" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: cycleSortMode,
+          style: {
+            fontSize: 10,
+            color: "#555",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: "4px 6px",
+            borderRadius: 4,
+            whiteSpace: "nowrap",
+            fontFamily: "monospace"
+          },
+          onMouseEnter: (e) => {
+            e.currentTarget.style.color = "#999";
+          },
+          onMouseLeave: (e) => {
+            e.currentTarget.style.color = "#555";
+          },
+          children: SORT_LABELS[sortMode]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
       {
-        style: {
-          width: "100%",
-          padding: "6px 0",
-          borderRadius: 6,
-          border: "1px solid #3a3a3a",
-          background: "#252526",
-          color: "#c8c8c8",
-          fontSize: 12,
-          cursor: "pointer",
-          fontFamily: "inherit",
-          letterSpacing: 0.2
-        },
-        onMouseEnter: (e) => e.currentTarget.style.background = "#2a2d2e",
-        onMouseLeave: (e) => e.currentTarget.style.background = "#252526",
-        onClick: onNewTerminal,
-        children: "New Terminal"
+        style: { flex: 1, overflowY: "auto", padding: "4px 0", position: "relative" },
+        onContextMenu: handleBgCtxMenu,
+        children: [
+          !workspace ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "16px", fontSize: 12, color: "#444", fontFamily: "monospace" }, children: "No workspace open" }) : filteredEntries.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "16px", fontSize: 12, color: "#444", fontFamily: "monospace" }, children: search ? "No matches" : "Empty" }) : filteredEntries.map((entry) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            TreeNode,
+            {
+              entry,
+              depth: 0,
+              sortMode,
+              gitStatus,
+              onOpenFile,
+              onCtxMenu: handleCtxMenu,
+              onRefresh: loadRoot
+            },
+            `${entry.path}-${refreshKey}`
+          )),
+          creatingIn && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "4px 12px" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              autoFocus: true,
+              value: createName,
+              onChange: (e) => setCreateName(e.target.value),
+              onKeyDown: (e) => {
+                if (e.key === "Enter") submitCreate();
+                if (e.key === "Escape") {
+                  setCreatingIn(null);
+                  setCreateName("");
+                }
+                e.stopPropagation();
+              },
+              onBlur: submitCreate,
+              placeholder: creatingIn.type === "file" ? "filename.ts" : "folder-name",
+              style: {
+                width: "100%",
+                padding: "4px 8px",
+                fontSize: 12,
+                borderRadius: 4,
+                background: "#161616",
+                color: "#ccc",
+                border: "1px solid #4a9eff",
+                outline: "none",
+                boxSizing: "border-box",
+                fontFamily: "monospace"
+              }
+            }
+          ) })
+        ]
       }
-    ) }),
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { borderTop: "1px solid #252525", padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          style: { width: "100%", padding: "6px 0", borderRadius: 6, border: "1px solid #2d2d2d", background: "#222", color: "#ccc", fontSize: 12, cursor: "pointer", fontFamily: "monospace" },
+          onMouseEnter: (e) => e.currentTarget.style.background = "#2a2a2a",
+          onMouseLeave: (e) => e.currentTarget.style.background = "#222",
+          onClick: onNewTerminal,
+          children: "New Terminal"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          style: { width: "100%", padding: "6px 0", borderRadius: 6, border: "1px solid #2d2d2d", background: "#222", color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "monospace" },
+          onMouseEnter: (e) => e.currentTarget.style.background = "#2a2a2a",
+          onMouseLeave: (e) => e.currentTarget.style.background = "#222",
+          onClick: onNewKanban,
+          children: "Agent Board"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          style: { width: "100%", padding: "6px 0", borderRadius: 6, border: "1px solid #2d2d2d", background: "#222", color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "monospace" },
+          onMouseEnter: (e) => e.currentTarget.style.background = "#2a2a2a",
+          onMouseLeave: (e) => e.currentTarget.style.background = "#222",
+          onClick: onNewBrowser,
+          children: "Browser"
+        }
+      )
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
-        style: {
-          position: "absolute",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 4,
-          cursor: "col-resize",
-          background: "transparent"
-        },
+        style: { position: "absolute", right: 0, top: 0, bottom: 0, width: 3, cursor: "col-resize" },
         onMouseDown: (e) => {
           resizing.current = true;
           startX.current = e.clientX;
@@ -12721,55 +13446,61 @@ function Sidebar({
         onMouseEnter: (e) => e.currentTarget.style.background = "#4a9eff44",
         onMouseLeave: (e) => e.currentTarget.style.background = "transparent"
       }
-    )
+    ),
+    ctx && /* @__PURE__ */ jsxRuntimeExports.jsx(ContextMenu, { x: ctx.x, y: ctx.y, items: ctxItems(), onClose: () => setCtx(null) })
   ] });
 }
 const TYPE_LABELS = {
   terminal: "Terminal",
   note: "Note",
   code: "Code",
-  image: "Image"
+  image: "Image",
+  kanban: "Board",
+  browser: "Browser"
 };
 function fileLabel(tile) {
   if (!tile.filePath) return TYPE_LABELS[tile.type] ?? tile.type;
-  const parts = tile.filePath.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || tile.filePath;
+  return tile.filePath.replace(/\\/g, "/").split("/").pop() || tile.filePath;
 }
 function ResizeHandle({ dir, onMouseDown }) {
-  const SIZE = 8;
+  const S2 = 8;
   const style = { position: "absolute", zIndex: 10 };
-  if (dir === "e") Object.assign(style, { right: 0, top: SIZE, bottom: SIZE, width: SIZE, cursor: "col-resize" });
-  if (dir === "w") Object.assign(style, { left: 0, top: SIZE, bottom: SIZE, width: SIZE, cursor: "col-resize" });
-  if (dir === "s") Object.assign(style, { bottom: 0, left: SIZE, right: SIZE, height: SIZE, cursor: "row-resize" });
-  if (dir === "n") Object.assign(style, { top: 0, left: SIZE, right: SIZE, height: SIZE, cursor: "row-resize" });
-  if (dir === "se") Object.assign(style, { right: 0, bottom: 0, width: SIZE, height: SIZE, cursor: "se-resize" });
-  if (dir === "sw") Object.assign(style, { left: 0, bottom: 0, width: SIZE, height: SIZE, cursor: "sw-resize" });
-  if (dir === "ne") Object.assign(style, { right: 0, top: 0, width: SIZE, height: SIZE, cursor: "ne-resize" });
-  if (dir === "nw") Object.assign(style, { left: 0, top: 0, width: SIZE, height: SIZE, cursor: "nw-resize" });
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      style,
-      onMouseDown: (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        onMouseDown(e);
-      }
-    }
-  );
+  if (dir === "e") Object.assign(style, { right: 0, top: S2, bottom: S2, width: S2, cursor: "col-resize" });
+  if (dir === "w") Object.assign(style, { left: 0, top: S2, bottom: S2, width: S2, cursor: "col-resize" });
+  if (dir === "s") Object.assign(style, { bottom: 0, left: S2, right: S2, height: S2, cursor: "row-resize" });
+  if (dir === "n") Object.assign(style, { top: 0, left: S2, right: S2, height: S2, cursor: "row-resize" });
+  if (dir === "se") Object.assign(style, { right: 0, bottom: 0, width: S2, height: S2, cursor: "se-resize" });
+  if (dir === "sw") Object.assign(style, { left: 0, bottom: 0, width: S2, height: S2, cursor: "sw-resize" });
+  if (dir === "ne") Object.assign(style, { right: 0, top: 0, width: S2, height: S2, cursor: "ne-resize" });
+  if (dir === "nw") Object.assign(style, { left: 0, top: 0, width: S2, height: S2, cursor: "nw-resize" });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style, onMouseDown: (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onMouseDown(e);
+  } });
 }
 function TileChrome({
   tile,
   onClose,
   onTitlebarMouseDown,
   onResizeMouseDown,
+  onContextMenu,
+  onExpandChange,
   children,
-  isSelected
+  isSelected,
+  forceExpanded
 }) {
-  const label = fileLabel(tile);
+  const [localExpanded, setLocalExpanded] = reactExports.useState(false);
+  const expanded = forceExpanded ?? localExpanded;
+  const toggle = () => {
+    const next = !expanded;
+    setLocalExpanded(next);
+    onExpandChange?.(next);
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
+      "data-tile-chrome": "true",
       className: "absolute flex flex-col",
       style: {
         left: tile.x,
@@ -12781,8 +13512,12 @@ function TileChrome({
         overflow: "hidden",
         border: `1px solid ${isSelected ? "#4a9eff" : "#3a3a3a"}`,
         boxShadow: isSelected ? "0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,158,255,0.3)" : "0 4px 20px rgba(0,0,0,0.4)",
-        background: "#1e1e1e"
+        background: "#1e1e1e",
+        // Hide in place when expanded (canvas panel renders it fullscreen)
+        visibility: forceExpanded ? "hidden" : "visible",
+        pointerEvents: forceExpanded ? "none" : "all"
       },
+      onDoubleClick: (e) => e.stopPropagation(),
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
@@ -12794,22 +13529,91 @@ function TileChrome({
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              padding: "0 10px 0 12px",
-              cursor: "move",
+              padding: "0 8px 0 0",
               userSelect: "none",
-              flexShrink: 0
+              flexShrink: 0,
+              cursor: "move"
             },
             onMouseDown: onTitlebarMouseDown,
+            onDoubleClick: (e) => {
+              e.stopPropagation();
+              toggle();
+            },
+            onContextMenu: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onContextMenu?.(e);
+            },
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  draggable: true,
+                  onDragStart: (e) => {
+                    e.dataTransfer.setData("application/tile-id", tile.id);
+                    e.dataTransfer.setData("application/tile-type", tile.type);
+                    e.dataTransfer.setData("application/tile-label", fileLabel(tile));
+                    e.dataTransfer.effectAllowed = "link";
+                    e.stopPropagation();
+                  },
+                  onMouseDown: (e) => e.stopPropagation(),
+                  style: {
+                    width: 28,
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "grab",
+                    flexShrink: 0,
+                    color: "#444",
+                    fontSize: 11
+                  },
+                  children: "::"
+                }
+              ),
+              tile.type === "browser" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  id: `tile-header-slot-${tile.id}`,
+                  style: { flex: 1, minWidth: 0, height: "100%", display: "flex", alignItems: "center" }
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                flex: 1,
                 fontSize: 12,
                 fontWeight: 500,
                 color: "#cccccc",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: tile.width - 60
-              }, children: label }),
+                whiteSpace: "nowrap"
+              }, children: fileLabel(tile) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  style: {
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    color: "#555",
+                    fontSize: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  },
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    toggle();
+                  },
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onMouseEnter: (e) => e.currentTarget.style.color = "#aaa",
+                  onMouseLeave: (e) => e.currentTarget.style.color = "#555",
+                  title: expanded ? "Collapse" : "Expand",
+                  children: expanded ? "⊡" : "⊞"
+                }
+              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
@@ -12820,11 +13624,9 @@ function TileChrome({
                     background: "#444",
                     border: "none",
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     flexShrink: 0,
-                    transition: "background 0.1s"
+                    transition: "background 0.1s",
+                    marginLeft: 6
                   },
                   onClick: (e) => {
                     e.stopPropagation();
@@ -12838,7 +13640,19 @@ function TileChrome({
             ]
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, overflow: "hidden", minHeight: 0 }, children }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            style: { flex: 1, overflow: "hidden", minHeight: 0, userSelect: "text", WebkitUserSelect: "text" },
+            onDragOver: (e) => {
+              if (tile.type !== "kanban") e.stopPropagation();
+            },
+            onDrop: (e) => {
+              if (tile.type !== "kanban") e.stopPropagation();
+            },
+            children: forceExpanded ? null : children
+          }
+        ),
         ["n", "s", "e", "w", "ne", "nw", "se", "sw"].map((dir) => /* @__PURE__ */ jsxRuntimeExports.jsx(ResizeHandle, { dir, onMouseDown: (e) => onResizeMouseDown(e, dir) }, dir))
       ]
     }
@@ -13229,7 +14043,7 @@ function Pl(s15, t, e) {
   t[js] === t ? t[Hn].push({ id: s15, index: e }) : (t[Hn] = [{ id: s15, index: e }], t[js] = t);
 }
 var F = ie$1("BufferService"), rr = ie$1("CoreMouseService"), ge = ie$1("CoreService"), Zs = ie$1("CharsetService"), xt = ie$1("InstantiationService");
-var nr = ie$1("LogService"), H$1 = ie$1("OptionsService"), sr = ie$1("OscLinkService"), Js = ie$1("UnicodeService"), Be = ie$1("DecorationService");
+var nr = ie$1("LogService"), H$2 = ie$1("OptionsService"), sr = ie$1("OscLinkService"), Js = ie$1("UnicodeService"), Be = ie$1("DecorationService");
 var wt = class {
   constructor(t, e, i) {
     this._bufferService = t;
@@ -13267,7 +14081,7 @@ var wt = class {
     e(r);
   }
 };
-wt = M([S(0, F), S(1, H$1), S(2, sr)], wt);
+wt = M([S(0, F), S(1, H$2), S(2, sr)], wt);
 function Ol(s15, t) {
   if (confirm(`Do you want to navigate to ${t}?
 
@@ -15684,7 +16498,7 @@ var zt = class extends D$1 {
     r !== 0 && (this._latestYDisp = i, this._onRequestScrollLines.fire(r)), this._isHandlingScroll = false;
   }
 };
-zt = M([S(2, F), S(3, ae$1), S(4, rr), S(5, Re), S(6, H$1), S(7, ce)], zt);
+zt = M([S(2, F), S(3, ae$1), S(4, rr), S(5, Re), S(6, H$2), S(7, ce)], zt);
 var Gt = class extends D$1 {
   constructor(e, i, r, n, o2) {
     super();
@@ -15850,7 +16664,7 @@ var We = { full: 0, left: 0, center: 0, right: 0 }, at = { full: 0, left: 0, cen
     }));
   }
 };
-bt = M([S(2, F), S(3, Be), S(4, ce), S(5, H$1), S(6, Re), S(7, ae$1)], bt);
+bt = M([S(2, F), S(3, Be), S(4, ce), S(5, H$2), S(6, Re), S(7, ae$1)], bt);
 var b;
 ((E) => (E.NUL = "\0", E.SOH = "", E.STX = "", E.ETX = "", E.EOT = "", E.ENQ = "", E.ACK = "", E.BEL = "\x07", E.BS = "\b", E.HT = "	", E.LF = `
 `, E.VT = "\v", E.FF = "\f", E.CR = "\r", E.SO = "", E.SI = "", E.DLE = "", E.DC1 = "", E.DC2 = "", E.DC3 = "", E.DC4 = "", E.NAK = "", E.SYN = "", E.ETB = "", E.CAN = "", E.EM = "", E.SUB = "", E.ESC = "\x1B", E.FS = "", E.GS = "", E.RS = "", E.US = "", E.SP = " ", E.DEL = ""))(b ||= {});
@@ -15926,7 +16740,7 @@ var $t = class {
     }
   }
 };
-$t = M([S(2, F), S(3, H$1), S(4, ge), S(5, ce)], $t);
+$t = M([S(2, F), S(3, H$2), S(4, ge), S(5, ce)], $t);
 var ue = 0, he$1 = 0, de$1 = 0, J = 0, ps = { css: "#00000000", rgba: 0 }, j;
 ((i) => {
   function s15(r, n, o2, l2) {
@@ -16225,12 +17039,12 @@ var Vt = class {
       if (T === 0) continue;
       let g = false, w = y >= di, E = y, x = this._workCell;
       if (_2.length > 0 && y === _2[0][0] && w) {
-        let W = _2.shift(), An = this._isCellInSelection(W[0], e);
-        for (O = W[0] + 1; O < W[1]; O++) w &&= An === this._isCellInSelection(O, e);
-        w &&= !i || o2 < W[0] || o2 >= W[1], w ? (g = true, x = new Vr(this._workCell, t.translateToString(true, W[0], W[1]), W[1] - W[0]), E = W[1] - 1, T = x.getWidth()) : di = W[1];
+        let W2 = _2.shift(), An = this._isCellInSelection(W2[0], e);
+        for (O = W2[0] + 1; O < W2[1]; O++) w &&= An === this._isCellInSelection(O, e);
+        w &&= !i || o2 < W2[0] || o2 >= W2[1], w ? (g = true, x = new Vr(this._workCell, t.translateToString(true, W2[0], W2[1]), W2[1] - W2[0]), E = W2[1] - 1, T = x.getWidth()) : di = W2[1];
       }
       let N = this._isCellInSelection(y, e), Z2 = i && y === o2, te2 = Qe && y >= h2 && y <= c, Oe2 = false;
-      this._decorationService.forEachDecorationAtCell(y, e, void 0, (W) => {
+      this._decorationService.forEachDecorationAtCell(y, e, void 0, (W2) => {
         Oe2 = true;
       });
       let ze = x.getChars() || we;
@@ -16258,20 +17072,20 @@ var Vt = class {
       }
       if (x.isBold() && V.push("xterm-bold"), x.isItalic() && V.push("xterm-italic"), x.isDim() && V.push("xterm-dim"), x.isInvisible() ? R = we : R = x.getChars() || we, x.isUnderline() && (V.push(`xterm-underline-${x.extended.underlineStyle}`), R === " " && (R = " "), !x.isUnderlineColorDefault())) if (x.isUnderlineColorRGB()) f.style.textDecorationColor = `rgb(${De$1.toColorRGB(x.getUnderlineColor()).join(",")})`;
       else {
-        let W = x.getUnderlineColor();
-        this._optionsService.rawOptions.drawBoldTextInBrightColors && x.isBold() && W < 8 && (W += 8), f.style.textDecorationColor = p.ansi[W].css;
+        let W2 = x.getUnderlineColor();
+        this._optionsService.rawOptions.drawBoldTextInBrightColors && x.isBold() && W2 < 8 && (W2 += 8), f.style.textDecorationColor = p.ansi[W2].css;
       }
       x.isOverline() && (V.push("xterm-overline"), R === " " && (R = " ")), x.isStrikethrough() && V.push("xterm-strikethrough"), te2 && (f.style.textDecoration = "underline");
       let le2 = x.getFgColor(), et = x.getFgColorMode(), me = x.getBgColor(), ht = x.getBgColorMode(), fi = !!x.isInverse();
       if (fi) {
-        let W = le2;
-        le2 = me, me = W;
+        let W2 = le2;
+        le2 = me, me = W2;
         let An = et;
         et = ht, ht = An;
       }
       let tt, Qi, pi = false;
-      this._decorationService.forEachDecorationAtCell(y, e, void 0, (W) => {
-        W.options.layer !== "top" && pi || (W.backgroundColorRGB && (ht = 50331648, me = W.backgroundColorRGB.rgba >> 8 & 16777215, tt = W.backgroundColorRGB), W.foregroundColorRGB && (et = 50331648, le2 = W.foregroundColorRGB.rgba >> 8 & 16777215, Qi = W.foregroundColorRGB), pi = W.options.layer === "top");
+      this._decorationService.forEachDecorationAtCell(y, e, void 0, (W2) => {
+        W2.options.layer !== "top" && pi || (W2.backgroundColorRGB && (ht = 50331648, me = W2.backgroundColorRGB.rgba >> 8 & 16777215, tt = W2.backgroundColorRGB), W2.foregroundColorRGB && (et = 50331648, le2 = W2.foregroundColorRGB.rgba >> 8 & 16777215, Qi = W2.foregroundColorRGB), pi = W2.options.layer === "top");
       }), !pi && N && (tt = this._coreBrowserService.isFocused ? p.selectionBackgroundOpaque : p.selectionInactiveBackgroundOpaque, me = tt.rgba >> 8 & 16777215, ht = 50331648, pi = true, p.selectionForeground && (et = 50331648, le2 = p.selectionForeground.rgba >> 8 & 16777215, Qi = p.selectionForeground)), pi && V.push("xterm-decoration-top");
       let it;
       switch (ht) {
@@ -16292,8 +17106,8 @@ var Vt = class {
           x.isBold() && le2 < 8 && this._optionsService.rawOptions.drawBoldTextInBrightColors && (le2 += 8), this._applyMinimumContrast(f, it, p.ansi[le2], x, tt, void 0) || V.push(`xterm-fg-${le2}`);
           break;
         case 50331648:
-          let W = j.toColor(le2 >> 16 & 255, le2 >> 8 & 255, le2 & 255);
-          this._applyMinimumContrast(f, it, W, x, tt, Qi) || this._addStyle(f, `color:#${qo(le2.toString(16), "0", 6)}`);
+          let W2 = j.toColor(le2 >> 16 & 255, le2 >> 8 & 255, le2 & 255);
+          this._applyMinimumContrast(f, it, W2, x, tt, Qi) || this._addStyle(f, `color:#${qo(le2.toString(16), "0", 6)}`);
           break;
         case 0:
         default:
@@ -16323,7 +17137,7 @@ var Vt = class {
     return !i || !r ? false : this._columnSelectMode ? i[0] <= r[0] ? t >= i[0] && e >= i[1] && t < r[0] && e <= r[1] : t < i[0] && e >= i[1] && t >= r[0] && e <= r[1] : e > i[1] && e < r[1] || i[1] === r[1] && e === i[1] && t >= i[0] && t < r[0] || i[1] < r[1] && e === r[1] && t < r[0] || i[1] < r[1] && e === i[1] && t >= i[0];
   }
 };
-Vt = M([S(1, or), S(2, H$1), S(3, ae$1), S(4, ge), S(5, Be), S(6, Re)], Vt);
+Vt = M([S(1, or), S(2, H$2), S(3, ae$1), S(4, ge), S(5, Be), S(6, Re)], Vt);
 function qo(s15, t, e) {
   for (; s15.length < e; ) s15 = t + s15;
   return s15;
@@ -16527,7 +17341,7 @@ var _s = "xterm-dom-renderer-owner-", Le = "xterm-rows", jr = "xterm-fg-", jo = 
     }
   }
 };
-Yt = M([S(7, xt), S(8, nt), S(9, H$1), S(10, F), S(11, ge), S(12, ae$1), S(13, Re)], Yt);
+Yt = M([S(7, xt), S(8, nt), S(9, H$2), S(10, F), S(11, ge), S(12, ae$1), S(13, Re)], Yt);
 var jt = class extends D$1 {
   constructor(e, i, r) {
     super();
@@ -16551,7 +17365,7 @@ var jt = class extends D$1 {
     (e.width !== this.width || e.height !== this.height) && (this.width = e.width, this.height = e.height, this._onCharSizeChange.fire());
   }
 };
-jt = M([S(2, H$1)], jt);
+jt = M([S(2, H$2)], jt);
 var Zr = class extends D$1 {
   constructor() {
     super(...arguments);
@@ -16881,7 +17695,7 @@ var Qt = class extends D$1 {
     this._renderer.value?.clear();
   }
 };
-Qt = M([S(2, H$1), S(3, nt), S(4, ge), S(5, Be), S(6, F), S(7, ae$1), S(8, Re)], Qt);
+Qt = M([S(2, H$2), S(3, nt), S(4, ge), S(5, Be), S(6, F), S(7, ae$1), S(8, Re)], Qt);
 var xs = class {
   constructor(t, e, i) {
     this._coreBrowserService = t;
@@ -17300,7 +18114,7 @@ var ei = class extends D$1 {
     this._model.selectionStart = [0, i.first], this._model.selectionEnd = void 0, this._model.selectionStartLength = ws(r, this._bufferService.cols);
   }
 };
-ei = M([S(3, F), S(4, ge), S(5, Dt), S(6, H$1), S(7, ce), S(8, ae$1)], ei);
+ei = M([S(3, F), S(4, ge), S(5, Dt), S(6, H$2), S(7, ce), S(8, ae$1)], ei);
 var Hi = class {
   constructor() {
     this._data = {};
@@ -17398,7 +18212,7 @@ var St = z.toColor("#ffffff"), Ki = z.toColor("#000000"), tl = z.toColor("#fffff
     this._restoreColors = { foreground: this._colors.foreground, background: this._colors.background, cursor: this._colors.cursor, ansi: this._colors.ansi.slice() };
   }
 };
-ti = M([S(0, H$1)], ti);
+ti = M([S(0, H$2)], ti);
 function K(s15, t) {
   if (s15 !== void 0) try {
     return z.toColor(s15);
@@ -17482,7 +18296,7 @@ var ec = { trace: 0, debug: 1, info: 2, warn: 3, error: 4, off: 5 }, tc = "xterm
     this._logLevel <= 4 && this._log(this._optionsService.options.logger?.error.bind(this._optionsService.options.logger) ?? console.error, e, i);
   }
 };
-ii = M([S(0, H$1)], ii);
+ii = M([S(0, H$2)], ii);
 var zi = class extends D$1 {
   constructor(e) {
     super();
@@ -18097,7 +18911,7 @@ var ks = 2, Cs = 1, ni = class extends D$1 {
     r.ydisp = Math.max(Math.min(r.ydisp + e, r.ybase), 0), n !== r.ydisp && (i || this._onScroll.fire(r.ydisp));
   }
 };
-ni = M([S(0, H$1)], ni);
+ni = M([S(0, H$2)], ni);
 var si = { cols: 80, rows: 24, cursorBlink: false, cursorStyle: "block", cursorWidth: 1, cursorInactiveStyle: "outline", customGlyphs: true, drawBoldTextInBrightColors: true, documentOverride: null, fastScrollModifier: "alt", fastScrollSensitivity: 5, fontFamily: "monospace", fontSize: 15, fontWeight: "normal", fontWeightBold: "bold", ignoreBracketedPasteMode: false, lineHeight: 1, letterSpacing: 0, linkHandler: null, logLevel: "info", logger: null, scrollback: 1e3, scrollOnEraseInDisplay: false, scrollOnUserInput: true, scrollSensitivity: 1, screenReaderMode: false, smoothScrollDuration: 0, macOptionIsMeta: false, macOptionClickForcesSelection: false, minimumContrastRatio: 1, disableStdin: false, allowProposedApi: false, allowTransparency: false, tabStopWidth: 8, theme: {}, reflowCursorLine: false, rescaleOverlappingGlyphs: false, rightClickSelectsWord: Zt, windowOptions: {}, windowsMode: false, windowsPty: {}, wordSeparator: " ()[]{}',\"`", altClickMovesCursor: true, convertEol: false, termName: "xterm", cancelEvents: false, overviewRuler: {} }, nc = ["normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900"], dn = class extends D$1 {
   constructor(e) {
     super();
@@ -18216,7 +19030,7 @@ var ul = Object.freeze({ insertMode: false }), hl = Object.freeze({ applicationC
     this._optionsService.rawOptions.disableStdin || (this._logService.debug(`sending binary "${e}"`), this._logService.trace("sending binary (codes)", () => e.split("").map((i) => i.charCodeAt(0))), this._onBinary.fire(e));
   }
 };
-li = M([S(0, F), S(1, nr), S(2, H$1)], li);
+li = M([S(0, F), S(1, nr), S(2, H$2)], li);
 var dl = { NONE: { events: 0, restrict: () => false }, X10: { events: 1, restrict: (s15) => s15.button === 4 || s15.action !== 1 ? false : (s15.ctrl = false, s15.alt = false, s15.shift = false, true) }, VT200: { events: 19, restrict: (s15) => s15.action !== 32 }, DRAG: { events: 23, restrict: (s15) => !(s15.action === 32 && s15.button === 3) }, ANY: { events: 31, restrict: (s15) => true } };
 function Ms(s15, t) {
   let e = (s15.ctrl ? 16 : 0) | (s15.shift ? 4 : 0) | (s15.alt ? 8 : 0);
@@ -18298,7 +19112,7 @@ var Ps = String.fromCharCode, fl = { DEFAULT: (s15) => {
     return !(e.button !== i.button || e.action !== i.action || e.ctrl !== i.ctrl || e.alt !== i.alt || e.shift !== i.shift);
   }
 };
-ai = M([S(0, F), S(1, ge), S(2, H$1)], ai);
+ai = M([S(0, F), S(1, ge), S(2, H$2)], ai);
 var Os = [[768, 879], [1155, 1158], [1160, 1161], [1425, 1469], [1471, 1471], [1473, 1474], [1476, 1477], [1479, 1479], [1536, 1539], [1552, 1557], [1611, 1630], [1648, 1648], [1750, 1764], [1767, 1768], [1770, 1773], [1807, 1807], [1809, 1809], [1840, 1866], [1958, 1968], [2027, 2035], [2305, 2306], [2364, 2364], [2369, 2376], [2381, 2381], [2385, 2388], [2402, 2403], [2433, 2433], [2492, 2492], [2497, 2500], [2509, 2509], [2530, 2531], [2561, 2562], [2620, 2620], [2625, 2626], [2631, 2632], [2635, 2637], [2672, 2673], [2689, 2690], [2748, 2748], [2753, 2757], [2759, 2760], [2765, 2765], [2786, 2787], [2817, 2817], [2876, 2876], [2879, 2879], [2881, 2883], [2893, 2893], [2902, 2902], [2946, 2946], [3008, 3008], [3021, 3021], [3134, 3136], [3142, 3144], [3146, 3149], [3157, 3158], [3260, 3260], [3263, 3263], [3270, 3270], [3276, 3277], [3298, 3299], [3393, 3395], [3405, 3405], [3530, 3530], [3538, 3540], [3542, 3542], [3633, 3633], [3636, 3642], [3655, 3662], [3761, 3761], [3764, 3769], [3771, 3772], [3784, 3789], [3864, 3865], [3893, 3893], [3895, 3895], [3897, 3897], [3953, 3966], [3968, 3972], [3974, 3975], [3984, 3991], [3993, 4028], [4038, 4038], [4141, 4144], [4146, 4146], [4150, 4151], [4153, 4153], [4184, 4185], [4448, 4607], [4959, 4959], [5906, 5908], [5938, 5940], [5970, 5971], [6002, 6003], [6068, 6069], [6071, 6077], [6086, 6086], [6089, 6099], [6109, 6109], [6155, 6157], [6313, 6313], [6432, 6434], [6439, 6440], [6450, 6450], [6457, 6459], [6679, 6680], [6912, 6915], [6964, 6964], [6966, 6970], [6972, 6972], [6978, 6978], [7019, 7027], [7616, 7626], [7678, 7679], [8203, 8207], [8234, 8238], [8288, 8291], [8298, 8303], [8400, 8431], [12330, 12335], [12441, 12442], [43014, 43014], [43019, 43019], [43045, 43046], [64286, 64286], [65024, 65039], [65056, 65059], [65279, 65279], [65529, 65531]], ac = [[68097, 68099], [68101, 68102], [68108, 68111], [68152, 68154], [68159, 68159], [119143, 119145], [119155, 119170], [119173, 119179], [119210, 119213], [119362, 119364], [917505, 917505], [917536, 917631], [917760, 917999]], se$1;
 function cc(s15, t) {
   let e = 0, i = t.length - 1, r;
@@ -19917,7 +20731,7 @@ var Tl = false, Sn = class extends D$1 {
     this._onWriteParsed = this._register(new v$1());
     this.onWriteParsed = this._onWriteParsed.event;
     this._onScroll = this._register(new v$1());
-    this._instantiationService = new ln(), this.optionsService = this._register(new dn(e)), this._instantiationService.setService(H$1, this.optionsService), this._bufferService = this._register(this._instantiationService.createInstance(ni)), this._instantiationService.setService(F, this._bufferService), this._logService = this._register(this._instantiationService.createInstance(ii)), this._instantiationService.setService(nr, this._logService), this.coreService = this._register(this._instantiationService.createInstance(li)), this._instantiationService.setService(ge, this.coreService), this.coreMouseService = this._register(this._instantiationService.createInstance(ai)), this._instantiationService.setService(rr, this.coreMouseService), this.unicodeService = this._register(this._instantiationService.createInstance(Ae)), this._instantiationService.setService(Js, this.unicodeService), this._charsetService = this._instantiationService.createInstance(pn), this._instantiationService.setService(Zs, this._charsetService), this._oscLinkService = this._instantiationService.createInstance(ui), this._instantiationService.setService(sr, this._oscLinkService), this._inputHandler = this._register(new vn(this._bufferService, this._charsetService, this.coreService, this._logService, this.optionsService, this._oscLinkService, this.coreMouseService, this.unicodeService)), this._register($$1.forward(this._inputHandler.onLineFeed, this._onLineFeed)), this._register(this._inputHandler), this._register($$1.forward(this._bufferService.onResize, this._onResize)), this._register($$1.forward(this.coreService.onData, this._onData)), this._register($$1.forward(this.coreService.onBinary, this._onBinary)), this._register(this.coreService.onRequestScrollToBottom(() => this.scrollToBottom(true))), this._register(this.coreService.onUserInput(() => this._writeBuffer.handleUserInput())), this._register(this.optionsService.onMultipleOptionChange(["windowsMode", "windowsPty"], () => this._handleWindowsPtyOptionChange())), this._register(this._bufferService.onScroll(() => {
+    this._instantiationService = new ln(), this.optionsService = this._register(new dn(e)), this._instantiationService.setService(H$2, this.optionsService), this._bufferService = this._register(this._instantiationService.createInstance(ni)), this._instantiationService.setService(F, this._bufferService), this._logService = this._register(this._instantiationService.createInstance(ii)), this._instantiationService.setService(nr, this._logService), this.coreService = this._register(this._instantiationService.createInstance(li)), this._instantiationService.setService(ge, this.coreService), this.coreMouseService = this._register(this._instantiationService.createInstance(ai)), this._instantiationService.setService(rr, this.coreMouseService), this.unicodeService = this._register(this._instantiationService.createInstance(Ae)), this._instantiationService.setService(Js, this.unicodeService), this._charsetService = this._instantiationService.createInstance(pn), this._instantiationService.setService(Zs, this._charsetService), this._oscLinkService = this._instantiationService.createInstance(ui), this._instantiationService.setService(sr, this._oscLinkService), this._inputHandler = this._register(new vn(this._bufferService, this._charsetService, this.coreService, this._logService, this.optionsService, this._oscLinkService, this.coreMouseService, this.unicodeService)), this._register($$1.forward(this._inputHandler.onLineFeed, this._onLineFeed)), this._register(this._inputHandler), this._register($$1.forward(this._bufferService.onResize, this._onResize)), this._register($$1.forward(this.coreService.onData, this._onData)), this._register($$1.forward(this.coreService.onBinary, this._onBinary)), this._register(this.coreService.onRequestScrollToBottom(() => this.scrollToBottom(true))), this._register(this.coreService.onUserInput(() => this._writeBuffer.handleUserInput())), this._register(this.optionsService.onMultipleOptionChange(["windowsMode", "windowsPty"], () => this._handleWindowsPtyOptionChange())), this._register(this._bufferService.onScroll(() => {
       this._onScroll.fire({ position: this._bufferService.buffer.ydisp }), this._inputHandler.markRangeDirty(this._bufferService.buffer.scrollTop, this._bufferService.buffer.scrollBottom);
     })), this._writeBuffer = this._register(new gn((i, r) => this._inputHandler.parse(i, r))), this._register($$1.forward(this._writeBuffer.onWriteParsed, this._onWriteParsed));
   }
@@ -21278,12 +22092,23 @@ var h$1 = 2, _$1 = 1, o = class {
     return { cols: Math.max(h$1, Math.floor(p / t.css.cell.width)), rows: Math.max(_$1, Math.floor(c / t.css.cell.height)) };
   }
 };
-function TerminalTile({ tileId, workspaceDir, width, height }) {
+function TerminalTile({ tileId, workspaceDir, width, height, fontSize = 13, fontFamily = '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", monospace' }) {
   const containerRef = reactExports.useRef(null);
   const termRef = reactExports.useRef(null);
   const fitRef = reactExports.useRef(null);
   const cleanupRef = reactExports.useRef(null);
   const mountedRef = reactExports.useRef(false);
+  const doFit = () => {
+    if (!fitRef.current || !termRef.current) return;
+    try {
+      fitRef.current.fit();
+      const dims = fitRef.current.proposeDimensions();
+      if (dims?.cols && dims?.rows) {
+        window.electron?.terminal?.resize(tileId, dims.cols, dims.rows);
+      }
+    } catch {
+    }
+  };
   reactExports.useEffect(() => {
     if (!containerRef.current || mountedRef.current) return;
     mountedRef.current = true;
@@ -21311,9 +22136,9 @@ function TerminalTile({ tileId, workspaceDir, width, height }) {
         brightCyan: "#4ec9b0",
         brightWhite: "#ffffff"
       },
-      fontFamily: '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", monospace',
-      fontSize: 13,
-      lineHeight: 1.4,
+      fontFamily,
+      fontSize,
+      lineHeight: 1,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5e3
@@ -21323,60 +22148,39 @@ function TerminalTile({ tileId, workspaceDir, width, height }) {
     term.open(containerRef.current);
     termRef.current = term;
     fitRef.current = fitAddon;
-    setTimeout(() => {
-      try {
-        fitAddon.fit();
-      } catch {
-      }
-    }, 50);
-    if (!window.electron?.terminal) {
-      term.write("\r\n\x1B[31mElectron bridge not available\x1B[0m\r\n");
-      return;
-    }
+    const ro2 = new ResizeObserver(() => doFit());
+    ro2.observe(containerRef.current);
+    requestAnimationFrame(() => requestAnimationFrame(() => doFit()));
     window.electron.terminal.create(tileId, workspaceDir).then(() => {
       const cleanup = window.electron.terminal.onData(tileId, (data) => {
-        if (!term.element) return;
         term.write(data);
       });
       cleanupRef.current = cleanup;
       term.onData((data) => {
         window.electron.terminal.write(tileId, data);
       });
-      term.onResize(({ cols, rows }) => {
-        window.electron.terminal.resize(tileId, cols, rows);
-      });
+      doFit();
     }).catch((err) => {
       term.write(`\r
-\x1B[31mFailed to create terminal: ${err?.message ?? err}\x1B[0m\r
+\x1B[31mFailed to start terminal: ${err?.message ?? err}\x1B[0m\r
 `);
     });
     return () => {
       mountedRef.current = false;
+      ro2.disconnect();
       cleanupRef.current?.();
       window.electron.terminal.destroy(tileId);
       term.dispose();
     };
   }, [tileId, workspaceDir]);
   reactExports.useEffect(() => {
-    if (!fitRef.current || !termRef.current) return;
-    const t = setTimeout(() => {
-      try {
-        fitRef.current.fit();
-      } catch {
-      }
-    }, 60);
-    return () => clearTimeout(t);
+    doFit();
   }, [width, height]);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
       ref: containerRef,
-      style: {
-        width: "100%",
-        height: "100%",
-        background: "#1a1a1a",
-        padding: "4px 6px"
-      }
+      style: { width: "100%", height: "100%", background: "#1a1a1a", padding: "4px 6px", boxSizing: "border-box" }
     }
   );
 }
@@ -21846,7 +22650,7 @@ function Ee({ width: e, height: r, isEditorReady: n, loading: t, _ref: a, classN
   return React.createElement("section", { style: { ...v2.wrapper, width: e, height: r }, ...E }, !n && React.createElement($, null, t), React.createElement("div", { ref: a, style: { ...v2.fullWidth, ...!n && v2.hide }, className: m }));
 }
 var ee = Ee;
-var H = reactExports.memo(ee);
+var H$1 = reactExports.memo(ee);
 function Ce(e) {
   reactExports.useEffect(e, []);
 }
@@ -21917,7 +22721,7 @@ function Oe({ original: e, modified: r, language: n, originalLanguage: t, modifi
     let i = u.current?.getModel();
     g || i?.original?.dispose(), N || i?.modified?.dispose(), u.current?.dispose();
   }
-  return React.createElement(H, { width: z2, height: V, isEditorReady: M2, loading: P, _ref: w, className: F2, wrapperProps: j2 });
+  return React.createElement(H$1, { width: z2, height: V, isEditorReady: M2, loading: P, _ref: w, className: F2, wrapperProps: j2 });
 }
 var ie = Oe;
 reactExports.memo(ie);
@@ -21983,7 +22787,7 @@ function Ve({ defaultValue: e, defaultLanguage: r, defaultPath: n, value: t, lan
   function pe2() {
     I.current?.dispose(), V ? y && _.set(m, o2.current.saveViewState()) : o2.current.getModel()?.dispose(), o2.current.dispose();
   }
-  return React.createElement(H, { width: z2, height: F2, isEditorReady: s15, loading: N, _ref: b2, className: j2, wrapperProps: A });
+  return React.createElement(H$1, { width: z2, height: F2, isEditorReady: s15, loading: N, _ref: b2, className: j2, wrapperProps: A });
 }
 var fe = Ve;
 var de = reactExports.memo(fe);
@@ -22087,14 +22891,20 @@ function CodeTile({ filePath, initialContent = "" }) {
     }
   ) });
 }
+function renderMarkdown(md) {
+  let html = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/^### (.+)$/gm, "<h3>$1</h3>").replace(/^## (.+)$/gm, "<h2>$1</h2>").replace(/^# (.+)$/gm, "<h1>$1</h1>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/__(.+?)__/g, "<strong>$1</strong>").replace(/_(.+?)_/g, "<em>$1</em>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>').replace(/^---+$/gm, "<hr/>").replace(/^\s*[-*+] (.+)$/gm, "<li>$1</li>").replace(/^\s*\d+\. (.+)$/gm, "<li>$1</li>").replace(/```[\w]*\n([\s\S]*?)```/g, "<pre><code>$1</code></pre>").replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>").replace(/\n\n([^<])/g, "\n\n<p>$1").replace(/\n/g, "<br/>");
+  html = html.replace(/(<li>.*?<\/li>)(\s*<br\/>)*/g, (m) => `<ul>${m.replace(/<br\/>/g, "")}</ul>`);
+  return html;
+}
 function NoteTile({ filePath, initialContent = "" }) {
-  const [content, setContent] = reactExports.useState(initialContent);
+  const [content, setContent] = reactExports.useState(void 0);
+  const [mode, setMode] = reactExports.useState("edit");
   const saveTimer = reactExports.useRef(null);
   const loaded = reactExports.useRef(false);
   reactExports.useEffect(() => {
     loaded.current = false;
     if (!filePath) {
-      setContent(initialContent);
+      setContent(initialContent || "# Untitled\n\nStart writing…");
       loaded.current = true;
       return;
     }
@@ -22106,42 +22916,112 @@ function NoteTile({ filePath, initialContent = "" }) {
       loaded.current = true;
     });
   }, [filePath, initialContent]);
-  const handleChange = reactExports.useCallback((e) => {
-    if (!loaded.current) return;
-    const val = e.target.value;
-    setContent(val);
+  const handleChange = reactExports.useCallback((value) => {
+    if (!loaded.current || value === void 0) return;
+    setContent(value);
     if (!filePath) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      window.electron.fs.writeFile(filePath, val);
+      window.electron.fs.writeFile(filePath, value);
     }, 500);
   }, [filePath]);
   reactExports.useEffect(() => () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
   }, []);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "textarea",
-    {
-      value: content,
-      onChange: handleChange,
-      spellCheck: false,
-      style: {
-        width: "100%",
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#1e1e1e" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+      display: "flex",
+      gap: 1,
+      padding: "4px 8px",
+      borderBottom: "1px solid #2d2d2d",
+      flexShrink: 0
+    }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => setMode("edit"),
+          style: {
+            fontSize: 11,
+            padding: "2px 10px",
+            borderRadius: "3px 0 0 3px",
+            background: mode === "edit" ? "#3a3a3a" : "#252525",
+            color: mode === "edit" ? "#ccc" : "#666",
+            border: "1px solid #333",
+            cursor: "pointer",
+            fontFamily: "inherit"
+          },
+          children: "Edit"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => setMode("preview"),
+          style: {
+            fontSize: 11,
+            padding: "2px 10px",
+            borderRadius: "0 3px 3px 0",
+            background: mode === "preview" ? "#3a3a3a" : "#252525",
+            color: mode === "preview" ? "#ccc" : "#666",
+            border: "1px solid #333",
+            borderLeft: "none",
+            cursor: "pointer",
+            fontFamily: "inherit"
+          },
+          children: "Preview"
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, overflow: "hidden", minHeight: 0 }, children: mode === "edit" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Ft,
+      {
         height: "100%",
-        resize: "none",
-        background: "#1e1e1e",
-        color: "#cccccc",
-        border: "none",
-        outline: "none",
-        padding: "14px 16px",
-        fontSize: 13,
-        lineHeight: 1.65,
-        fontFamily: '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", monospace',
-        caretColor: "#4a9eff"
-      },
-      placeholder: "Start writing…"
-    }
-  );
+        language: "markdown",
+        value: content,
+        onChange: handleChange,
+        theme: "vs-dark",
+        loading: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: "100%", background: "#1e1e1e" } }),
+        options: {
+          minimap: { enabled: false },
+          fontSize: 13,
+          lineHeight: 1.7,
+          wordWrap: "on",
+          automaticLayout: true,
+          padding: { top: 12 },
+          scrollBeyondLastLine: false,
+          fontFamily: '"JetBrains Mono", "Menlo", "Monaco", monospace',
+          lineNumbers: "off",
+          folding: false,
+          renderLineHighlight: "none",
+          overviewRulerBorder: false,
+          scrollbar: { verticalScrollbarSize: 4 }
+        }
+      }
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "note-preview",
+        style: { height: "100%", overflowY: "auto", padding: "16px 20px" },
+        dangerouslySetInnerHTML: { __html: renderMarkdown(content ?? "") }
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+        .note-preview h1 { font-size: 1.6em; font-weight: 700; color: #e0e0e0; margin: 0 0 12px; }
+        .note-preview h2 { font-size: 1.3em; font-weight: 600; color: #d0d0d0; margin: 16px 0 8px; }
+        .note-preview h3 { font-size: 1.1em; font-weight: 600; color: #c0c0c0; margin: 12px 0 6px; }
+        .note-preview p  { color: #cccccc; line-height: 1.7; margin: 0 0 10px; }
+        .note-preview code { background: #2a2a2a; color: #ce9178; padding: 1px 5px; border-radius: 3px; font-size: 12px; font-family: "JetBrains Mono", monospace; }
+        .note-preview pre { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 12px; overflow-x: auto; margin: 10px 0; }
+        .note-preview pre code { background: none; padding: 0; }
+        .note-preview ul, .note-preview ol { color: #cccccc; padding-left: 20px; margin: 6px 0; }
+        .note-preview li { line-height: 1.7; }
+        .note-preview a { color: #4a9eff; text-decoration: none; }
+        .note-preview a:hover { text-decoration: underline; }
+        .note-preview blockquote { border-left: 3px solid #444; padding-left: 12px; color: #888; margin: 8px 0; }
+        .note-preview hr { border: none; border-top: 1px solid #333; margin: 16px 0; }
+        .note-preview strong { color: #e0e0e0; }
+      ` })
+  ] });
 }
 function ImageTile({ filePath }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
@@ -22170,8 +23050,3333 @@ function ImageTile({ filePath }) {
     }
   ) });
 }
+let cached$1 = null;
+function useDetectedAgents() {
+  const [agents, setAgents] = reactExports.useState(cached$1 ?? []);
+  reactExports.useEffect(() => {
+    if (cached$1) {
+      setAgents(cached$1);
+      return;
+    }
+    window.electron?.agents?.detect?.().then((detected) => {
+      const sorted = [
+        ...detected.filter((a) => a.id === "shell"),
+        ...detected.filter((a) => a.id !== "shell" && a.available),
+        ...detected.filter((a) => a.id !== "shell" && !a.available)
+      ];
+      cached$1 = sorted;
+      setAgents(sorted);
+    }).catch(() => {
+      setAgents([
+        { id: "shell", label: "Shell", cmd: "zsh", available: true },
+        { id: "claude", label: "Claude", cmd: "claude", available: true },
+        { id: "codex", label: "Codex", cmd: "codex", available: true }
+      ]);
+    });
+  }, []);
+  return agents;
+}
+let cached = null;
+let listeners = [];
+function notify(servers) {
+  cached = servers;
+  listeners.forEach((fn2) => fn2(servers));
+}
+async function loadMCPServers() {
+  try {
+    const home = window.process?.env?.HOME ?? "";
+    const path = `${home}/clawd-collab/mcp-server.json`;
+    const raw = await window.electron.fs.readFile(path);
+    const cfg = JSON.parse(raw);
+    const servers = Object.entries(cfg.mcpServers ?? {}).map(([name, s15]) => ({
+      name,
+      url: s15.url,
+      cmd: s15.cmd,
+      description: s15.description,
+      enabled: s15.enabled !== false
+    }));
+    notify(servers);
+    return servers;
+  } catch {
+    return [];
+  }
+}
+function useMCPServers() {
+  const [servers, setServers] = reactExports.useState(cached ?? []);
+  reactExports.useEffect(() => {
+    if (cached) {
+      setServers(cached);
+      return;
+    }
+    loadMCPServers().then(setServers);
+    listeners.push(setServers);
+    return () => {
+      listeners = listeners.filter((fn2) => fn2 !== setServers);
+    };
+  }, []);
+  return servers.filter((s15) => s15.enabled);
+}
+const AGENTS = [
+  { id: "shell", label: "Shell", cmd: "zsh", available: true },
+  { id: "claude", label: "Claude", cmd: "claude", available: false },
+  { id: "codex", label: "Codex", cmd: "codex", available: false }
+];
+const MODELS = {
+  claude: ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-3-5"],
+  codex: ["gpt-4.1", "o4-mini", "o3"],
+  gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  opencode: ["claude-sonnet-4-5", "gpt-4.1"],
+  shell: []
+};
+const MCP_CONFIG = "~/.clawd-collab/mcp-server.json";
+const BUILTIN_TOOLS = ["read", "write", "edit", "bash", "computer", "web_search", "browser"];
+function buildLaunchCmd(card, briefPath, agentPath) {
+  if (card.agent === "shell" || !card.agent) return "";
+  const bin = agentPath ?? card.agent;
+  const parts = [bin];
+  if (card.model) parts.push(`--model ${card.model}`);
+  parts.push(`--mcp-config "${card.mcpConfig ?? MCP_CONFIG}"`);
+  if (briefPath) {
+    if (card.agent === "claude") parts.push(`--print "$(cat ${briefPath})"`);
+    else if (card.agent === "codex") parts.push(`exec "$(cat ${briefPath})"`);
+  } else if (card.instructions) {
+    const esc = card.instructions.replace(/"/g, '\\"').replace(/\n/g, "\\n");
+    if (card.agent === "claude") parts.push(`--print "${esc}"`);
+    else if (card.agent === "codex") parts.push(`exec "${esc}"`);
+  }
+  if (card.hooks.length) return card.hooks.join(" && ") + " && " + parts.join(" ");
+  return parts.join(" ");
+}
+function parseLaunchCmd(cmd) {
+  const tokens = [];
+  let cur = "", inQ = null;
+  for (const c of cmd) {
+    if (inQ) {
+      c === inQ ? inQ = null : cur += c;
+    } else if (c === '"' || c === "'") {
+      inQ = c;
+    } else if (c === " ") {
+      if (cur) {
+        tokens.push(cur);
+        cur = "";
+      }
+    } else {
+      cur += c;
+    }
+  }
+  if (cur) tokens.push(cur);
+  return { bin: tokens[0] ?? "", args: tokens.slice(1) };
+}
+function MiniTerminal({ termId, workspaceDir, launchCmd }) {
+  const ref = reactExports.useRef(null);
+  const mounted = reactExports.useRef(false);
+  const parsed = launchCmd ? parseLaunchCmd(launchCmd) : null;
+  reactExports.useEffect(() => {
+    if (!ref.current || mounted.current) return;
+    mounted.current = true;
+    const term = new Dl({
+      theme: {
+        background: "#0a0e14",
+        foreground: "#b3b1ad",
+        cursor: "#e6b450",
+        black: "#0a0e14",
+        red: "#ff3333",
+        green: "#91b362",
+        yellow: "#f9af4f",
+        blue: "#53bdfa",
+        magenta: "#fae994",
+        cyan: "#90e1c6",
+        white: "#c7c7c7",
+        brightBlack: "#686868",
+        brightRed: "#f07178",
+        brightGreen: "#c2d94c",
+        brightYellow: "#ffb454",
+        brightBlue: "#59c2ff",
+        brightMagenta: "#ffee99",
+        brightCyan: "#95e6cb",
+        brightWhite: "#ffffff",
+        selectionBackground: "rgba(83,189,250,0.2)"
+      },
+      fontFamily: '"JetBrains Mono", "Menlo", monospace',
+      fontSize: 11,
+      lineHeight: 1.3,
+      cursorBlink: true,
+      allowProposedApi: true,
+      scrollback: 5e3
+    });
+    const fit = new o();
+    term.loadAddon(fit);
+    term.open(ref.current);
+    const ro2 = new ResizeObserver(() => {
+      try {
+        fit.fit();
+      } catch {
+      }
+    });
+    ro2.observe(ref.current);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        fit.fit();
+      } catch {
+      }
+    }));
+    const cp = parsed?.bin ? window.electron.terminal.create(termId, workspaceDir, parsed.bin, parsed.args) : window.electron.terminal.create(termId, workspaceDir);
+    cp.then(() => {
+      const cleanup = window.electron.terminal.onData(termId, (d) => term.write(d));
+      term.onData((d) => window.electron.terminal.write(termId, d));
+      term.onResize(({ cols, rows }) => window.electron.terminal.resize(termId, cols, rows));
+      ref.current.__cleanup = () => {
+        cleanup();
+        ro2.disconnect();
+      };
+    }).catch((err) => term.write(`\x1B[31m${err?.message ?? err}\x1B[0m\r
+`));
+    return () => {
+      mounted.current = false;
+      ref.current?.__cleanup?.();
+      window.electron.terminal.destroy(termId);
+      term.dispose();
+    };
+  }, [termId, workspaceDir]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, style: { width: "100%", height: "100%", background: "#0a0e14" } });
+}
+function KanbanCard({
+  card,
+  workspaceDir,
+  active,
+  dragging,
+  isRunning,
+  allCards,
+  onUpdate,
+  onRemove,
+  onLaunch,
+  onFocus,
+  onDragStart,
+  onDragEnd
+}) {
+  const [expanded, setExpanded] = reactExports.useState(false);
+  const [tab, setTab] = reactExports.useState("overview");
+  const [advanced, setAdvanced] = reactExports.useState(false);
+  const [hovered, setHovered] = reactExports.useState(false);
+  const [dragOver, setDragOver] = reactExports.useState(false);
+  const [newNote, setNewNote] = reactExports.useState("");
+  const detectedAgents = useDetectedAgents();
+  const mcpServers = useMCPServers();
+  const availableAgents = detectedAgents.length > 0 ? detectedAgents : AGENTS;
+  const agentInfo = availableAgents.find((a) => a.id === card.agent);
+  const termId = `kterm-${card.id}`;
+  const launchCmd = card.agent !== "shell" ? buildLaunchCmd(card, card.briefPath, agentInfo?.path) : void 0;
+  const toolSuggestions = [
+    ...BUILTIN_TOOLS,
+    ...mcpServers.map((s15) => s15.name)
+  ];
+  const cardSuggestions = allCards.filter((c) => c.id !== card.id).map((c) => c.title);
+  reactExports.useEffect(() => {
+    if (card.launched) {
+      setExpanded(true);
+      setTab("terminal");
+    }
+  }, [card.launched]);
+  const addNote = () => {
+    if (!newNote.trim()) return;
+    onUpdate(card.id, { comments: [...card.comments, { id: `n-${Date.now()}`, text: newNote.trim(), ts: Date.now() }] });
+    setNewNote("");
+  };
+  const TERM_H = 240;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      draggable: !expanded,
+      onDragStart: (e) => {
+        if (card.linkedTileId) {
+          e.dataTransfer.setData("application/tile-id", card.linkedTileId);
+          e.dataTransfer.setData("application/tile-type", card.linkedTileType ?? "");
+          e.dataTransfer.setData("application/tile-label", card.title);
+          e.dataTransfer.effectAllowed = "link";
+        } else {
+          e.dataTransfer.setData("application/card-title", card.title);
+          e.dataTransfer.effectAllowed = "copy";
+        }
+        onDragStart();
+      },
+      onDragEnd,
+      onDragOver: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(true);
+      },
+      onDragLeave: () => setDragOver(false),
+      onDrop: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(false);
+        const tileId = e.dataTransfer.getData("application/tile-id");
+        if (tileId) {
+          onUpdate(card.id, { linkedTileId: tileId, linkedTileType: e.dataTransfer.getData("application/tile-type"), title: e.dataTransfer.getData("application/tile-label") || card.title });
+          return;
+        }
+        const filePath = e.dataTransfer.getData("text/plain");
+        if (filePath) {
+          const name = filePath.split("/").pop() ?? filePath;
+          onUpdate(card.id, {
+            fileRefs: [...card.fileRefs, filePath],
+            attachments: [...card.attachments, { id: `a-${Date.now()}`, name, path: filePath }]
+          });
+        }
+      },
+      style: {
+        borderRadius: 8,
+        background: card.color,
+        flexShrink: 0,
+        border: `1px solid ${dragOver ? "#58a6ff" : card.justMoved ? "#3fb950" : expanded ? "#2d2d2d" : hovered ? "#2a2a2a" : "#1e1e1e"}`,
+        opacity: dragging ? 0.3 : 1,
+        boxShadow: card.justMoved ? "0 0 12px #3fb95066" : expanded ? "0 8px 32px rgba(0,0,0,0.6)" : "none",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+        overflow: "hidden",
+        outline: dragOver ? "1px dashed #58a6ff44" : "none"
+      },
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: { padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 },
+            onClick: () => setExpanded((p) => !p),
+            children: [
+              card.launched ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                flexShrink: 0,
+                background: active ? "#3fb950" : "#2d2d2d",
+                boxShadow: active ? "0 0 6px #3fb950" : "none",
+                transition: "background 0.3s, box-shadow 0.3s"
+              } }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#333", fontFamily: "monospace", flexShrink: 0 }, children: expanded ? "v" : ">" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#e6edf3",
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              }, children: card.title }),
+              card.agent !== "shell" && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
+                fontSize: 9,
+                fontFamily: "monospace",
+                flexShrink: 0,
+                color: card.launched ? active ? "#3fb950" : "#3a3a3a" : "#444",
+                background: "#161b22",
+                border: "1px solid #21262d",
+                borderRadius: 10,
+                padding: "1px 7px",
+                transition: "color 0.3s"
+              }, children: [
+                agentInfo?.label ?? card.agent,
+                card.model && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { opacity: 0.5 }, children: [
+                  " · ",
+                  card.model.split("-").pop()
+                ] })
+              ] }),
+              hovered && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, flexShrink: 0 }, onClick: (e) => e.stopPropagation(), children: [
+                onFocus && /* @__PURE__ */ jsxRuntimeExports.jsx(Btn$1, { onClick: onFocus, color: "#58a6ff", children: "go" }),
+                !card.launched && card.agent !== "shell" && /* @__PURE__ */ jsxRuntimeExports.jsx(Btn$1, { onClick: () => onLaunch(card.id), color: "#3fb950", children: "run" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Btn$1, { onClick: () => onRemove(card.id), color: "#ff7b72", children: "x" })
+              ] })
+            ]
+          }
+        ),
+        !expanded && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "0 10px 8px 25px" }, children: [
+          card.description && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, color: "#555", marginBottom: 5, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }, children: card.description }),
+          (card.tools.length > 0 || card.skillsAndCommands.length > 0 || card.fileRefs.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" }, children: [
+            card.tools.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(Chip, { label: t, prefix: "@", bg: "#0d2137", fg: "#58a6ff" }, t)),
+            card.skillsAndCommands.map((s15) => /* @__PURE__ */ jsxRuntimeExports.jsx(Chip, { label: s15, prefix: "/", bg: "#0d2a1a", fg: "#3fb950" }, s15)),
+            card.fileRefs.map((f) => /* @__PURE__ */ jsxRuntimeExports.jsx(Chip, { label: f.split("/").pop() ?? f, prefix: "@", bg: "#1a1508", fg: "#d7ba7d" }, f)),
+            card.cardRefs.map((r) => /* @__PURE__ */ jsxRuntimeExports.jsx(Chip, { label: r, prefix: "@", bg: "#1a0d2a", fg: "#c586c0" }, r))
+          ] })
+        ] }),
+        expanded && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { borderTop: "1px solid #21262d", position: "relative" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 6, right: 8, zIndex: 20 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              onClick: (e) => {
+                e.stopPropagation();
+                setExpanded(false);
+              },
+              style: { fontSize: 10, color: "#444", background: "#0d1117", border: "1px solid #21262d", borderRadius: 4, padding: "2px 7px", cursor: "pointer", fontFamily: "monospace", lineHeight: 1.4 },
+              onMouseEnter: (e) => {
+                e.currentTarget.style.color = "#ccc";
+                e.currentTarget.style.borderColor = "#444";
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.color = "#444";
+                e.currentTarget.style.borderColor = "#21262d";
+              },
+              title: "Collapse",
+              children: "^"
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", background: "#0d1117", borderBottom: "1px solid #21262d", alignItems: "center" }, children: [
+            ["overview", ...card.launched ? ["terminal"] : [], "notes"].map((t) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => setTab(t), style: {
+              padding: "6px 14px",
+              fontSize: 11,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              background: tab === t ? "#161b22" : "transparent",
+              color: tab === t ? "#e6edf3" : "#555",
+              borderBottom: tab === t ? "2px solid #388bfd" : "2px solid transparent",
+              textTransform: "capitalize",
+              transition: "color 0.1s"
+            }, children: [
+              t,
+              t === "notes" && card.comments.length ? ` (${card.comments.length})` : ""
+            ] }, t)),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1 } }),
+            card.launched && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: active ? "#3fb950" : "#444", padding: "0 12px", fontFamily: "monospace", transition: "color 0.3s" }, children: active ? "active" : "idle" })
+          ] }),
+          tab === "overview" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#0d1117", overflowY: "auto", maxHeight: 480 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "14px 16px", borderBottom: "1px solid #161b22" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  value: card.title,
+                  onChange: (e) => onUpdate(card.id, { title: e.target.value }),
+                  style: { ...titleInputStyle, marginBottom: 8 },
+                  placeholder: "Task title"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "textarea",
+                {
+                  value: card.description,
+                  onChange: (e) => onUpdate(card.id, { description: e.target.value }),
+                  rows: 2,
+                  placeholder: "What needs to be done…",
+                  style: textareaStyle
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "12px 16px", borderBottom: "1px solid #161b22" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Instructions" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "textarea",
+                {
+                  value: card.instructions,
+                  onChange: (e) => onUpdate(card.id, { instructions: e.target.value }),
+                  rows: 5,
+                  placeholder: "Full prompt for the agent. Be specific. Reference files, describe expected output, list constraints.",
+                  style: textareaStyle
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "12px 16px", borderBottom: "1px solid #161b22", display: "flex", flexDirection: "column", gap: 10 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Context" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ChipInput,
+                {
+                  values: card.tools,
+                  onChange: (v3) => onUpdate(card.id, { tools: v3 }),
+                  prefix: "@",
+                  placeholder: "tools — type or pick",
+                  suggestions: toolSuggestions,
+                  suggestionMeta: Object.fromEntries(mcpServers.map((s15) => [s15.name, s15.description ?? ""])),
+                  sublabel: "Tools"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ChipInput,
+                {
+                  values: card.skillsAndCommands,
+                  onChange: (v3) => onUpdate(card.id, { skillsAndCommands: v3 }),
+                  prefix: "/",
+                  placeholder: "skills, commands",
+                  sublabel: "Skills & Commands"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ChipInput,
+                {
+                  values: card.fileRefs,
+                  onChange: (v3) => onUpdate(card.id, { fileRefs: v3 }),
+                  prefix: "@",
+                  placeholder: "file paths — or drop from sidebar",
+                  sublabel: "Files",
+                  onDropFile: (path) => onUpdate(card.id, {
+                    fileRefs: [...card.fileRefs, path],
+                    attachments: [...card.attachments, { id: `a-${Date.now()}`, name: path.split("/").pop() ?? path, path }]
+                  })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ChipInput,
+                {
+                  values: card.cardRefs,
+                  onChange: (v3) => onUpdate(card.id, { cardRefs: v3 }),
+                  prefix: "@",
+                  placeholder: "other cards",
+                  suggestions: cardSuggestions,
+                  sublabel: "Related cards"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "12px 16px", borderBottom: "1px solid #161b22" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Agent" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }, children: availableAgents.filter((a) => a.available || a.id === card.agent).map((a) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  onClick: () => onUpdate(card.id, { agent: a.id, model: void 0 }),
+                  style: {
+                    padding: "5px 14px",
+                    borderRadius: 20,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    fontWeight: 500,
+                    background: card.agent === a.id ? "#1f6feb" : "#161b22",
+                    color: card.agent === a.id ? "#fff" : "#8b949e",
+                    border: `1px solid ${card.agent === a.id ? "#388bfd" : "#21262d"}`
+                  },
+                  children: [
+                    a.label,
+                    a.version && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, opacity: 0.5, marginLeft: 5 }, children: a.version })
+                  ]
+                },
+                a.id
+              )) }),
+              card.agent !== "shell" && MODELS[card.agent]?.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" }, children: MODELS[card.agent].map((m) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => onUpdate(card.id, { model: card.model === m ? void 0 : m }),
+                  style: {
+                    padding: "2px 10px",
+                    borderRadius: 10,
+                    fontSize: 10,
+                    cursor: "pointer",
+                    fontFamily: "monospace",
+                    background: card.model === m ? "#21262d" : "transparent",
+                    color: card.model === m ? "#58a6ff" : "#444",
+                    border: `1px solid ${card.model === m ? "#388bfd" : "#21262d"}`
+                  },
+                  children: m.split("-").slice(-2).join("-")
+                },
+                m
+              )) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { borderBottom: "1px solid #161b22" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  onClick: () => setAdvanced((p) => !p),
+                  style: {
+                    width: "100%",
+                    padding: "8px 16px",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    color: "#444",
+                    fontSize: 10,
+                    fontFamily: "monospace",
+                    textAlign: "left"
+                  },
+                  onMouseEnter: (e) => e.currentTarget.style.color = "#888",
+                  onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 8 }, children: advanced ? "v" : ">" }),
+                    "Advanced — MCP servers, hooks, config",
+                    (card.mcpServers.length > 0 || card.hooks.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { marginLeft: 4, color: "#388bfd" }, children: [card.mcpServers.length > 0 && `${card.mcpServers.length} MCP`, card.hooks.length > 0 && `${card.hooks.length} hooks`].filter(Boolean).join(", ") })
+                  ]
+                }
+              ),
+              advanced && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "4px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "MCP Servers" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 9, color: "#2a3a2a", marginBottom: 6, fontFamily: "monospace" }, children: "kanban (card_complete, card_update, card_error) always included" }),
+                  card.mcpServers.map((s15, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, marginBottom: 4 }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        value: s15.name,
+                        onChange: (e) => {
+                          const u = [...card.mcpServers];
+                          u[i] = { ...s15, name: e.target.value };
+                          onUpdate(card.id, { mcpServers: u });
+                        },
+                        placeholder: "name",
+                        style: { ...inputStyle$1, flex: "0 0 80px" }
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        value: s15.url ?? s15.cmd ?? "",
+                        onChange: (e) => {
+                          const v3 = e.target.value;
+                          const u = [...card.mcpServers];
+                          u[i] = v3.startsWith("http") ? { ...s15, url: v3, cmd: void 0 } : { ...s15, cmd: v3, url: void 0 };
+                          onUpdate(card.id, { mcpServers: u });
+                        },
+                        placeholder: "http://... or npx mcp-name",
+                        style: { ...inputStyle$1, flex: 1, fontFamily: "monospace", fontSize: 10, color: "#3fb950" }
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Btn$1, { onClick: () => onUpdate(card.id, { mcpServers: card.mcpServers.filter((_2, j2) => j2 !== i) }), color: "#ff7b72", children: "x" })
+                  ] }, i)),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(AddBtn, { onClick: () => onUpdate(card.id, { mcpServers: [...card.mcpServers, { name: "", url: "" }] }), children: "+ MCP server" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Hooks (before launch)" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    ChipInput,
+                    {
+                      values: card.hooks,
+                      onChange: (v3) => onUpdate(card.id, { hooks: v3 }),
+                      prefix: "$",
+                      placeholder: "source .env, nvm use 20…"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "MCP Config Path" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "input",
+                    {
+                      value: card.mcpConfig ?? "",
+                      onChange: (e) => onUpdate(card.id, { mcpConfig: e.target.value || void 0 }),
+                      placeholder: MCP_CONFIG,
+                      style: { ...inputStyle$1, fontFamily: "monospace", color: "#3fb950", fontSize: 10 }
+                    }
+                  )
+                ] }),
+                card.agent !== "shell" && launchCmd && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Launch command" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+                    fontSize: 9,
+                    color: "#388bfd",
+                    background: "#0a0e14",
+                    border: "1px solid #161b22",
+                    borderRadius: 4,
+                    padding: "6px 10px",
+                    fontFamily: "monospace",
+                    wordBreak: "break-all",
+                    lineHeight: 1.6
+                  }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#333" }, children: "$ " }),
+                    launchCmd
+                  ] })
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "12px 16px" }, children: !card.launched ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: () => onLaunch(card.id),
+                disabled: card.agent === "shell",
+                style: {
+                  width: "100%",
+                  padding: "10px 0",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  background: card.agent === "shell" ? "#161b22" : "#1f6feb",
+                  color: card.agent === "shell" ? "#333" : "#fff",
+                  border: "none",
+                  cursor: card.agent === "shell" ? "default" : "pointer",
+                  fontFamily: "inherit",
+                  letterSpacing: 0.3
+                },
+                onMouseEnter: (e) => {
+                  if (card.agent !== "shell") e.currentTarget.style.background = "#388bfd";
+                },
+                onMouseLeave: (e) => {
+                  if (card.agent !== "shell") e.currentTarget.style.background = "#1f6feb";
+                },
+                children: card.agent === "shell" ? "Select an agent to launch" : `Launch ${agentInfo?.label ?? card.agent}`
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: active ? "#3fb950" : "#2d2d2d",
+                boxShadow: active ? "0 0 8px #3fb950" : "none",
+                flexShrink: 0,
+                transition: "background 0.3s, box-shadow 0.3s"
+              } }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, color: active ? "#3fb950" : "#555" }, children: active ? "Agent active" : "Agent idle" }),
+              card.briefPath && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#333", fontFamily: "monospace", marginLeft: "auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: card.briefPath.split("/").slice(-2).join("/") })
+            ] }) })
+          ] }),
+          tab === "terminal" && card.launched && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: TERM_H }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(MiniTerminal, { termId, workspaceDir, launchCmd }) }),
+          tab === "notes" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#0d1117", display: "flex", flexDirection: "column", height: 220 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, overflowY: "auto", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 5 }, children: [
+              card.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, color: "#2d2d2d", textAlign: "center", paddingTop: 16 }, children: "No notes" }),
+              card.comments.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161b22", border: "1px solid #21262d", borderRadius: 5, padding: "6px 10px" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: 4 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, color: "#c9d1d9", flex: 1, lineHeight: 1.5 }, children: c.text }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Btn$1, { onClick: () => onUpdate(card.id, { comments: card.comments.filter((n) => n.id !== c.id) }), color: "#ff7b72", children: "x" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#333" }, children: new Date(c.ts).toLocaleTimeString() })
+              ] }, c.id))
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "8px 10px", borderTop: "1px solid #21262d", display: "flex", gap: 6 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  value: newNote,
+                  onChange: (e) => setNewNote(e.target.value),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") addNote();
+                  },
+                  placeholder: "Add a note…",
+                  style: { ...inputStyle$1, flex: 1 }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: addNote, style: { padding: "4px 12px", borderRadius: 5, background: "#1f6feb", color: "#fff", border: "none", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }, children: "+" })
+            ] })
+          ] })
+        ] })
+      ]
+    }
+  );
+}
+function ChipInput({ values, onChange, prefix, placeholder, sublabel, suggestions = [], suggestionMeta = {}, onDropFile }) {
+  const [input, setInput] = reactExports.useState("");
+  const [showSugg, setShowSugg] = reactExports.useState(false);
+  const filtered = suggestions.filter((s15) => s15.toLowerCase().includes(input.toLowerCase()) && !values.includes(s15));
+  const add = (val) => {
+    const v3 = val.trim().replace(/^[@/$]/, "");
+    if (!v3 || values.includes(v3)) return;
+    onChange([...values, v3]);
+    setInput("");
+    setShowSugg(false);
+  };
+  const prefixColor = prefix === "@" ? "#58a6ff" : prefix === "/" ? "#3fb950" : "#d7ba7d";
+  const chipBg = prefix === "@" ? "#0d2137" : prefix === "/" ? "#0d2a1a" : "#1a1508";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+    sublabel && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 9, color: "#444", fontFamily: "monospace", marginBottom: 4, letterSpacing: 0.5 }, children: sublabel }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        style: { background: "#161b22", border: "1px solid #21262d", borderRadius: 6, padding: "5px 8px", position: "relative", cursor: "text" },
+        onDragOver: onDropFile ? (e) => e.preventDefault() : void 0,
+        onDrop: onDropFile ? (e) => {
+          e.preventDefault();
+          const p = e.dataTransfer.getData("text/plain");
+          if (p) onDropFile(p);
+        } : void 0,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }, children: [
+            values.map((v3, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              background: chipBg,
+              borderRadius: 4,
+              padding: "2px 7px",
+              fontSize: 10,
+              color: prefixColor,
+              fontFamily: "monospace",
+              border: `1px solid ${prefixColor}22`
+            }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { opacity: 0.4 }, children: prefix }),
+              v3,
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => onChange(values.filter((_2, j2) => j2 !== i)),
+                  style: { fontSize: 9, color: "inherit", opacity: 0.3, background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1 },
+                  onMouseEnter: (e) => e.currentTarget.style.opacity = "1",
+                  onMouseLeave: (e) => e.currentTarget.style.opacity = "0.3",
+                  children: "x"
+                }
+              )
+            ] }, i)),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: input,
+                onChange: (e) => {
+                  setInput(e.target.value);
+                  setShowSugg(true);
+                },
+                onFocus: () => setShowSugg(true),
+                onBlur: () => setTimeout(() => setShowSugg(false), 150),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    add(input);
+                  }
+                  if (e.key === "Backspace" && !input && values.length) onChange(values.slice(0, -1));
+                  if (e.key === "Escape") setShowSugg(false);
+                },
+                placeholder: values.length === 0 ? `${prefix} ${placeholder}` : "",
+                style: { background: "none", border: "none", outline: "none", color: "#c9d1d9", fontSize: 11, fontFamily: "monospace", minWidth: 60, flex: 1, padding: "1px 0" }
+              }
+            )
+          ] }),
+          showSugg && filtered.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: "#1c2128", border: "1px solid #30363d", borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.5)", marginTop: 2, overflow: "hidden" }, children: filtered.slice(0, 8).map((s15) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              style: { padding: "5px 10px", cursor: "pointer", display: "flex", alignItems: "baseline", gap: 8 },
+              onMouseEnter: (e) => e.currentTarget.style.background = "#2d333b",
+              onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
+              onMouseDown: () => add(s15),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 10, color: "#c9d1d9", fontFamily: "monospace", flexShrink: 0 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: prefixColor, opacity: 0.5 }, children: prefix }),
+                  s15
+                ] }),
+                suggestionMeta[s15] && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#444", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: suggestionMeta[s15] })
+              ]
+            },
+            s15
+          )) })
+        ]
+      }
+    )
+  ] });
+}
+const titleInputStyle = {
+  width: "100%",
+  fontSize: 15,
+  fontWeight: 700,
+  padding: "4px 0",
+  background: "none",
+  color: "#e6edf3",
+  border: "none",
+  borderBottom: "1px solid #21262d",
+  outline: "none",
+  fontFamily: "inherit"
+};
+const textareaStyle = {
+  width: "100%",
+  fontSize: 12,
+  padding: "6px 8px",
+  borderRadius: 5,
+  resize: "vertical",
+  background: "#161b22",
+  color: "#c9d1d9",
+  border: "1px solid #21262d",
+  outline: "none",
+  fontFamily: "inherit",
+  lineHeight: 1.6
+};
+const inputStyle$1 = {
+  width: "100%",
+  fontSize: 11,
+  padding: "5px 8px",
+  borderRadius: 5,
+  background: "#161b22",
+  color: "#c9d1d9",
+  border: "1px solid #21262d",
+  outline: "none",
+  fontFamily: "inherit"
+};
+function Label({ children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#555", fontFamily: "monospace", letterSpacing: 0.5, marginBottom: 6, textTransform: "uppercase" }, children });
+}
+function Chip({ label, prefix, bg, fg }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 9, background: bg, color: fg, borderRadius: 4, padding: "1px 6px", fontFamily: "monospace", border: `1px solid ${fg}22` }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { opacity: 0.4 }, children: prefix }),
+    label
+  ] });
+}
+function AddBtn({ onClick, children }) {
+  const [h2, setH] = reactExports.useState(false);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      onClick,
+      style: { width: "100%", fontSize: 10, color: h2 ? "#58a6ff" : "#444", background: "none", border: `1px dashed ${h2 ? "#388bfd44" : "#21262d"}`, borderRadius: 5, padding: "4px 0", cursor: "pointer", fontFamily: "inherit", marginTop: 3, transition: "color 0.1s" },
+      onMouseEnter: () => setH(true),
+      onMouseLeave: () => setH(false),
+      children
+    }
+  );
+}
+function Btn$1({ onClick, color, children, title }) {
+  const [h2, setH] = reactExports.useState(false);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      onClick: (e) => {
+        e.stopPropagation();
+        onClick();
+      },
+      title,
+      style: { fontSize: 10, color: h2 ? color : "#444", background: "none", border: "none", cursor: "pointer", padding: "0 2px", lineHeight: 1, transition: "color 0.1s", fontFamily: "monospace" },
+      onMouseEnter: () => setH(true),
+      onMouseLeave: () => setH(false),
+      children
+    }
+  );
+}
+function buildAgentBrief(card, allCards) {
+  const lines = [];
+  lines.push(`# ${card.title}`);
+  lines.push("");
+  if (card.description) {
+    lines.push(`## Description`);
+    lines.push("");
+    lines.push(card.description);
+    lines.push("");
+  }
+  lines.push(`## Task`);
+  lines.push("");
+  lines.push(card.instructions || "_No instructions provided._");
+  lines.push("");
+  if (card.fileRefs.length > 0) {
+    lines.push(`## Files`);
+    lines.push("");
+    for (const f of card.fileRefs) {
+      lines.push(`- \`${f}\``);
+    }
+    lines.push("");
+  }
+  if (card.cardRefs.length > 0) {
+    lines.push(`## Related Tasks`);
+    lines.push("");
+    for (const ref of card.cardRefs) {
+      const linked = allCards.find((c) => c.title === ref || c.id === ref);
+      if (linked) {
+        lines.push(`### ${linked.title}`);
+        if (linked.description) lines.push(linked.description);
+        if (linked.instructions) lines.push("");
+        lines.push(`> ${linked.instructions}`);
+        lines.push("");
+      } else {
+        lines.push(`- ${ref}`);
+      }
+    }
+    lines.push("");
+  }
+  if (card.tools.length > 0) {
+    lines.push(`## Tools Available`);
+    lines.push("");
+    for (const t of card.tools) {
+      lines.push(`- \`@${t}\``);
+    }
+    lines.push("");
+  }
+  if (card.skillsAndCommands.length > 0) {
+    lines.push(`## Skills & Commands`);
+    lines.push("");
+    for (const s15 of card.skillsAndCommands) {
+      lines.push(`- \`/${s15}\``);
+    }
+    lines.push("");
+  }
+  lines.push(`## Canvas Communication`);
+  lines.push("");
+  lines.push("You are connected to the Collaborator canvas host via MCP and SSE.");
+  lines.push("");
+  lines.push(`**Your card ID:** \`${card.id}\` (also available as \`$CARD_ID\` in your environment)`);
+  lines.push("");
+  lines.push("### MCP Tools");
+  lines.push("");
+  lines.push("Call these tools to communicate with the canvas:");
+  lines.push("");
+  lines.push("| Tool | When to call |");
+  lines.push("|------|-------------|");
+  lines.push("| `card_complete(card_id, summary)` | Task done — moves card to next column. **Required.** |");
+  lines.push("| `card_update(card_id, note, status?)` | Progress note — visible on canvas in real time |");
+  lines.push("| `card_error(card_id, reason)` | Task failed or blocked |");
+  lines.push("| `request_input(card_id, question, options?)` | Ask the operator a question |");
+  lines.push("| `canvas_create_tile(type, title?, file_path?, x?, y?)` | Create a new tile on the canvas |");
+  lines.push("| `canvas_open_file(path)` | Open a file as a tile |");
+  lines.push("| `canvas_pan_to(x, y)` | Pan the canvas to a position |");
+  lines.push("| `canvas_list_tiles()` | List all tiles currently on the canvas |");
+  lines.push("");
+  lines.push("### SSE Stream");
+  lines.push("");
+  lines.push("You can also stream events directly via HTTP POST:");
+  lines.push("```");
+  lines.push("POST http://127.0.0.1:$MCP_PORT/push");
+  lines.push("Content-Type: application/json");
+  lines.push("");
+  lines.push(`{ "card_id": "${card.id}", "event": "card_update", "data": { "note": "..." } }`);
+  lines.push("```");
+  lines.push("");
+  lines.push("The canvas subscribes to `GET /events?card_id=global` and renders updates in real-time.");
+  lines.push("");
+  if (card.mcpServers.length > 0) {
+    lines.push("Additional MCP servers:");
+    lines.push("");
+    for (const s15 of card.mcpServers) {
+      const endpoint = s15.url ?? s15.cmd ?? "";
+      lines.push(`- **${s15.name}**: \`${endpoint}\``);
+    }
+    lines.push("");
+  }
+  lines.push(`## Completion`);
+  lines.push("");
+  lines.push("When the task is complete:");
+  lines.push("1. Call `card_complete` with your card_id and a concise summary of what was done");
+  lines.push("2. The board will automatically move this card to the next column");
+  lines.push("3. If you encounter a blocker, call `card_error` instead");
+  lines.push("");
+  lines.push(`---`);
+  lines.push(`_Generated by Collaborator · ${(/* @__PURE__ */ new Date()).toISOString()}_`);
+  return lines.join("\n");
+}
+const TYPE_COLOR = {
+  complete: "#3fb950",
+  update: "#58a6ff",
+  error: "#ff7b72",
+  custom: "#d7ba7d",
+  input: "#f9af4f"
+};
+const TYPE_LABEL = {
+  complete: "done",
+  update: "update",
+  error: "error",
+  custom: "event",
+  input: "input?"
+};
+function EventRow({ ev, onJump, onReply }) {
+  const [reply, setReply] = reactExports.useState("");
+  const [hovered, setHovered] = reactExports.useState(false);
+  const isInput = ev.type === "input" && !ev.answered;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      style: { padding: isInput ? "6px 12px 8px" : "2px 12px", background: isInput ? "#161b0a" : "transparent", borderLeft: isInput ? "2px solid #f9af4f" : "none" },
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "baseline", gap: 8, cursor: "pointer" }, onClick: () => onJump(ev.cardId), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#333", fontFamily: "monospace", flexShrink: 0, width: 60 }, children: new Date(ev.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+            fontSize: 9,
+            color: TYPE_COLOR[ev.type],
+            fontFamily: "monospace",
+            background: `${TYPE_COLOR[ev.type]}11`,
+            border: `1px solid ${TYPE_COLOR[ev.type]}33`,
+            borderRadius: 3,
+            padding: "0 5px",
+            flexShrink: 0
+          }, children: TYPE_LABEL[ev.type] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#58a6ff", fontFamily: "monospace", flexShrink: 0, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: ev.cardTitle }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: isInput ? "#f9af4f" : "#8b949e", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: isInput ? 600 : 400 }, children: ev.message })
+        ] }),
+        isInput && ev.options && ev.options.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 4, marginTop: 4, marginLeft: 68, flexWrap: "wrap" }, children: ev.options.map((opt) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: () => onReply(ev.id, ev.cardId, opt),
+            style: { fontSize: 10, padding: "2px 10px", borderRadius: 4, background: "#1c2128", color: "#c9d1d9", border: "1px solid #30363d", cursor: "pointer", fontFamily: "inherit" },
+            onMouseEnter: (e) => {
+              e.currentTarget.style.background = "#388bfd";
+              e.currentTarget.style.color = "#fff";
+            },
+            onMouseLeave: (e) => {
+              e.currentTarget.style.background = "#1c2128";
+              e.currentTarget.style.color = "#c9d1d9";
+            },
+            children: opt
+          },
+          opt
+        )) }),
+        isInput && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, marginTop: 4, marginLeft: 68 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              value: reply,
+              onChange: (e) => setReply(e.target.value),
+              onKeyDown: (e) => {
+                if (e.key === "Enter" && reply.trim()) {
+                  onReply(ev.id, ev.cardId, reply);
+                  setReply("");
+                }
+              },
+              placeholder: "Reply to agent…",
+              style: { flex: 1, fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "#0d1117", color: "#c9d1d9", border: "1px solid #f9af4f44", outline: "none", fontFamily: "monospace" },
+              autoFocus: true
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              onClick: () => {
+                if (reply.trim()) {
+                  onReply(ev.id, ev.cardId, reply);
+                  setReply("");
+                }
+              },
+              style: { padding: "3px 10px", borderRadius: 4, background: "#f9af4f", color: "#000", border: "none", fontSize: 10, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 },
+              children: "send"
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
+function ActivityFeed({ events, onClearAll, onJumpToCard, onReply }) {
+  const bottomRef = reactExports.useRef(null);
+  const [collapsed, setCollapsed] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!collapsed) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [events.length, collapsed]);
+  const recent = events.slice(-50);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+    borderTop: "1px solid #21262d",
+    background: "#0d1117",
+    flexShrink: 0,
+    maxHeight: collapsed ? 28 : 160,
+    transition: "max-height 0.2s ease",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column"
+  }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "4px 10px",
+      borderBottom: collapsed ? "none" : "1px solid #21262d",
+      flexShrink: 0,
+      cursor: "pointer",
+      userSelect: "none"
+    }, onClick: () => setCollapsed((p) => !p), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#388bfd", fontFamily: "monospace", letterSpacing: 1, fontWeight: 700 }, children: "ACTIVITY" }),
+        events.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#444", background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "0 5px" }, children: events.length }),
+        events.length > 0 && Date.now() - events[events.length - 1].ts < 5e3 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 5, height: 5, borderRadius: "50%", background: "#3fb950", boxShadow: "0 0 4px #3fb950", display: "inline-block" } })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8 }, onClick: (e) => e.stopPropagation(), children: [
+        events.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: onClearAll,
+            style: { fontSize: 9, color: "#444", background: "none", border: "none", cursor: "pointer", fontFamily: "monospace" },
+            onMouseEnter: (e) => e.currentTarget.style.color = "#ff7b72",
+            onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+            children: "clear"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#333", fontFamily: "monospace" }, children: collapsed ? "v" : "^" })
+      ] })
+    ] }),
+    !collapsed && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, overflowY: "auto", padding: "4px 0" }, children: [
+      recent.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#2a2a2a", padding: "8px 12px", fontFamily: "monospace" }, children: "No activity yet. Launch an agent to see events here." }) : recent.map((ev) => /* @__PURE__ */ jsxRuntimeExports.jsx(EventRow, { ev, onJump: onJumpToCard, onReply }, ev.id)),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: bottomRef })
+    ] })
+  ] });
+}
+const COLORS = ["#0d2137", "#0d2a1a", "#2a0d1a", "#1a1a0d", "#1a0d2a", "#0d1a2a", "#2a1a0d", "#0d2a2a"];
+const ACTIVE_TTL = 4e3;
+function KanbanTile({ tileId, workspaceDir, width, height, onFocusTile }) {
+  const [columns, setColumns] = reactExports.useState([
+    { id: "backlog", title: "Backlog" },
+    { id: "running", title: "Running" },
+    { id: "review", title: "Review" },
+    { id: "done", title: "Done" }
+  ]);
+  const [cards, setCards] = reactExports.useState([]);
+  const [dragging, setDragging] = reactExports.useState(null);
+  const [dragOver, setDragOver] = reactExports.useState(null);
+  const [addingTo, setAddingTo] = reactExports.useState(null);
+  const [addTitle, setAddTitle] = reactExports.useState("");
+  const [renamingCol, setRenamingCol] = reactExports.useState(null);
+  const [renameVal, setRenameVal] = reactExports.useState("");
+  const [activeTerminals, setActiveTerminals] = reactExports.useState({});
+  const [activityLog, setActivityLog] = reactExports.useState([]);
+  const cleanupRefs = reactExports.useRef({});
+  const HEADER = 38;
+  const COL_W = Math.max(200, Math.floor(width / columns.length));
+  reactExports.useEffect(() => {
+    const linked = cards.filter((c) => c.linkedTileId && (c.linkedTileType === "terminal" || !c.linkedTileType));
+    linked.forEach((card) => {
+      const id = card.linkedTileId;
+      if (cleanupRefs.current[id]) return;
+      const c1 = window.electron?.terminal?.onActive?.(
+        id,
+        () => setActiveTerminals((prev) => ({ ...prev, [id]: Date.now() }))
+      );
+      cleanupRefs.current[id] = () => {
+        c1?.();
+      };
+    });
+    Object.keys(cleanupRefs.current).forEach((id) => {
+      if (!linked.find((c) => c.linkedTileId === id)) {
+        cleanupRefs.current[id]?.();
+        delete cleanupRefs.current[id];
+      }
+    });
+  }, [cards]);
+  reactExports.useEffect(() => () => Object.values(cleanupRefs.current).forEach((fn2) => fn2()), []);
+  reactExports.useEffect(() => {
+    let es2 = null;
+    window.electron?.mcp?.getPort?.().then((port) => {
+      if (!port) return;
+      es2 = new EventSource(`http://127.0.0.1:${port}/events?card_id=global`);
+      const handle = (e) => {
+        try {
+          const { cardId, ...rest } = JSON.parse(e.data);
+          handleKanbanEvent(e.type, { cardId, ...rest });
+        } catch {
+        }
+      };
+      ["card_complete", "card_update", "card_error", "canvas_event"].forEach((ev) => {
+        es2.addEventListener(ev, handle);
+      });
+    });
+    return () => es2?.close();
+  }, []);
+  const logActivity = reactExports.useCallback((type, cardId, message) => {
+    setCards((prev) => {
+      const card = prev.find((c) => c.id === cardId);
+      setActivityLog((log) => [...log, {
+        id: `ev-${Date.now()}-${Math.random()}`,
+        ts: Date.now(),
+        cardId,
+        cardTitle: card?.title ?? cardId,
+        event: type,
+        message,
+        type
+      }]);
+      return prev;
+    });
+  }, []);
+  const handleKanbanEvent = reactExports.useCallback((event, data) => {
+    if (event === "card_complete") {
+      logActivity("complete", data.cardId, data.summary ?? "Task complete");
+      setCards((prev) => {
+        const card = prev.find((c) => c.id === data.cardId);
+        if (!card) return prev;
+        const colIdx = columns.findIndex((c) => c.id === card.columnId);
+        const nextCol = data.nextCol ? columns.find((c) => c.id === data.nextCol) : columns[colIdx + 1];
+        if (!nextCol) return prev;
+        const note = data.summary ? [{ id: `c-${Date.now()}`, text: `Agent: ${data.summary}`, ts: Date.now() }] : [];
+        setTimeout(() => setCards((p) => p.map((c) => c.id === data.cardId ? { ...c, justMoved: false } : c)), 1500);
+        return prev.map((c) => c.id === data.cardId ? { ...c, columnId: nextCol.id, justMoved: true, comments: [...c.comments, ...note] } : c);
+      });
+    }
+    if (event === "card_update") {
+      if (data.note) logActivity("update", data.cardId, data.note);
+      setCards((prev) => prev.map((c) => {
+        if (c.id !== data.cardId) return c;
+        const note = data.note ? [{ id: `c-${Date.now()}`, text: data.note, ts: Date.now() }] : [];
+        return { ...c, comments: [...c.comments, ...note] };
+      }));
+    }
+    if (event === "card_error") {
+      logActivity("error", data.cardId, data.reason ?? "Error");
+      setCards((prev) => {
+        const card = prev.find((c) => c.id === data.cardId);
+        if (!card) return prev;
+        const lastCol = columns[columns.length - 1];
+        const note = { id: `c-${Date.now()}`, text: `Error: ${data.reason}`, ts: Date.now() };
+        return prev.map((c) => c.id === data.cardId ? { ...c, columnId: lastCol.id, color: "#2a0d0d", comments: [...c.comments, note] } : c);
+      });
+    }
+    if (event === "canvas_event") {
+      logActivity("custom", data.cardId, `${data.event}: ${JSON.stringify(data.data ?? {})}`);
+    }
+    if (event === "input_requested") {
+      const card = cards.find((c) => c.id === data.cardId);
+      setActivityLog((prev) => [...prev, {
+        id: `ev-${Date.now()}`,
+        ts: Date.now(),
+        cardId: data.cardId,
+        cardTitle: card?.title ?? data.cardId,
+        event: "input_requested",
+        message: data.question,
+        type: "input",
+        question: data.question,
+        options: data.options ?? [],
+        answered: false
+      }]);
+    }
+  }, [columns, logActivity, cards]);
+  reactExports.useEffect(() => {
+    const el2 = window.electron?.mcp;
+    if (!el2?.onKanban) return;
+    const cleanup = el2.onKanban((event, data) => handleKanbanEvent(event, data));
+    return cleanup;
+  }, [handleKanbanEvent]);
+  const isActive = (id) => !!id && Date.now() - (activeTerminals[id] ?? 0) < ACTIVE_TTL;
+  const addCard = reactExports.useCallback((colId) => {
+    if (!addTitle.trim()) return;
+    setCards((prev) => [...prev, {
+      id: `card-${tileId}-${Date.now()}`,
+      title: addTitle.trim(),
+      description: "",
+      instructions: "",
+      agent: "claude",
+      tools: [],
+      skillsAndCommands: [],
+      fileRefs: [],
+      cardRefs: [],
+      mcpServers: [],
+      hooks: [],
+      columnId: colId,
+      color: COLORS[prev.length % COLORS.length],
+      launched: false,
+      comments: [],
+      attachments: []
+    }]);
+    setAddTitle("");
+    setAddingTo(null);
+  }, [tileId, addTitle]);
+  const launchCard = reactExports.useCallback(async (cardId) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card || card.launched) return;
+    const briefMd = buildAgentBrief(card, cards);
+    let briefPath;
+    try {
+      briefPath = await window.electron.fs.writeBrief(cardId, briefMd);
+    } catch {
+    }
+    const colIdx = columns.findIndex((col) => col.id === card.columnId);
+    const targetCol = colIdx === 0 ? columns[1] ?? columns[0] : columns[colIdx];
+    setCards((prev) => prev.map(
+      (c) => c.id === cardId ? { ...c, launched: true, columnId: targetCol.id, briefPath } : c
+    ));
+  }, [cards, columns]);
+  const updateCard = reactExports.useCallback((id, patch) => {
+    setCards((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
+  }, []);
+  const removeCard = reactExports.useCallback((id) => {
+    const card = cards.find((c) => c.id === id);
+    if (card?.linkedTileId) window.electron?.terminal?.destroy?.(card.linkedTileId);
+    setCards((prev) => prev.filter((c) => c.id !== id));
+  }, [cards]);
+  const dropOnCol = reactExports.useCallback((colId, e) => {
+    e.preventDefault();
+    setDragOver(null);
+    if (dragging) {
+      setCards((prev) => prev.map((c) => c.id === dragging ? { ...c, columnId: colId } : c));
+      setDragging(null);
+      return;
+    }
+    const linkedTileId = e.dataTransfer.getData("application/tile-id");
+    const linkedTileType = e.dataTransfer.getData("application/tile-type");
+    const linkedTileLabel = e.dataTransfer.getData("application/tile-label");
+    if (linkedTileId) {
+      setCards((prev) => [...prev, {
+        id: `card-${tileId}-${Date.now()}`,
+        title: linkedTileLabel || linkedTileType,
+        description: "",
+        instructions: "",
+        agent: "claude",
+        tools: [],
+        skillsAndCommands: [],
+        fileRefs: [],
+        cardRefs: [],
+        mcpServers: [],
+        hooks: [],
+        columnId: colId,
+        color: COLORS[prev.length % COLORS.length],
+        linkedTileId,
+        linkedTileType,
+        launched: linkedTileType === "terminal",
+        comments: [],
+        attachments: []
+      }]);
+      return;
+    }
+    const filePath = e.dataTransfer.getData("text/plain");
+    if (filePath) {
+      const name = filePath.split("/").pop() ?? filePath;
+      setCards((prev) => [...prev, {
+        id: `card-${tileId}-${Date.now()}`,
+        title: name,
+        description: filePath,
+        instructions: "",
+        agent: "claude",
+        tools: [],
+        skillsAndCommands: [],
+        fileRefs: [filePath],
+        cardRefs: [],
+        mcpServers: [],
+        hooks: [],
+        columnId: colId,
+        color: COLORS[prev.length % COLORS.length],
+        launched: false,
+        comments: [],
+        attachments: [{ id: `a-${Date.now()}`, name, path: filePath }]
+      }]);
+    }
+  }, [dragging, tileId]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#13151a", overflow: "hidden" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { height: HEADER, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", borderBottom: "1px solid #21262d" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, fontWeight: 700, color: "#58a6ff", letterSpacing: 1, textTransform: "uppercase" }, children: "Board" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 10, color: "#444", background: "#1c2128", border: "1px solid #30363d", borderRadius: 10, padding: "1px 7px" }, children: [
+          cards.length,
+          " card",
+          cards.length !== 1 ? "s" : ""
+        ] }),
+        Object.keys(activeTerminals).filter((id) => isActive(id)).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 10, color: "#3fb950", display: "flex", alignItems: "center", gap: 4 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 6, height: 6, borderRadius: "50%", background: "#3fb950", boxShadow: "0 0 6px #3fb950", display: "inline-block" } }),
+          Object.keys(activeTerminals).filter((id) => isActive(id)).length,
+          " active"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => setColumns((prev) => [...prev, { id: `col-${Date.now()}`, title: "New List" }]),
+          style: { fontSize: 11, padding: "3px 10px", borderRadius: 5, background: "#21262d", color: "#8b949e", border: "1px solid #30363d", cursor: "pointer", fontFamily: "inherit" },
+          onMouseEnter: (e) => {
+            e.currentTarget.style.color = "#58a6ff";
+            e.currentTarget.style.background = "#2d333b";
+          },
+          onMouseLeave: (e) => {
+            e.currentTarget.style.color = "#8b949e";
+            e.currentTarget.style.background = "#21262d";
+          },
+          children: "+ List"
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, display: "flex", overflowX: "auto", overflowY: "hidden" }, children: columns.map((col, ci2) => {
+      const colCards = cards.filter((c) => c.columnId === col.id);
+      const isOver = dragOver === col.id;
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          style: { width: COL_W, minWidth: COL_W, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: ci2 < columns.length - 1 ? "1px solid #21262d" : "none", background: isOver ? "#161b22" : "transparent", transition: "background 0.1s" },
+          onDragOver: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOver(col.id);
+          },
+          onDragLeave: (e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(null);
+          },
+          onDrop: (e) => {
+            e.stopPropagation();
+            dropOnCol(col.id, e);
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "8px 10px 4px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }, children: [
+              renamingCol === col.id ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  autoFocus: true,
+                  value: renameVal,
+                  onChange: (e) => setRenameVal(e.target.value),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") {
+                      setColumns((p) => p.map((c) => c.id === col.id ? { ...c, title: renameVal } : c));
+                      setRenamingCol(null);
+                    }
+                    if (e.key === "Escape") setRenamingCol(null);
+                  },
+                  onBlur: () => {
+                    setColumns((p) => p.map((c) => c.id === col.id ? { ...c, title: renameVal } : c));
+                    setRenamingCol(null);
+                  },
+                  style: { flex: 1, fontSize: 11, fontWeight: 700, background: "transparent", color: "#58a6ff", border: "none", borderBottom: "1px solid #58a6ff", outline: "none", textTransform: "uppercase", letterSpacing: 0.5 }
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  style: { flex: 1, fontSize: 11, fontWeight: 700, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5, cursor: "text" },
+                  onDoubleClick: () => {
+                    setRenamingCol(col.id);
+                    setRenameVal(col.title);
+                  },
+                  children: col.title
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#444", background: "#1c2128", borderRadius: 8, padding: "1px 5px", border: "1px solid #21262d" }, children: colCards.length }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => {
+                    cards.filter((c) => c.columnId === col.id).forEach((c) => c.linkedTileId && window.electron?.terminal?.destroy?.(c.linkedTileId));
+                    setCards((p) => p.filter((c) => c.columnId !== col.id));
+                    setColumns((p) => p.filter((c) => c.id !== col.id));
+                  },
+                  style: { fontSize: 10, color: "#2d333b", background: "none", border: "none", cursor: "pointer", padding: "0 1px" },
+                  onMouseEnter: (e) => e.currentTarget.style.color = "#ff7b72",
+                  onMouseLeave: (e) => e.currentTarget.style.color = "#2d333b",
+                  children: "✕"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, overflowY: "auto", padding: "4px 8px", display: "flex", flexDirection: "column", gap: 5 }, children: [
+              colCards.map((card) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "data-card-id": card.id, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                KanbanCard,
+                {
+                  card,
+                  workspaceDir,
+                  active: isActive(card.linkedTileId),
+                  dragging: dragging === card.id,
+                  isRunning: card.launched,
+                  allCards: cards,
+                  onUpdate: updateCard,
+                  onRemove: removeCard,
+                  onLaunch: launchCard,
+                  onFocus: card.linkedTileId ? () => onFocusTile?.(card.linkedTileId) : void 0,
+                  onDragStart: () => setDragging(card.id),
+                  onDragEnd: () => {
+                    setDragging(null);
+                    setDragOver(null);
+                  }
+                }
+              ) }, card.id)),
+              addingTo === col.id ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#1c2128", border: "1px solid #30363d", borderRadius: 6, padding: 8, flexShrink: 0 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    autoFocus: true,
+                    value: addTitle,
+                    onChange: (e) => setAddTitle(e.target.value),
+                    onKeyDown: (e) => {
+                      if (e.key === "Enter") addCard(col.id);
+                      if (e.key === "Escape") {
+                        setAddingTo(null);
+                        setAddTitle("");
+                      }
+                    },
+                    placeholder: "Card title…",
+                    style: { width: "100%", fontSize: 12, padding: "5px 8px", borderRadius: 4, background: "#0d1117", color: "#e6edf3", border: "1px solid #58a6ff", outline: "none", fontFamily: "inherit", marginBottom: 6 }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 5 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => addCard(col.id), style: { flex: 1, padding: "4px 0", borderRadius: 4, background: "#1f6feb", color: "#fff", border: "none", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }, children: "Add" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => {
+                    setAddingTo(null);
+                    setAddTitle("");
+                  }, style: { padding: "4px 8px", borderRadius: 4, background: "#21262d", color: "#8b949e", border: "1px solid #30363d", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }, children: "Cancel" })
+                ] })
+              ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => {
+                    setAddingTo(col.id);
+                    setAddTitle("");
+                  },
+                  style: { width: "100%", padding: "5px 0", fontSize: 11, color: "#333", background: "none", border: "1px dashed #21262d", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 },
+                  onMouseEnter: (e) => {
+                    e.currentTarget.style.color = "#58a6ff";
+                    e.currentTarget.style.borderColor = "#388bfd44";
+                  },
+                  onMouseLeave: (e) => {
+                    e.currentTarget.style.color = "#333";
+                    e.currentTarget.style.borderColor = "#21262d";
+                  },
+                  children: "+ Add card"
+                }
+              )
+            ] })
+          ]
+        },
+        col.id
+      );
+    }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ActivityFeed,
+      {
+        events: activityLog,
+        onClearAll: () => setActivityLog([]),
+        onJumpToCard: (cardId) => {
+          const el2 = document.querySelector(`[data-card-id="${cardId}"]`);
+          el2?.scrollIntoView({ behavior: "smooth", block: "center" });
+        },
+        onReply: (eventId, cardId, message) => {
+          const card = cards.find((c) => c.id === cardId);
+          if (card?.launched) {
+            const termId = `kterm-${cardId}`;
+            window.electron?.terminal?.write?.(termId, message + "\r");
+          }
+          setActivityLog((prev) => prev.map((ev) => ev.id === eventId ? { ...ev, answered: true } : ev));
+          setActivityLog((prev) => [...prev, {
+            id: `ev-${Date.now()}`,
+            ts: Date.now(),
+            cardId,
+            cardTitle: card?.title ?? cardId,
+            event: "reply",
+            message: `You: ${message}`,
+            type: "custom"
+          }]);
+        }
+      }
+    )
+  ] });
+}
+var reactDomExports = requireReactDom();
+const HOMEPAGE = "https://duckduckgo.com";
+function isLikelyUrl(value) {
+  if (!value) return false;
+  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(value)) return true;
+  if (/^localhost(?::\d+)?(\/|$)/i.test(value)) return true;
+  if (/^127\.0\.0\.1(?::\d+)?(\/|$)/.test(value)) return true;
+  if (value.includes(".") && !value.includes(" ")) return true;
+  return false;
+}
+function normalizeUrl(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return HOMEPAGE;
+  if (trimmed === "about:blank") return trimmed;
+  if (trimmed.startsWith("file://")) return trimmed;
+  if (trimmed.startsWith("/")) return trimmed;
+  if (isLikelyUrl(trimmed)) {
+    if (/^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed)) return trimmed;
+    if (/^localhost(?::\d+)?(\/|$)/i.test(trimmed) || /^127\.0\.0\.1(?::\d+)?(\/|$)/.test(trimmed)) return `http://${trimmed}`;
+    return `https://${trimmed}`;
+  }
+  return `${HOMEPAGE}/?q=${encodeURIComponent(trimmed)}`;
+}
+function ToolbarButton({
+  label,
+  title,
+  disabled,
+  active,
+  onClick,
+  children
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      type: "button",
+      "aria-label": label,
+      title,
+      disabled,
+      onClick,
+      style: {
+        width: 26,
+        height: 26,
+        borderRadius: 6,
+        border: `1px solid ${active ? "#4a9eff55" : "#333"}`,
+        background: disabled ? "#222" : active ? "#1e3654" : "#2b2b2b",
+        color: disabled ? "#555" : active ? "#9fc7ff" : "#ccc",
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontSize: 12
+      },
+      onMouseEnter: (e) => {
+        if (disabled || active) return;
+        e.currentTarget.style.background = "#3a3a3a";
+      },
+      onMouseLeave: (e) => {
+        if (disabled || active) return;
+        e.currentTarget.style.background = "#2b2b2b";
+      },
+      children
+    }
+  );
+}
+function BrowserTile({ tileId, initialUrl, width, height, zIndex }) {
+  const contentRef = reactExports.useRef(null);
+  const rafRef = reactExports.useRef(null);
+  const lastBoundsRef = reactExports.useRef("");
+  const inputRef = reactExports.useRef(null);
+  const modeRef = reactExports.useRef("desktop");
+  const currentUrlRef = reactExports.useRef(normalizeUrl(initialUrl ?? ""));
+  const [addressBar, setAddressBar] = reactExports.useState(currentUrlRef.current);
+  const [currentUrl, setCurrentUrl] = reactExports.useState(currentUrlRef.current);
+  const [canGoBack, setCanGoBack] = reactExports.useState(false);
+  const [canGoForward, setCanGoForward] = reactExports.useState(false);
+  const [isLoading, setIsLoading] = reactExports.useState(false);
+  const [mode, setMode] = reactExports.useState("desktop");
+  reactExports.useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  reactExports.useEffect(() => {
+    const next = normalizeUrl(initialUrl ?? "");
+    currentUrlRef.current = next;
+    setAddressBar(next);
+    setCurrentUrl(next);
+    void window.electron.browserTile.sync({
+      tileId,
+      url: next,
+      mode: modeRef.current,
+      zIndex,
+      visible: true,
+      bounds: { left: -1e4, top: -1e4, width: 1, height: 1 }
+    });
+  }, [initialUrl, tileId, zIndex]);
+  reactExports.useEffect(() => {
+    const unsub = window.electron.browserTile.onEvent((evt) => {
+      if (evt.tileId !== tileId) return;
+      setCurrentUrl(evt.currentUrl);
+      setCanGoBack(evt.canGoBack);
+      setCanGoForward(evt.canGoForward);
+      setIsLoading(evt.isLoading);
+      if (document.activeElement !== inputRef.current) {
+        setAddressBar(evt.currentUrl);
+      }
+      currentUrlRef.current = evt.currentUrl;
+    });
+    return unsub;
+  }, [tileId]);
+  reactExports.useEffect(() => {
+    const syncBounds = () => {
+      const el2 = contentRef.current;
+      if (el2) {
+        const rect = el2.getBoundingClientRect();
+        if (rect.width > 1 && rect.height > 1) {
+          const bounds = {
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+          };
+          const key = JSON.stringify(bounds);
+          if (key !== lastBoundsRef.current) {
+            lastBoundsRef.current = key;
+            void window.electron.browserTile.sync({
+              tileId,
+              url: currentUrlRef.current,
+              mode: modeRef.current,
+              zIndex,
+              visible: true,
+              bounds
+            });
+          }
+        }
+      }
+      rafRef.current = requestAnimationFrame(syncBounds);
+    };
+    rafRef.current = requestAnimationFrame(syncBounds);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [tileId, zIndex]);
+  reactExports.useEffect(() => {
+    return () => {
+      void window.electron.browserTile.destroy(tileId);
+    };
+  }, [tileId]);
+  const navigate = reactExports.useCallback((rawUrl) => {
+    const next = normalizeUrl(rawUrl);
+    currentUrlRef.current = next;
+    setAddressBar(next);
+    setCurrentUrl(next);
+    setIsLoading(true);
+    void window.electron.browserTile.command({ tileId, command: "navigate", url: next });
+  }, [tileId]);
+  const command = reactExports.useCallback((cmd) => {
+    if (cmd === "reload") setIsLoading(true);
+    void window.electron.browserTile.command({ tileId, command: cmd });
+  }, [tileId]);
+  const switchMode = reactExports.useCallback((next) => {
+    setMode(next);
+    modeRef.current = next;
+    void window.electron.browserTile.command({ tileId, command: "mode", mode: next });
+  }, [tileId]);
+  const headerSlot = typeof document !== "undefined" ? document.getElementById(`tile-header-slot-${tileId}`) : null;
+  const toolbar = /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "form",
+    {
+      onSubmit: (e) => {
+        e.preventDefault();
+        navigate(addressBar);
+      },
+      style: {
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        minWidth: 0,
+        paddingRight: 6
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, flexShrink: 0 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { label: "Back", title: "Back", disabled: !canGoBack, onClick: () => command("back"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeft, { size: 12 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { label: "Forward", title: "Forward", disabled: !canGoForward, onClick: () => command("forward"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 12 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { label: isLoading ? "Stop" : "Reload", title: isLoading ? "Stop" : "Reload", onClick: () => command(isLoading ? "stop" : "reload"), children: isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(RotateCcw, { size: 12 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(RotateCw, { size: 12 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { label: "Home", title: "Home", onClick: () => command("home"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(House, { size: 12 }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "relative", flex: 1, minWidth: 0 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              ref: inputRef,
+              "aria-label": "Address",
+              value: addressBar,
+              onChange: (e) => setAddressBar(e.target.value),
+              onKeyDown: (e) => {
+                if (e.key === "Escape") e.currentTarget.blur();
+              },
+              style: {
+                width: "100%",
+                height: 22,
+                borderRadius: 6,
+                border: "1px solid #3a3a3a",
+                background: "#111",
+                color: "#d4d4d4",
+                padding: "0 8px 0 24px",
+                fontSize: 11,
+                outline: "none",
+                boxSizing: "border-box"
+              },
+              spellCheck: false
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+            position: "absolute",
+            left: 7,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: currentUrl.startsWith("https://") ? "#3fb950" : "#6db33f",
+            display: "flex",
+            alignItems: "center"
+          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Globe, { size: 10 }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, flexShrink: 0 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { label: "Desktop", title: "Desktop mode", active: mode === "desktop", onClick: () => switchMode("desktop"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Monitor, { size: 12 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { label: "Mobile", title: "Mobile mode", active: mode === "mobile", onClick: () => switchMode("mobile"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Smartphone, { size: 12 }) })
+        ] })
+      ]
+    }
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { width: "100%", height: "100%", minHeight: 0, background: "#111", position: "relative", overflow: "hidden" }, children: [
+    headerSlot && reactDomExports.createPortal(toolbar, headerSlot),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        ref: contentRef,
+        style: { width: "100%", height: "100%", background: "transparent" }
+      }
+    ),
+    (width < 260 || height < 170) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+      position: "absolute",
+      bottom: 8,
+      right: 8,
+      fontSize: 10,
+      background: "rgba(0,0,0,0.6)",
+      border: "1px solid #333",
+      color: "#777",
+      padding: "2px 6px",
+      borderRadius: 4,
+      pointerEvents: "none"
+    }, children: "Small tiles may hide browser controls" })
+  ] });
+}
+const CONFIG_PATH = "~/.clawd-collab/mcp-server.json";
+const KNOWN_SERVERS = [
+  // Filesystem & code
+  { name: "filesystem", category: "Files", cmd: "npx -y @modelcontextprotocol/server-filesystem ~/", description: "Read/write local files and directories" },
+  { name: "git", category: "Files", cmd: "npx -y @modelcontextprotocol/server-git", description: "Git operations — log, diff, commit, branch" },
+  { name: "github", category: "Code", cmd: "npx -y @modelcontextprotocol/server-github", description: "GitHub repos, issues, PRs, actions" },
+  { name: "gitlab", category: "Code", cmd: "npx -y @modelcontextprotocol/server-gitlab", description: "GitLab repos, issues, MRs" },
+  // Data
+  { name: "postgres", category: "Data", cmd: "npx -y @modelcontextprotocol/server-postgres", description: "Query and inspect Postgres databases" },
+  { name: "sqlite", category: "Data", cmd: "npx -y @modelcontextprotocol/server-sqlite", description: "SQLite database access" },
+  { name: "google-drive", category: "Data", cmd: "npx -y @modelcontextprotocol/server-gdrive", description: "Google Drive files and docs" },
+  // Web & search
+  { name: "brave-search", category: "Web", cmd: "npx -y @modelcontextprotocol/server-brave-search", description: "Web search via Brave API" },
+  { name: "puppeteer", category: "Web", cmd: "npx -y @modelcontextprotocol/server-puppeteer", description: "Browser automation and web scraping" },
+  { name: "fetch", category: "Web", cmd: "npx -y @modelcontextprotocol/server-fetch", description: "Fetch URLs and web content" },
+  // Comms
+  { name: "slack", category: "Comms", cmd: "npx -y @modelcontextprotocol/server-slack", description: "Read/send Slack messages and channels" },
+  { name: "gmail", category: "Comms", url: "http://localhost:3100", description: "Gmail read/send via local bridge" },
+  // Dev tools
+  { name: "sequential-thinking", category: "AI", cmd: "npx -y @modelcontextprotocol/server-sequential-thinking", description: "Break complex tasks into sequential steps" },
+  { name: "memory", category: "AI", cmd: "npx -y @modelcontextprotocol/server-memory", description: "Persistent memory store for agents" },
+  { name: "everything", category: "Dev", cmd: "npx -y @modelcontextprotocol/server-everything", description: "Test server — all MCP features" },
+  // Cloud
+  { name: "aws-kb", category: "Cloud", cmd: "npx -y @modelcontextprotocol/server-aws-kb-retrieval", description: "AWS Knowledge Base retrieval" },
+  { name: "sentry", category: "Dev", cmd: "npx -y @modelcontextprotocol/server-sentry", description: "Sentry errors and issues" },
+  // Local custom
+  { name: "custom", category: "Custom", url: "", cmd: "", description: "Custom MCP server" }
+];
+const CATEGORIES = [...new Set(KNOWN_SERVERS.map((s15) => s15.category))];
+function MCPPanel({ onClose }) {
+  const [config2, setConfig] = reactExports.useState(null);
+  const [servers, setServers] = reactExports.useState([]);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [port, setPort] = reactExports.useState(null);
+  const [newServer, setNewServer] = reactExports.useState({ name: "", enabled: true });
+  const [adding, setAdding] = reactExports.useState(false);
+  const [saved, setSaved] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    window.electron?.mcp?.getPort?.().then((p) => setPort(p));
+    const path = `${window.process?.env?.HOME ?? "~"}/clawd-collab/mcp-server.json`;
+    window.electron.fs.readFile(path.replace("~", window.__HOME__ ?? "/Users/" + (window.process?.env?.USER ?? ""))).catch(() => null).then((raw) => {
+      if (raw) {
+        try {
+          const cfg = JSON.parse(raw);
+          setConfig(cfg);
+          const list = Object.entries(cfg.mcpServers ?? {}).map(([name, s15]) => ({
+            name,
+            url: s15.url,
+            cmd: s15.cmd,
+            args: s15.args,
+            description: s15.description,
+            enabled: s15.enabled !== false
+          }));
+          setServers(list);
+        } catch {
+        }
+      }
+      setLoading(false);
+    });
+  }, []);
+  const save = reactExports.useCallback(async (updatedServers) => {
+    if (!config2) return;
+    const mcpServers = {};
+    mcpServers["collaborator"] = config2.mcpServers["collaborator"] ?? { url: config2.url };
+    for (const s15 of updatedServers) {
+      if (s15.name === "collaborator") continue;
+      mcpServers[s15.name] = {
+        ...s15.url ? { url: s15.url } : {},
+        ...s15.cmd ? { cmd: s15.cmd } : {},
+        ...s15.args?.length ? { args: s15.args } : {},
+        ...s15.description ? { description: s15.description } : {},
+        enabled: s15.enabled
+      };
+    }
+    const updated = { ...config2, mcpServers, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const home = window.process?.env?.HOME ?? "";
+    const filePath = `${home}/clawd-collab/mcp-server.json`;
+    await window.electron.fs.writeFile(filePath, JSON.stringify(updated, null, 2));
+    await loadMCPServers();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2e3);
+  }, [config2]);
+  const updateServer = (i, patch) => {
+    const updated = servers.map((s15, j2) => j2 === i ? { ...s15, ...patch } : s15);
+    setServers(updated);
+    save(updated);
+  };
+  const removeServer = (i) => {
+    const updated = servers.filter((_2, j2) => j2 !== i);
+    setServers(updated);
+    save(updated);
+  };
+  const addServer = () => {
+    if (!newServer.name?.trim()) return;
+    const s15 = {
+      name: newServer.name.trim(),
+      url: newServer.url,
+      cmd: newServer.cmd,
+      description: newServer.description,
+      enabled: true
+    };
+    const updated = [...servers, s15];
+    setServers(updated);
+    save(updated);
+    setNewServer({ name: "", enabled: true });
+    setAdding(false);
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 1e4,
+    background: "rgba(0,0,0,0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }, onClick: (e) => {
+    if (e.target === e.currentTarget) onClose();
+  }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+    width: 560,
+    maxHeight: "80vh",
+    background: "#0d1117",
+    border: "1px solid #30363d",
+    borderRadius: 10,
+    boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden"
+  }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "14px 20px", borderBottom: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 14, fontWeight: 700, color: "#e6edf3" }, children: "MCP Configuration" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#555", fontFamily: "monospace", marginTop: 2 }, children: CONFIG_PATH })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
+        port && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 5 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 6, height: 6, borderRadius: "50%", background: "#3fb950", boxShadow: "0 0 5px #3fb950", display: "inline-block" } }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 10, color: "#3fb950", fontFamily: "monospace" }, children: [
+            ":",
+            port
+          ] })
+        ] }),
+        saved && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#3fb950" }, children: "saved" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: onClose,
+            style: { fontSize: 12, color: "#555", background: "none", border: "none", cursor: "pointer" },
+            onMouseEnter: (e) => e.currentTarget.style.color = "#fff",
+            onMouseLeave: (e) => e.currentTarget.style.color = "#555",
+            children: "x"
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, overflowY: "auto", padding: "16px 20px" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { label: "BUILT-IN", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ServerRow,
+        {
+          name: "collaborator",
+          description: "Canvas, kanban, files, tiles — always running",
+          url: config2?.url,
+          enabled: true,
+          builtin: true,
+          tools: ["card_complete", "card_update", "card_error", "request_input", "canvas_create_tile", "canvas_open_file", "canvas_pan_to", "canvas_list_tiles"]
+        }
+      ) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { label: "MCP SERVERS", children: loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, color: "#444", padding: "8px 0" }, children: "Loading…" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        servers.filter((s15) => s15.name !== "collaborator").map((s15, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          EditableServerRow,
+          {
+            server: s15,
+            onUpdate: (patch) => updateServer(i, patch),
+            onRemove: () => removeServer(i)
+          },
+          s15.name
+        )),
+        adding ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161b22", border: "1px solid #21262d", borderRadius: 6, padding: 12, marginTop: 6 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 6, marginBottom: 6 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: newServer.name ?? "",
+                onChange: (e) => setNewServer((p) => ({ ...p, name: e.target.value })),
+                placeholder: "server name",
+                autoFocus: true,
+                style: { ...inputStyle, flex: "0 0 120px" }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: newServer.url ?? "",
+                onChange: (e) => setNewServer((p) => ({ ...p, url: e.target.value, cmd: void 0 })),
+                placeholder: "http://...",
+                style: { ...inputStyle, flex: 1, fontFamily: "monospace", fontSize: 10, color: "#3fb950" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              value: newServer.cmd ?? "",
+              onChange: (e) => setNewServer((p) => ({ ...p, cmd: e.target.value, url: void 0 })),
+              placeholder: "or stdio command: npx @modelcontextprotocol/server-name",
+              style: { ...inputStyle, fontFamily: "monospace", fontSize: 10, marginBottom: 8 }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              value: newServer.description ?? "",
+              onChange: (e) => setNewServer((p) => ({ ...p, description: e.target.value })),
+              placeholder: "Description (optional)",
+              style: { ...inputStyle, marginBottom: 8 }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 6 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: addServer,
+                style: { flex: 1, padding: "5px 0", borderRadius: 5, background: "#1f6feb", color: "#fff", border: "none", fontSize: 11, cursor: "pointer", fontFamily: "inherit" },
+                children: "Add Server"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: () => setAdding(false),
+                style: { padding: "5px 12px", borderRadius: 5, background: "#21262d", color: "#8b949e", border: "1px solid #30363d", fontSize: 11, cursor: "pointer", fontFamily: "inherit" },
+                children: "Cancel"
+              }
+            )
+          ] })
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: () => setAdding(true),
+            style: { width: "100%", padding: "7px 0", borderRadius: 6, background: "none", border: "1px dashed #21262d", color: "#444", fontSize: 11, cursor: "pointer", fontFamily: "inherit", marginTop: 4 },
+            onMouseEnter: (e) => {
+              e.currentTarget.style.color = "#58a6ff";
+              e.currentTarget.style.borderColor = "#388bfd44";
+            },
+            onMouseLeave: (e) => {
+              e.currentTarget.style.color = "#444";
+              e.currentTarget.style.borderColor = "#21262d";
+            },
+            children: "+ Add MCP Server"
+          }
+        )
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { label: "CATALOGUE — ADD SERVERS", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        CatalogueView,
+        {
+          installed: servers.map((s15) => s15.name),
+          onAdd: (s15) => {
+            if (servers.find((x) => x.name === s15.name)) return;
+            const updated = [...servers, { ...s15, enabled: true }];
+            setServers(updated);
+            save(updated);
+          }
+        }
+      ) }),
+      config2 && /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { label: "ENDPOINTS", children: Object.entries(config2.endpoints ?? {}).map(([key, url]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 10, alignItems: "center", padding: "3px 0" }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#555", fontFamily: "monospace", width: 60, flexShrink: 0 }, children: key }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#3fb950", fontFamily: "monospace", flex: 1 }, children: url }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: () => navigator.clipboard.writeText(url),
+            style: { fontSize: 9, color: "#444", background: "none", border: "none", cursor: "pointer", fontFamily: "monospace" },
+            onMouseEnter: (e) => e.currentTarget.style.color = "#58a6ff",
+            onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+            children: "copy"
+          }
+        )
+      ] }, key)) })
+    ] })
+  ] }) });
+}
+function Section({ label, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: 20 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 9, color: "#388bfd", fontFamily: "monospace", letterSpacing: 1, fontWeight: 700, marginBottom: 8 }, children: label }),
+    children
+  ] });
+}
+function ServerRow({ name, description, url, cmd, enabled, builtin, tools }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161b22", border: "1px solid #21262d", borderRadius: 6, padding: "10px 12px" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: description ? 4 : 0 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 6, height: 6, borderRadius: "50%", background: enabled ? "#3fb950" : "#333", flexShrink: 0 } }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, fontWeight: 600, color: "#e6edf3" }, children: name }),
+      builtin && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#388bfd", background: "#0d2137", border: "1px solid #1f3a5f", borderRadius: 3, padding: "1px 6px", fontFamily: "monospace" }, children: "built-in" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#555", fontFamily: "monospace", marginLeft: "auto" }, children: url ?? cmd })
+    ] }),
+    description && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#555", marginBottom: tools?.length ? 6 : 0 }, children: description }),
+    tools && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" }, children: tools.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#444", background: "#0d1117", border: "1px solid #21262d", borderRadius: 3, padding: "1px 6px", fontFamily: "monospace" }, children: t }, t)) })
+  ] });
+}
+function EditableServerRow({ server, onUpdate, onRemove }) {
+  const [expanded, setExpanded] = reactExports.useState(false);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161b22", border: "1px solid #21262d", borderRadius: 6, marginBottom: 6, overflow: "hidden" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => onUpdate({ enabled: !server.enabled }),
+          style: { width: 12, height: 12, borderRadius: "50%", background: server.enabled ? "#3fb950" : "#333", border: "none", cursor: "pointer", flexShrink: 0 }
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, fontWeight: 600, color: "#e6edf3", flex: 1 }, children: server.name }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#555", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }, children: server.url ?? server.cmd }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => setExpanded((p) => !p),
+          style: { fontSize: 9, color: "#444", background: "none", border: "none", cursor: "pointer", fontFamily: "monospace" },
+          onMouseEnter: (e) => e.currentTarget.style.color = "#888",
+          onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+          children: expanded ? "less" : "edit"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: onRemove,
+          style: { fontSize: 10, color: "#333", background: "none", border: "none", cursor: "pointer" },
+          onMouseEnter: (e) => e.currentTarget.style.color = "#ff7b72",
+          onMouseLeave: (e) => e.currentTarget.style.color = "#333",
+          children: "x"
+        }
+      )
+    ] }),
+    expanded && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "0 12px 10px", display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid #21262d" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { paddingTop: 8 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: { fontSize: 9, color: "#444", fontFamily: "monospace", display: "block", marginBottom: 3 }, children: "URL" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            value: server.url ?? "",
+            onChange: (e) => onUpdate({ url: e.target.value || void 0, cmd: void 0 }),
+            placeholder: "http://localhost:3000",
+            style: { ...inputStyle, fontFamily: "monospace", fontSize: 10, color: "#3fb950" }
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: { fontSize: 9, color: "#444", fontFamily: "monospace", display: "block", marginBottom: 3 }, children: "STDIO COMMAND" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            value: server.cmd ?? "",
+            onChange: (e) => onUpdate({ cmd: e.target.value || void 0, url: void 0 }),
+            placeholder: "npx @modelcontextprotocol/server-name",
+            style: { ...inputStyle, fontFamily: "monospace", fontSize: 10 }
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: { fontSize: 9, color: "#444", fontFamily: "monospace", display: "block", marginBottom: 3 }, children: "DESCRIPTION" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            value: server.description ?? "",
+            onChange: (e) => onUpdate({ description: e.target.value }),
+            placeholder: "What does this server provide?",
+            style: inputStyle
+          }
+        )
+      ] })
+    ] })
+  ] });
+}
+function CatalogueView({ installed, onAdd }) {
+  const [filter, setFilter] = reactExports.useState("");
+  const [cat, setCat] = reactExports.useState(null);
+  const filtered = KNOWN_SERVERS.filter((s15) => {
+    if (s15.name === "custom") return false;
+    if (cat && s15.category !== cat) return false;
+    if (filter && !s15.name.includes(filter) && !s15.description?.toLowerCase().includes(filter.toLowerCase())) return false;
+    return true;
+  });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => setCat(null),
+          style: { ...catBtnStyle, background: cat === null ? "#1f6feb" : "#161b22", color: cat === null ? "#fff" : "#555", border: `1px solid ${cat === null ? "#388bfd" : "#21262d"}` },
+          children: "All"
+        }
+      ),
+      CATEGORIES.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          onClick: () => setCat(cat === c ? null : c),
+          style: { ...catBtnStyle, background: cat === c ? "#1f6feb" : "#161b22", color: cat === c ? "#fff" : "#555", border: `1px solid ${cat === c ? "#388bfd" : "#21262d"}` },
+          children: c
+        },
+        c
+      ))
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        value: filter,
+        onChange: (e) => setFilter(e.target.value),
+        placeholder: "Search servers…",
+        style: { ...inputStyle, marginBottom: 8 }
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 4 }, children: filtered.map((s15) => {
+      const isInstalled = installed.includes(s15.name);
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#161b22", border: "1px solid #21262d", borderRadius: 6 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, fontWeight: 600, color: isInstalled ? "#555" : "#c9d1d9" }, children: s15.name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#388bfd", background: "#0d2137", border: "1px solid #1f3a5f", borderRadius: 3, padding: "0 5px", fontFamily: "monospace" }, children: s15.category }),
+            isInstalled && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 9, color: "#3fb950", fontFamily: "monospace" }, children: "added" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#555", marginTop: 1 }, children: s15.description }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 9, color: "#2d3a2d", fontFamily: "monospace", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: s15.cmd ?? s15.url })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: () => !isInstalled && onAdd({ name: s15.name, url: s15.url, cmd: s15.cmd, description: s15.description, enabled: true }),
+            disabled: isInstalled,
+            style: {
+              padding: "4px 12px",
+              borderRadius: 5,
+              fontSize: 10,
+              cursor: isInstalled ? "default" : "pointer",
+              background: isInstalled ? "#161b22" : "#21262d",
+              color: isInstalled ? "#333" : "#8b949e",
+              border: `1px solid ${isInstalled ? "#21262d" : "#30363d"}`,
+              fontFamily: "inherit",
+              flexShrink: 0
+            },
+            onMouseEnter: (e) => {
+              if (!isInstalled) {
+                e.currentTarget.style.background = "#1f6feb";
+                e.currentTarget.style.color = "#fff";
+              }
+            },
+            onMouseLeave: (e) => {
+              if (!isInstalled) {
+                e.currentTarget.style.background = "#21262d";
+                e.currentTarget.style.color = "#8b949e";
+              }
+            },
+            children: isInstalled ? "added" : "+ add"
+          }
+        )
+      ] }, s15.name);
+    }) })
+  ] });
+}
+const catBtnStyle = {
+  padding: "2px 10px",
+  borderRadius: 10,
+  fontSize: 10,
+  cursor: "pointer",
+  fontFamily: "inherit"
+};
+const inputStyle = {
+  width: "100%",
+  fontSize: 11,
+  padding: "5px 8px",
+  borderRadius: 5,
+  background: "#0d1117",
+  color: "#c9d1d9",
+  border: "1px solid #21262d",
+  outline: "none",
+  fontFamily: "inherit"
+};
+const scriptRel = /* @__PURE__ */ (function detectScriptRel() {
+  const relList = typeof document !== "undefined" && document.createElement("link").relList;
+  return relList && relList.supports && relList.supports("modulepreload") ? "modulepreload" : "preload";
+})();
+const assetsURL = function(dep, importerUrl) {
+  return new URL(dep, importerUrl).href;
+};
+const seen = {};
+const __vitePreload = function preload(baseModule, deps, importerUrl) {
+  let promise = Promise.resolve();
+  if (deps && deps.length > 0) {
+    let allSettled = function(promises$2) {
+      return Promise.all(promises$2.map((p) => Promise.resolve(p).then((value$1) => ({
+        status: "fulfilled",
+        value: value$1
+      }), (reason) => ({
+        status: "rejected",
+        reason
+      }))));
+    };
+    const links = document.getElementsByTagName("link");
+    const cspNonceMeta = document.querySelector("meta[property=csp-nonce]");
+    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
+    promise = allSettled(deps.map((dep) => {
+      dep = assetsURL(dep, importerUrl);
+      if (dep in seen) return;
+      seen[dep] = true;
+      const isCss = dep.endsWith(".css");
+      const cssSelector = isCss ? '[rel="stylesheet"]' : "";
+      if (!!importerUrl) for (let i$1 = links.length - 1; i$1 >= 0; i$1--) {
+        const link$1 = links[i$1];
+        if (link$1.href === dep && (!isCss || link$1.rel === "stylesheet")) return;
+      }
+      else if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) return;
+      const link = document.createElement("link");
+      link.rel = isCss ? "stylesheet" : scriptRel;
+      if (!isCss) link.as = "script";
+      link.crossOrigin = "";
+      link.href = dep;
+      if (cspNonce) link.setAttribute("nonce", cspNonce);
+      document.head.appendChild(link);
+      if (isCss) return new Promise((res, rej) => {
+        link.addEventListener("load", res);
+        link.addEventListener("error", () => rej(/* @__PURE__ */ new Error(`Unable to preload CSS for ${dep}`)));
+      });
+    }));
+  }
+  function handlePreloadError(err$2) {
+    const e$1 = new Event("vite:preloadError", { cancelable: true });
+    e$1.payload = err$2;
+    window.dispatchEvent(e$1);
+    if (!e$1.defaultPrevented) throw err$2;
+  }
+  return promise.then((res) => {
+    for (const item of res || []) {
+      if (item.status !== "rejected") continue;
+      handlePreloadError(item.reason);
+    }
+    return baseModule().catch(handlePreloadError);
+  });
+};
+const GAP = 40;
+async function arrangeGrid(tiles) {
+  if (tiles.length === 0) return tiles;
+  const savedMap = globalThis.Map;
+  const savedSet = globalThis.Set;
+  await __vitePreload(() => import("./elk.bundled-BE6iuWsg.js").then((n) => n.e), true ? [] : void 0, import.meta.url);
+  globalThis.Map = savedMap;
+  globalThis.Set = savedSet;
+  const ELK = globalThis.ELK;
+  if (!ELK) throw new Error("ELK failed to load");
+  const elk = new ELK();
+  const graph = {
+    id: "root",
+    layoutOptions: {
+      "elk.algorithm": "rectpacking",
+      "elk.spacing.nodeNode": String(GAP),
+      "elk.rectpacking.expandToFill": "false",
+      "elk.padding": `[top=${GAP},left=${GAP},bottom=${GAP},right=${GAP}]`
+    },
+    children: tiles.map((t) => ({
+      id: t.id,
+      width: t.width,
+      height: t.height
+    })),
+    edges: []
+  };
+  const laid = await elk.layout(graph);
+  const originX = Math.min(...tiles.map((t) => t.x));
+  const originY = Math.min(...tiles.map((t) => t.y));
+  return tiles.map((t) => {
+    const node = laid.children?.find((n) => n.id === t.id);
+    if (!node) return t;
+    return { ...t, x: originX + (node.x ?? 0), y: originY + (node.y ?? 0) };
+  });
+}
+function arrangeColumn(tiles) {
+  if (tiles.length === 0) return tiles;
+  const sorted = [...tiles].sort((a, b2) => a.y - b2.y);
+  const originX = Math.min(...tiles.map((t) => t.x));
+  let cursor = Math.min(...tiles.map((t) => t.y));
+  return sorted.map((t) => {
+    const placed = { ...t, x: originX, y: cursor };
+    cursor += t.height + GAP;
+    return placed;
+  });
+}
+function arrangeRow(tiles) {
+  if (tiles.length === 0) return tiles;
+  const sorted = [...tiles].sort((a, b2) => a.x - b2.x);
+  const originY = Math.min(...tiles.map((t) => t.y));
+  let cursor = Math.min(...tiles.map((t) => t.x));
+  return sorted.map((t) => {
+    const placed = { ...t, x: cursor, y: originY };
+    cursor += t.width + GAP;
+    return placed;
+  });
+}
+function Btn({ label, title, active, loading, onClick }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      title,
+      onClick,
+      disabled: loading,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 32,
+        height: 32,
+        borderRadius: 6,
+        border: `1px solid ${active ? "#4a9eff55" : "#2d2d2d"}`,
+        background: active ? "rgba(74,158,255,0.12)" : "rgba(30,30,30,0.9)",
+        color: active ? "#4a9eff" : "#888",
+        cursor: loading ? "wait" : "pointer",
+        transition: "all 0.1s",
+        fontSize: 14,
+        opacity: loading ? 0.5 : 1
+      },
+      onMouseEnter: (e) => {
+        if (!active) {
+          e.currentTarget.style.background = "rgba(74,158,255,0.08)";
+          e.currentTarget.style.color = "#aaa";
+        }
+      },
+      onMouseLeave: (e) => {
+        if (!active) {
+          e.currentTarget.style.background = "rgba(30,30,30,0.9)";
+          e.currentTarget.style.color = "#888";
+        }
+      },
+      children: label
+    }
+  );
+}
+const GridIcon = () => /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "currentColor", children: [
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "1", y: "1", width: "6", height: "6", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "9", y: "1", width: "6", height: "6", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "1", y: "9", width: "6", height: "6", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "9", y: "9", width: "6", height: "6", rx: "1" })
+] });
+const ColumnIcon = () => /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "currentColor", children: [
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "2", y: "1", width: "12", height: "4", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "2", y: "6", width: "12", height: "4", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "2", y: "11", width: "12", height: "4", rx: "1" })
+] });
+const RowIcon = () => /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "currentColor", children: [
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "1", y: "2", width: "4", height: "12", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "6", y: "2", width: "4", height: "12", rx: "1" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "11", y: "2", width: "4", height: "12", rx: "1" })
+] });
+function ArrangeToolbar({ tiles, onArrange }) {
+  const [loading, setLoading] = reactExports.useState(false);
+  const [lastMode, setLastMode] = reactExports.useState(null);
+  const run = async (mode) => {
+    if (tiles.length < 2 || loading) return;
+    setLoading(true);
+    setLastMode(mode);
+    try {
+      let updated;
+      if (mode === "grid") updated = await arrangeGrid(tiles);
+      else if (mode === "column") updated = arrangeColumn(tiles);
+      else updated = arrangeRow(tiles);
+      onArrange(updated);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      style: {
+        position: "absolute",
+        bottom: 16,
+        right: 16,
+        display: "flex",
+        gap: 4,
+        padding: "4px 6px",
+        background: "rgba(20,20,20,0.92)",
+        border: "1px solid #2d2d2d",
+        borderRadius: 8,
+        backdropFilter: "blur(8px)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+        pointerEvents: "all",
+        zIndex: 1e3,
+        alignItems: "center"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#444", marginRight: 4, userSelect: "none", letterSpacing: "0.05em", textTransform: "uppercase" }, children: "Arrange" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Btn, { label: /* @__PURE__ */ jsxRuntimeExports.jsx(GridIcon, {}), title: "Grid layout (ELK rect-packing)", active: lastMode === "grid", loading, onClick: () => run("grid") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Btn, { label: /* @__PURE__ */ jsxRuntimeExports.jsx(ColumnIcon, {}), title: "Stack in column", active: lastMode === "column", loading, onClick: () => run("column") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Btn, { label: /* @__PURE__ */ jsxRuntimeExports.jsx(RowIcon, {}), title: "Arrange in row", active: lastMode === "row", loading, onClick: () => run("row") })
+      ]
+    }
+  );
+}
+const TILE_COLORS = {
+  terminal: "#4a9eff",
+  code: "#6db33f",
+  note: "#e2c08d",
+  image: "#e67e22",
+  kanban: "#c586c0",
+  browser: "#3fb950"
+};
+const W = 160;
+const H = 100;
+const PAD = 20;
+function Minimap({ tiles, viewport, canvasSize, onPan }) {
+  const canvasRef = reactExports.useRef(null);
+  const dragging = reactExports.useRef(false);
+  const getBounds = reactExports.useCallback(() => {
+    if (tiles.length === 0) return { minX: 0, minY: 0, maxX: 1e3, maxY: 600 };
+    const minX = Math.min(...tiles.map((t) => t.x)) - PAD;
+    const minY = Math.min(...tiles.map((t) => t.y)) - PAD;
+    const maxX = Math.max(...tiles.map((t) => t.x + t.width)) + PAD;
+    const maxY = Math.max(...tiles.map((t) => t.y + t.height)) + PAD;
+    return { minX, minY, maxX, maxY };
+  }, [tiles]);
+  reactExports.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+    const { minX, minY, maxX, maxY } = getBounds();
+    const worldW = maxX - minX;
+    const worldH = maxY - minY;
+    const scale = Math.min(W / worldW, H / worldH) * 0.9;
+    const offX = (W - worldW * scale) / 2 - minX * scale;
+    const offY = (H - worldH * scale) / 2 - minY * scale;
+    for (const t of tiles) {
+      const x = t.x * scale + offX;
+      const y = t.y * scale + offY;
+      const w = Math.max(2, t.width * scale);
+      const h2 = Math.max(2, t.height * scale);
+      ctx.fillStyle = TILE_COLORS[t.type] + "88";
+      ctx.strokeStyle = TILE_COLORS[t.type] + "cc";
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h2, 1);
+      ctx.fill();
+      ctx.stroke();
+    }
+    const vx = -viewport.tx / viewport.zoom * scale + offX;
+    const vy = -viewport.ty / viewport.zoom * scale + offY;
+    const vw = canvasSize.w / viewport.zoom * scale;
+    const vh = canvasSize.h / viewport.zoom * scale;
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(vx, vy, vw, vh);
+  }, [tiles, viewport, canvasSize, getBounds]);
+  const panTo = reactExports.useCallback((clientX, clientY) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (clientX - rect.left) * (W / rect.width);
+    const my = (clientY - rect.top) * (H / rect.height);
+    const { minX, minY, maxX, maxY } = getBounds();
+    const worldW = maxX - minX;
+    const worldH = maxY - minY;
+    const scale = Math.min(W / worldW, H / worldH) * 0.9;
+    const offX = (W - worldW * scale) / 2 - minX * scale;
+    const offY = (H - worldH * scale) / 2 - minY * scale;
+    const worldX = (mx - offX) / scale;
+    const worldY = (my - offY) / scale;
+    const newTx = canvasSize.w / 2 - worldX * viewport.zoom;
+    const newTy = canvasSize.h / 2 - worldY * viewport.zoom;
+    onPan(newTx, newTy);
+  }, [getBounds, canvasSize, viewport.zoom, onPan]);
+  if (tiles.length === 0) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+    position: "absolute",
+    bottom: 16,
+    left: 16,
+    background: "rgba(18,18,18,0.88)",
+    border: "1px solid #2d2d2d",
+    borderRadius: 6,
+    overflow: "hidden",
+    zIndex: 500,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+    cursor: "crosshair"
+  }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "canvas",
+    {
+      ref: canvasRef,
+      width: W,
+      height: H,
+      style: { display: "block", width: W, height: H },
+      onMouseDown: (e) => {
+        dragging.current = true;
+        panTo(e.clientX, e.clientY);
+      },
+      onMouseMove: (e) => {
+        if (dragging.current) panTo(e.clientX, e.clientY);
+      },
+      onMouseUp: () => {
+        dragging.current = false;
+      },
+      onMouseLeave: () => {
+        dragging.current = false;
+      }
+    }
+  ) });
+}
+const SECTIONS = [
+  { id: "canvas", label: "Canvas", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Monitor, { size: 15 }), description: "Background, grid and snap settings" },
+  { id: "terminal", label: "Terminal", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { size: 15 }), description: "Font size and family for terminal tiles" },
+  { id: "sidebar", label: "Sidebar", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 15 }), description: "File tree sort and ignored folders" },
+  { id: "tiles", label: "Tiles", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PanelsTopLeft, { size: 15 }), description: "Default sizes for each tile type" },
+  { id: "behaviour", label: "Behaviour", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(SlidersVertical, { size: 15 }), description: "Auto-save interval and UI font size" },
+  { id: "mcp", label: "MCP", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Network, { size: 15 }), description: "Model Context Protocol server connections" }
+];
+function Toggle({ value, onChange }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      onClick: () => onChange(!value),
+      style: {
+        width: 44,
+        height: 26,
+        borderRadius: 13,
+        cursor: "pointer",
+        flexShrink: 0,
+        background: value ? "#666" : "#333",
+        position: "relative",
+        transition: "background 0.2s"
+      },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+        position: "absolute",
+        top: 3,
+        left: value ? 21 : 3,
+        width: 20,
+        height: 20,
+        borderRadius: "50%",
+        background: value ? "#fff" : "#888",
+        transition: "left 0.2s, background 0.2s",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.4)"
+      } })
+    }
+  );
+}
+function NumInput({ value, min, max, step = 1, onChange }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "input",
+    {
+      type: "number",
+      value,
+      min,
+      max,
+      step,
+      onChange: (e) => onChange(Number(e.target.value)),
+      style: {
+        width: 72,
+        padding: "5px 10px",
+        fontSize: 13,
+        background: "#222",
+        color: "#ccc",
+        border: "1px solid #333",
+        borderRadius: 8,
+        outline: "none",
+        textAlign: "right",
+        fontFamily: "monospace"
+      }
+    }
+  );
+}
+function TextInput({ value, onChange, width = 240 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "input",
+    {
+      type: "text",
+      value,
+      onChange: (e) => onChange(e.target.value),
+      style: {
+        width,
+        padding: "5px 10px",
+        fontSize: 12,
+        background: "#222",
+        color: "#ccc",
+        border: "1px solid #333",
+        borderRadius: 8,
+        outline: "none",
+        fontFamily: "monospace"
+      }
+    }
+  );
+}
+function ColorSwatch({ value, onChange }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "relative" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          style: { width: 28, height: 28, borderRadius: 6, background: value, cursor: "pointer", border: "1px solid #444" },
+          onClick: (e) => e.currentTarget.nextSibling?.click()
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          type: "color",
+          value,
+          onChange: (e) => onChange(e.target.value),
+          style: { position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, color: "#555", fontFamily: "monospace" }, children: value })
+  ] });
+}
+function SettingRow({ label, description, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: "#161616",
+    borderRadius: 10,
+    padding: "14px 16px",
+    marginBottom: 8,
+    gap: 16
+  }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 14, color: "#e0e0e0", fontWeight: 500, marginBottom: description ? 3 : 0 }, children: label }),
+      description && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, color: "#555" }, children: description })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flexShrink: 0 }, children })
+  ] });
+}
+function SectionLabel({ label }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "#555",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    marginTop: 20,
+    marginBottom: 8,
+    paddingLeft: 2
+  }, children: label });
+}
+function SettingsPanel({ onClose, onSettingsChange, workspaces = [] }) {
+  const [settings, setSettings] = reactExports.useState(DEFAULT_SETTINGS);
+  const [section, setSection] = reactExports.useState("canvas");
+  const [mcpConfig, setMcpConfig] = reactExports.useState(null);
+  const [mcpSaved, setMcpSaved] = reactExports.useState(false);
+  const [addingServer, setAddingServer] = reactExports.useState(false);
+  const [newServer, setNewServer] = reactExports.useState({ name: "", url: "", cmd: "", description: "" });
+  const [expandedServer, setExpandedServer] = reactExports.useState(null);
+  const [workspaceServers, setWorkspaceServers] = reactExports.useState({});
+  const [activeWorkspaceId, setActiveWorkspaceId] = reactExports.useState(null);
+  reactExports.useEffect(() => {
+    window.electron.settings?.get().then((s15) => {
+      if (s15) setSettings(withDefaultSettings(s15));
+    });
+    window.electron.mcp?.getConfig?.().then((cfg) => {
+      if (cfg) setMcpConfig(cfg);
+    });
+  }, []);
+  reactExports.useEffect(() => {
+    if (section !== "mcp") return;
+    Promise.all(
+      workspaces.map(async (ws2) => {
+        const servers = await window.electron.mcp?.getWorkspaceServers?.(ws2.id) ?? {};
+        return [ws2.id, servers];
+      })
+    ).then((entries) => {
+      setWorkspaceServers(Object.fromEntries(entries));
+      if (!activeWorkspaceId && workspaces.length > 0) {
+        setActiveWorkspaceId(workspaces[0].id);
+      }
+    });
+  }, [section, workspaces]);
+  const saveMcpServers = reactExports.useCallback(async (servers) => {
+    const cfg = await window.electron.mcp?.saveServers?.(servers);
+    if (cfg) {
+      setMcpConfig(cfg);
+      setMcpSaved(true);
+      setTimeout(() => setMcpSaved(false), 2e3);
+    }
+  }, []);
+  const updateServer = reactExports.useCallback((name, patch) => {
+    if (!mcpConfig) return;
+    const servers = { ...mcpConfig.mcpServers };
+    servers[name] = { ...servers[name], ...patch };
+    const { collaborator: _2, ...rest } = servers;
+    saveMcpServers(rest);
+  }, [mcpConfig, saveMcpServers]);
+  const removeServer = reactExports.useCallback((name) => {
+    if (!mcpConfig) return;
+    const { collaborator: _2, [name]: __, ...rest } = mcpConfig.mcpServers;
+    saveMcpServers(rest);
+  }, [mcpConfig, saveMcpServers]);
+  const addServer = reactExports.useCallback(() => {
+    if (!newServer.name.trim() || !mcpConfig) return;
+    const { collaborator: _2, ...rest } = mcpConfig.mcpServers;
+    const entry = {
+      ...newServer.url ? { url: newServer.url } : {},
+      ...newServer.cmd ? { cmd: newServer.cmd } : {},
+      ...newServer.description ? { description: newServer.description } : {},
+      enabled: true
+    };
+    saveMcpServers({ ...rest, [newServer.name.trim()]: entry });
+    setNewServer({ name: "", url: "", cmd: "", description: "" });
+    setAddingServer(false);
+  }, [newServer, mcpConfig, saveMcpServers]);
+  const saveWorkspaceServers = reactExports.useCallback(async (wsId, servers) => {
+    const saved = await window.electron.mcp?.saveWorkspaceServers?.(wsId, servers);
+    if (saved) setWorkspaceServers((prev) => ({ ...prev, [wsId]: saved }));
+  }, []);
+  const updateWorkspaceServer = reactExports.useCallback((wsId, name, patch) => {
+    const current = workspaceServers[wsId] ?? {};
+    saveWorkspaceServers(wsId, { ...current, [name]: { ...current[name], ...patch } });
+  }, [workspaceServers, saveWorkspaceServers]);
+  const removeWorkspaceServer = reactExports.useCallback((wsId, name) => {
+    const { [name]: _2, ...rest } = workspaceServers[wsId] ?? {};
+    saveWorkspaceServers(wsId, rest);
+  }, [workspaceServers, saveWorkspaceServers]);
+  const update = reactExports.useCallback((key, value) => {
+    setSettings((prev) => {
+      const next = { ...prev, [key]: value };
+      window.electron.settings?.set(next).then((saved) => {
+        if (saved) onSettingsChange(saved);
+      });
+      return next;
+    });
+  }, [onSettingsChange]);
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const active = SECTIONS.find((s15) => s15.id === section);
+  const renderContent = () => {
+    switch (section) {
+      case "canvas":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Display" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Background colour", description: "Canvas background color", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ColorSwatch, { value: settings.canvasBackground, onChange: (v3) => update("canvasBackground", v3) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Grid" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Grid size", description: "Snap grid size in pixels", children: /* @__PURE__ */ jsxRuntimeExports.jsx(NumInput, { value: settings.gridSize, min: 4, max: 80, onChange: (v3) => update("gridSize", v3) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Snap to grid", description: "Snap tiles to the grid when dragging", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Toggle, { value: settings.snapToGrid, onChange: (v3) => update("snapToGrid", v3) }) })
+        ] });
+      case "terminal":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Font" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Font size", description: "Terminal font size in points", children: /* @__PURE__ */ jsxRuntimeExports.jsx(NumInput, { value: settings.terminalFontSize, min: 8, max: 24, onChange: (v3) => update("terminalFontSize", v3) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Font family", description: "Font stack for terminals", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TextInput, { value: settings.terminalFontFamily, onChange: (v3) => update("terminalFontFamily", v3) }) })
+        ] });
+      case "sidebar":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Files" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Default sort", description: "Initial sort order for the file tree", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "select",
+            {
+              value: settings.sidebarDefaultSort,
+              onChange: (e) => update("sidebarDefaultSort", e.target.value),
+              style: { padding: "5px 10px", fontSize: 13, background: "#222", color: "#ccc", border: "1px solid #333", borderRadius: 8, outline: "none" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "name", children: "Name" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "type", children: "Type" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "ext", children: "Ext" })
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Ignored folders", description: "Comma-separated list of folders to hide", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            TextInput,
+            {
+              value: settings.sidebarIgnored.join(", "),
+              onChange: (v3) => update("sidebarIgnored", v3.split(",").map((s15) => s15.trim()).filter(Boolean)),
+              width: 280
+            }
+          ) })
+        ] });
+      case "tiles":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Default tile sizes" }),
+          ["terminal", "code", "note", "image", "kanban", "browser"].map((type) => /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: type.charAt(0).toUpperCase() + type.slice(1), description: "Default width × height", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              NumInput,
+              {
+                value: settings.defaultTileSizes[type].w,
+                min: 200,
+                max: 2e3,
+                onChange: (v3) => update("defaultTileSizes", { ...settings.defaultTileSizes, [type]: { ...settings.defaultTileSizes[type], w: v3 } })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#444", fontSize: 12 }, children: "×" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              NumInput,
+              {
+                value: settings.defaultTileSizes[type].h,
+                min: 100,
+                max: 2e3,
+                onChange: (v3) => update("defaultTileSizes", { ...settings.defaultTileSizes, [type]: { ...settings.defaultTileSizes[type], h: v3 } })
+              }
+            )
+          ] }) }, type))
+        ] });
+      case "behaviour":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Saving" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "Auto-save interval", description: "How often canvas state is written to disk (ms)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(NumInput, { value: settings.autoSaveIntervalMs, min: 100, max: 1e4, step: 100, onChange: (v3) => update("autoSaveIntervalMs", v3) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Interface" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingRow, { label: "UI font size", description: "Base font size for the interface", children: /* @__PURE__ */ jsxRuntimeExports.jsx(NumInput, { value: settings.uiFontSize, min: 10, max: 18, onChange: (v3) => update("uiFontSize", v3) }) })
+        ] });
+      case "mcp": {
+        const servers = mcpConfig?.mcpServers ?? {};
+        const userServers = Object.entries(servers).filter(([k2]) => k2 !== "collaborator");
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Server Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161616", borderRadius: 10, padding: "12px 16px", marginBottom: 8 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 7, height: 7, borderRadius: "50%", background: mcpConfig ? "#3fb950" : "#555", boxShadow: mcpConfig ? "0 0 6px #3fb950" : "none", flexShrink: 0 } }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 13, color: "#e0e0e0", fontWeight: 500 }, children: "collaborator" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, color: "#444", fontFamily: "monospace", marginLeft: "auto" }, children: "built-in" })
+            ] }),
+            mcpConfig && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 3 }, children: Object.entries(mcpConfig.endpoints ?? {}).map(([k2, v3]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8, alignItems: "center" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#444", fontFamily: "monospace", width: 50, flexShrink: 0 }, children: k2 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 10, color: "#3fb950", fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: v3 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => navigator.clipboard.writeText(v3),
+                  style: { fontSize: 9, color: "#444", background: "none", border: "none", cursor: "pointer", flexShrink: 0 },
+                  onMouseEnter: (e) => e.currentTarget.style.color = "#888",
+                  onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+                  children: "copy"
+                }
+              )
+            ] }, k2)) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: `Connected Servers${mcpSaved ? " — saved" : ""}` }),
+          userServers.map(([name, s15]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161616", borderRadius: 10, marginBottom: 6, overflow: "hidden" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "12px 16px" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  onClick: () => updateServer(name, { enabled: !(s15.enabled !== false) }),
+                  title: "Toggle enabled",
+                  style: { width: 7, height: 7, borderRadius: "50%", background: s15.enabled !== false ? "#3fb950" : "#333", flexShrink: 0, cursor: "pointer" }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 13, color: "#e0e0e0", fontWeight: 500 }, children: name }),
+                s15.description && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, color: "#555", marginTop: 1 }, children: s15.description }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#333", fontFamily: "monospace", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: s15.url ?? s15.cmd })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => setExpandedServer(expandedServer === name ? null : name),
+                  style: { background: "none", border: "none", color: "#444", cursor: "pointer", display: "flex", alignItems: "center" },
+                  onMouseEnter: (e) => e.currentTarget.style.color = "#888",
+                  onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+                  children: expandedServer === name ? /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 14 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 14 })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => removeServer(name),
+                  style: { background: "none", border: "none", color: "#333", cursor: "pointer", display: "flex", alignItems: "center" },
+                  onMouseEnter: (e) => e.currentTarget.style.color = "#f44747",
+                  onMouseLeave: (e) => e.currentTarget.style.color = "#333",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 13 })
+                }
+              )
+            ] }),
+            expandedServer === name && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { borderTop: "1px solid #1f1f1f", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#444", fontFamily: "monospace", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase" }, children: "URL" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    value: s15.url ?? "",
+                    onChange: (e) => updateServer(name, { url: e.target.value || void 0, cmd: void 0 }),
+                    placeholder: "http://localhost:3000",
+                    style: { width: "100%", padding: "6px 10px", fontSize: 12, background: "#111", color: "#ccc", border: "1px solid #2a2a2a", borderRadius: 6, outline: "none", fontFamily: "monospace", boxSizing: "border-box" }
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#444", fontFamily: "monospace", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase" }, children: "Stdio Command" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    value: s15.cmd ?? "",
+                    onChange: (e) => updateServer(name, { cmd: e.target.value || void 0, url: void 0 }),
+                    placeholder: "npx @modelcontextprotocol/server-name",
+                    style: { width: "100%", padding: "6px 10px", fontSize: 12, background: "#111", color: "#ccc", border: "1px solid #2a2a2a", borderRadius: 6, outline: "none", fontFamily: "monospace", boxSizing: "border-box" }
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#444", fontFamily: "monospace", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase" }, children: "Description" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    value: s15.description ?? "",
+                    onChange: (e) => updateServer(name, { description: e.target.value }),
+                    placeholder: "What does this server provide?",
+                    style: { width: "100%", padding: "6px 10px", fontSize: 12, background: "#111", color: "#ccc", border: "1px solid #2a2a2a", borderRadius: 6, outline: "none", boxSizing: "border-box" }
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, color: "#e0e0e0" }, children: "Enabled" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Toggle, { value: s15.enabled !== false, onChange: (v3) => updateServer(name, { enabled: v3 }) })
+              ] })
+            ] })
+          ] }, name)),
+          addingServer ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161616", borderRadius: 10, padding: "14px 16px", marginTop: 4 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "New Server" }),
+            [
+              { key: "name", label: "Name", placeholder: "my-server", mono: false },
+              { key: "url", label: "URL", placeholder: "http://localhost:3000", mono: true },
+              { key: "cmd", label: "Stdio Command", placeholder: "npx @modelcontextprotocol/server-name", mono: true },
+              { key: "description", label: "Description", placeholder: "What does this server do?", mono: false }
+            ].map((f) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: 10 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#444", fontFamily: "monospace", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase" }, children: f.label }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  value: newServer[f.key],
+                  onChange: (e) => setNewServer((p) => ({ ...p, [f.key]: e.target.value })),
+                  placeholder: f.placeholder,
+                  style: { width: "100%", padding: "6px 10px", fontSize: 12, background: "#111", color: "#ccc", border: "1px solid #2a2a2a", borderRadius: 6, outline: "none", fontFamily: f.mono ? "monospace" : "inherit", boxSizing: "border-box" }
+                }
+              )
+            ] }, f.key)),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8, marginTop: 4 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: addServer,
+                  style: { flex: 1, padding: "7px 0", borderRadius: 8, background: "#fff", color: "#000", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+                  children: "Add Server"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => setAddingServer(false),
+                  style: { padding: "7px 16px", borderRadius: 8, background: "#222", color: "#666", border: "1px solid #333", fontSize: 13, cursor: "pointer" },
+                  children: "Cancel"
+                }
+              )
+            ] })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              onClick: () => setAddingServer(true),
+              style: {
+                width: "100%",
+                marginTop: 4,
+                padding: "10px 0",
+                borderRadius: 10,
+                background: "transparent",
+                border: "1px dashed #2a2a2a",
+                color: "#555",
+                fontSize: 13,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6
+              },
+              onMouseEnter: (e) => {
+                e.currentTarget.style.borderColor = "#4a9eff44";
+                e.currentTarget.style.color = "#4a9eff";
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.color = "#555";
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
+                " Add MCP Server"
+              ]
+            }
+          ),
+          workspaces.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { label: "Workspace Servers" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, color: "#444", marginBottom: 10 }, children: "MCP servers scoped to a specific workspace — only active when that workspace is open." }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap" }, children: workspaces.map((ws2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                onClick: () => setActiveWorkspaceId(ws2.id),
+                style: {
+                  padding: "4px 12px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  background: activeWorkspaceId === ws2.id ? "#fff" : "#161616",
+                  color: activeWorkspaceId === ws2.id ? "#000" : "#666",
+                  border: `1px solid ${activeWorkspaceId === ws2.id ? "#fff" : "#2a2a2a"}`,
+                  fontWeight: activeWorkspaceId === ws2.id ? 600 : 400
+                },
+                children: [
+                  ws2.name,
+                  Object.keys(workspaceServers[ws2.id] ?? {}).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { marginLeft: 6, fontSize: 10, color: activeWorkspaceId === ws2.id ? "#555" : "#444" }, children: Object.keys(workspaceServers[ws2.id]).length })
+                ]
+              },
+              ws2.id
+            )) }),
+            activeWorkspaceId && (() => {
+              const wsServers = workspaceServers[activeWorkspaceId] ?? {};
+              const ws2 = workspaces.find((w) => w.id === activeWorkspaceId);
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#333", fontFamily: "monospace", marginBottom: 8 }, children: ws2.path }),
+                Object.entries(wsServers).map(([name, s15]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#161616", borderRadius: 10, marginBottom: 6, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      onClick: () => updateWorkspaceServer(activeWorkspaceId, name, { enabled: !(s15.enabled !== false) }),
+                      style: { width: 7, height: 7, borderRadius: "50%", background: s15.enabled !== false ? "#3fb950" : "#333", flexShrink: 0, cursor: "pointer" }
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 13, color: "#e0e0e0", fontWeight: 500 }, children: name }),
+                    s15.description && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, color: "#555", marginTop: 1 }, children: s15.description }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#333", fontFamily: "monospace", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: s15.url ?? s15.cmd })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      onClick: () => removeWorkspaceServer(activeWorkspaceId, name),
+                      style: { background: "none", border: "none", color: "#333", cursor: "pointer" },
+                      onMouseEnter: (e) => e.currentTarget.style.color = "#f44747",
+                      onMouseLeave: (e) => e.currentTarget.style.color = "#333",
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 13 })
+                    }
+                  )
+                ] }, name)),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
+                  {
+                    onClick: () => {
+                      const name = prompt("Server name:");
+                      const cmd = prompt("Stdio command (or leave empty for URL):");
+                      const url = cmd ? void 0 : prompt("URL:") ?? void 0;
+                      const desc = prompt("Description (optional):") ?? "";
+                      if (name) saveWorkspaceServers(activeWorkspaceId, { ...wsServers, [name]: { cmd: cmd || void 0, url, description: desc, enabled: true } });
+                    },
+                    style: {
+                      width: "100%",
+                      padding: "10px 0",
+                      borderRadius: 10,
+                      background: "transparent",
+                      border: "1px dashed #2a2a2a",
+                      color: "#555",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6
+                    },
+                    onMouseEnter: (e) => {
+                      e.currentTarget.style.borderColor = "#4a9eff44";
+                      e.currentTarget.style.color = "#4a9eff";
+                    },
+                    onMouseLeave: (e) => {
+                      e.currentTarget.style.borderColor = "#2a2a2a";
+                      e.currentTarget.style.color = "#555";
+                    },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
+                      " Add to ",
+                      ws2.name
+                    ]
+                  }
+                )
+              ] });
+            })()
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 20, padding: "14px 16px", background: "#0d0d0d", borderRadius: 10, border: "1px solid #1a1a1a", display: "flex", flexDirection: "column", gap: 10 }, children: [
+            [
+              { label: "Global config", path: "~/clawd-collab/mcp-server.json" },
+              { label: "Workspace servers", path: "~/clawd-collab/workspaces/<id>/mcp-servers.json" },
+              { label: "Merged config (point agents here)", path: "~/clawd-collab/workspaces/<id>/mcp-merged.json", highlight: true }
+            ].map((row) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 10, color: "#444", fontFamily: "monospace", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }, children: row.label }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("code", { style: { fontSize: 11, color: row.highlight ? "#4a9eff" : "#555", fontFamily: "monospace", flex: 1 }, children: row.path }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onClick: () => navigator.clipboard.writeText(row.path),
+                    style: { fontSize: 10, color: "#333", background: "none", border: "none", cursor: "pointer", flexShrink: 0 },
+                    onMouseEnter: (e) => e.currentTarget.style.color = "#888",
+                    onMouseLeave: (e) => e.currentTarget.style.color = "#333",
+                    children: "copy"
+                  }
+                )
+              ] })
+            ] }, row.label)),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { marginTop: 4, padding: "8px 10px", background: "#111", borderRadius: 6, border: "1px solid #1f1f1f" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, color: "#555" }, children: "The merged config combines global + workspace servers into one file. Point Claude Code, Cursor, or any MCP client at the merged path for the active workspace." }) })
+          ] })
+        ] });
+      }
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      style: {
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        background: "rgba(0,0,0,0.7)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      },
+      onClick: (e) => {
+        if (e.target === e.currentTarget) onClose();
+      },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+        width: 720,
+        height: 580,
+        background: "#111",
+        borderRadius: 14,
+        border: "1px solid #222",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
+        display: "flex",
+        overflow: "hidden"
+      }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+          width: 200,
+          background: "#0d0d0d",
+          borderRight: "1px solid #1a1a1a",
+          display: "flex",
+          flexDirection: "column",
+          padding: "20px 0",
+          flexShrink: 0
+        }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "0 16px 16px" }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              onClick: onClose,
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+                color: "#444"
+              },
+              onMouseEnter: (e) => e.currentTarget.style.color = "#888",
+              onMouseLeave: (e) => e.currentTarget.style.color = "#444",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  border: "1.5px solid currentColor",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  lineHeight: 1
+                }, children: "×" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11 }, children: "esc" })
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "8px 16px 20px", display: "flex", alignItems: "center", gap: 10 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { size: 18, color: "#fff" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 17, fontWeight: 700, color: "#fff" }, children: "Settings" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1 }, children: SECTIONS.map((s15) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              onClick: () => setSection(s15.id),
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 16px",
+                cursor: "pointer",
+                color: section === s15.id ? "#fff" : "#555",
+                background: section === s15.id ? "rgba(255,255,255,0.06)" : "transparent",
+                fontSize: 14,
+                userSelect: "none",
+                transition: "color 0.1s"
+              },
+              onMouseEnter: (e) => {
+                if (section !== s15.id) e.currentTarget.style.color = "#888";
+              },
+              onMouseLeave: (e) => {
+                if (section !== s15.id) e.currentTarget.style.color = "#555";
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { opacity: section === s15.id ? 1 : 0.5 }, children: s15.icon }),
+                s15.label
+              ]
+            },
+            s15.id
+          )) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { padding: "0 16px", fontSize: 11, color: "#333" }, children: "v0.1.0" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "28px 28px 0" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 4 }, children: active.label }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 14, color: "#555" }, children: active.description })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, overflowY: "auto", padding: "4px 28px 28px" }, children: renderContent() })
+        ] })
+      ] })
+    }
+  );
+}
 const GRID = 20;
-const snap = (v3) => Math.round(v3 / GRID) * GRID;
+const snap = (v3, grid = GRID) => Math.round(v3 / grid) * grid;
 function extToType(filePath) {
   const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
   if (["ts", "tsx", "js", "jsx", "json", "py", "rs", "go", "cpp", "c", "java", "css", "html", "sh", "bash", "yaml", "yml", "toml", "xml"].includes(ext)) return "code";
@@ -22181,37 +26386,82 @@ function extToType(filePath) {
 }
 function App() {
   const [tiles, setTiles] = reactExports.useState([]);
+  const [groups, setGroups] = reactExports.useState([]);
   const [viewport, setViewport] = reactExports.useState({ tx: 0, ty: 0, zoom: 1 });
   const [nextZIndex, setNextZIndex] = reactExports.useState(1);
   const [selectedTileId, setSelectedTileId] = reactExports.useState(null);
+  const [selectedTileIds, setSelectedTileIds] = reactExports.useState(/* @__PURE__ */ new Set());
   const [workspace, setWorkspace] = reactExports.useState(null);
   const [workspaces, setWorkspaces] = reactExports.useState([]);
   const [dragState, setDragState] = reactExports.useState({ type: null });
+  const [showMCP, setShowMCP] = reactExports.useState(false);
+  const [showSettings, setShowSettings] = reactExports.useState(false);
+  const [showMinimap, setShowMinimap] = reactExports.useState(false);
+  const [expandedTileId, setExpandedTileId] = reactExports.useState(null);
+  const [settings, setSettings] = reactExports.useState(DEFAULT_SETTINGS);
+  const [sidebarCollapsed, setSidebarCollapsed] = reactExports.useState(false);
+  const [guides, setGuides] = reactExports.useState([]);
+  const clipboard = reactExports.useRef([]);
+  const isCut = reactExports.useRef(false);
+  const pasteOffset = reactExports.useRef(0);
+  const pasteTargetGroupId = reactExports.useRef(void 0);
+  const pasteTilesRef = reactExports.useRef(() => {
+  });
+  const duplicateTilesRef = reactExports.useRef(() => {
+  });
+  const copyTilesRef = reactExports.useRef(() => {
+  });
+  const groupSelectedTilesRef = reactExports.useRef(() => {
+  });
+  const groupBoundsRef = reactExports.useRef(() => null);
+  const ungroupTilesRef = reactExports.useRef(() => {
+  });
+  const ungroupAllRef = reactExports.useRef(() => {
+  });
+  const historyBack = reactExports.useRef([]);
+  const historyForward = reactExports.useRef([]);
+  const tilesRef = reactExports.useRef(tiles);
+  const groupsRef = reactExports.useRef(groups);
+  tilesRef.current = tiles;
+  groupsRef.current = groups;
+  const [ctxMenu, setCtxMenu] = reactExports.useState(null);
+  const closeCtx = reactExports.useCallback(() => setCtxMenu(null), []);
   const canvasRef = reactExports.useRef(null);
   const saveTimer = reactExports.useRef(null);
   const spaceHeld = reactExports.useRef(false);
+  const skipHistory = reactExports.useRef(false);
   reactExports.useEffect(() => {
     async function init2() {
       if (!window.electron) {
         console.warn("window.electron not available — preload may not have loaded");
         return;
       }
-      const [wsList, active] = await Promise.all([
+      const [wsList, active, savedSettings] = await Promise.all([
         window.electron.workspace.list(),
-        window.electron.workspace.getActive()
+        window.electron.workspace.getActive(),
+        window.electron.settings?.get()
       ]);
+      if (savedSettings) setSettings(withDefaultSettings(savedSettings));
       setWorkspaces(wsList);
       setWorkspace(active);
       if (active) {
         const saved = await window.electron.canvas.load(active.id);
         if (saved) {
           setTiles(saved.tiles ?? []);
+          setGroups(saved.groups ?? []);
           setViewport(saved.viewport ? { tx: saved.viewport.tx, ty: saved.viewport.ty, zoom: saved.viewport.zoom } : { tx: 0, ty: 0, zoom: 1 });
           setNextZIndex(saved.nextZIndex ?? 1);
         }
       }
     }
     init2();
+  }, []);
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") setExpandedTileId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
   reactExports.useEffect(() => {
     const onKey = (e) => {
@@ -22237,11 +26487,17 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const saveCanvas = reactExports.useCallback((tileList, vp, nz) => {
+  const saveCanvas = reactExports.useCallback((tileList, vp, nz, grps) => {
     if (!workspace) return;
+    const resolvedGroups = grps ?? groupsRef.current;
+    if (!skipHistory.current) {
+      historyBack.current.push({ tiles: tileList, groups: resolvedGroups });
+      if (historyBack.current.length > 50) historyBack.current.shift();
+      historyForward.current = [];
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      const state = { tiles: tileList, viewport: vp, nextZIndex: nz };
+      const state = { tiles: tileList, groups: resolvedGroups, viewport: vp, nextZIndex: nz };
       window.electron.canvas.save(workspace.id, state);
     }, 500);
   }, [workspace]);
@@ -22260,12 +26516,7 @@ function App() {
   }, [screenToWorld]);
   const addTile = reactExports.useCallback((type, filePath, pos) => {
     const center = pos ?? viewportCenter();
-    const defaultSizes = {
-      terminal: { w: 600, h: 400 },
-      code: { w: 680, h: 500 },
-      note: { w: 500, h: 400 },
-      image: { w: 440, h: 360 }
-    };
+    const defaultSizes = settings.defaultTileSizes;
     const { w, h: h2 } = defaultSizes[type];
     const newTile = {
       id: `tile-${Date.now()}`,
@@ -22284,6 +26535,34 @@ function App() {
     setSelectedTileId(newTile.id);
     saveCanvas(updated, viewport, newNZ);
   }, [tiles, nextZIndex, viewport, viewportCenter, saveCanvas]);
+  reactExports.useEffect(() => {
+    const el2 = window.electron?.mcp;
+    if (!el2?.onKanban) return;
+    const cleanup = el2.onKanban((event, data) => {
+      if (event === "canvas_create_tile") {
+        addTile(data.type ?? "note", data.filePath, data.x !== void 0 ? { x: data.x, y: data.y } : void 0);
+      }
+      if (event === "canvas_open_file") {
+        addTile(extToType(data.path), data.path);
+      }
+      if (event === "canvas_pan_to") {
+        setViewport((prev) => ({ ...prev, tx: data.x, ty: data.y }));
+      }
+      if (event === "canvas_list_tiles") {
+        const tileList = tiles.map((t) => ({ id: t.id, type: t.type, filePath: t.filePath, x: t.x, y: t.y }));
+        window.electron?.mcp?.getPort?.().then((port) => {
+          if (!port) return;
+          fetch(`http://127.0.0.1:${port}/push`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ card_id: "global", event: "canvas_tiles_response", data: { tiles: tileList } })
+          }).catch(() => {
+          });
+        });
+      }
+    });
+    return cleanup;
+  }, [tiles, addTile]);
   const closeTile = reactExports.useCallback((id) => {
     const updated = tiles.filter((t) => t.id !== id);
     setTiles(updated);
@@ -22292,15 +26571,31 @@ function App() {
   }, [tiles, selectedTileId, viewport, nextZIndex, saveCanvas]);
   const bringToFront = reactExports.useCallback((id) => {
     const nz = nextZIndex;
-    setTiles((prev) => prev.map((t) => t.id === id ? { ...t, zIndex: nz } : t));
+    setTiles((prev) => {
+      const tile = prev.find((t) => t.id === id);
+      pasteTargetGroupId.current = tile?.groupId;
+      return prev.map((t) => t.id === id ? { ...t, zIndex: nz } : t);
+    });
     setNextZIndex((n) => n + 1);
     setSelectedTileId(id);
   }, [nextZIndex]);
   const handleCanvasMouseDown = reactExports.useCallback((e) => {
+    const t = e.target;
+    if (t.closest("[data-tile-chrome]")) return;
+    e.preventDefault();
     const isPan = e.button === 1 || e.button === 0 && (e.metaKey || spaceHeld.current);
     if (isPan) {
-      e.preventDefault();
       setDragState({ type: "pan", startX: e.clientX, startY: e.clientY, initTx: viewport.tx, initTy: viewport.ty });
+      setSelectedTileId(null);
+      return;
+    }
+    if (e.button === 0) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const wx = (e.clientX - rect.left - viewport.tx) / viewport.zoom;
+      const wy = (e.clientY - rect.top - viewport.ty) / viewport.zoom;
+      setDragState({ type: "select", startWx: wx, startWy: wy, curWx: wx, curWy: wy });
+      setSelectedTileIds(/* @__PURE__ */ new Set());
       setSelectedTileId(null);
     }
   }, [viewport]);
@@ -22308,16 +26603,111 @@ function App() {
     const world = screenToWorld(e.clientX, e.clientY);
     addTile("terminal", void 0, world);
   }, [screenToWorld, addTile]);
+  const handleCanvasContextMenu = reactExports.useCallback((e) => {
+    e.preventDefault();
+    const world = screenToWorld(e.clientX, e.clientY);
+    const hitGroup = groups.find((g) => {
+      const b2 = groupBoundsRef.current(g.id);
+      return b2 && world.x >= b2.x && world.x <= b2.x + b2.w && world.y >= b2.y && world.y <= b2.y + b2.h;
+    });
+    const items = [
+      { label: "New Terminal", action: () => addTile("terminal", void 0, world) },
+      { label: "New Note", action: () => addTile("note", void 0, world) },
+      { label: "New Browser", action: () => addTile("browser", void 0, world) },
+      { label: "New Board", action: () => addTile("kanban", void 0, world) }
+    ];
+    if (clipboard.current.length > 0) {
+      items.push({ label: "", action: () => {
+      }, divider: true });
+      items.push({ label: "Paste", action: () => pasteTilesRef.current(world) });
+      if (hitGroup) {
+        items.push({ label: "Paste into group", action: () => pasteTilesRef.current(world, hitGroup.id) });
+      }
+    }
+    if (selectedTileIds.size >= 2) {
+      items.push({ label: "", action: () => {
+      }, divider: true });
+      items.push({ label: `Group ${selectedTileIds.size} tiles`, action: () => groupSelectedTilesRef.current() });
+    }
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [screenToWorld, addTile, selectedTileIds, groups]);
+  const handleTileContextMenu = reactExports.useCallback((e, tile) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items = [
+      { label: "Duplicate", action: () => duplicateTilesRef.current([tile.id]) },
+      { label: "Copy", action: () => {
+        setSelectedTileId(tile.id);
+        setSelectedTileIds(/* @__PURE__ */ new Set());
+        copyTilesRef.current(false);
+      } },
+      { label: "Cut", action: () => {
+        setSelectedTileId(tile.id);
+        setSelectedTileIds(/* @__PURE__ */ new Set());
+        copyTilesRef.current(true);
+      } }
+    ];
+    if (clipboard.current.length > 0) {
+      items.push({ label: "", action: () => {
+      }, divider: true });
+      items.push({ label: "Paste", action: () => pasteTilesRef.current() });
+      if (tile.groupId) {
+        items.push({ label: "Paste into this group", action: () => pasteTilesRef.current(void 0, tile.groupId) });
+      }
+    }
+    items.push({ label: "", action: () => {
+    }, divider: true });
+    if (tile.groupId) {
+      items.push({ label: "Remove from group", action: () => {
+        setTiles((prev) => {
+          const updated = prev.map((t) => t.id === tile.id ? { ...t, groupId: void 0 } : t);
+          saveCanvas(updated, viewport, nextZIndex);
+          return updated;
+        });
+      } });
+      items.push({ label: "Ungroup", action: () => ungroupTilesRef.current(tile.groupId) });
+      items.push({ label: "Ungroup All", action: () => ungroupAllRef.current(tile.groupId) });
+      items.push({ label: "", action: () => {
+      }, divider: true });
+    }
+    const availableGroups = groups.filter((g) => g.id !== tile.groupId);
+    if (availableGroups.length > 0) {
+      availableGroups.forEach((g) => {
+        items.push({
+          label: `Add to ${g.label ?? g.id.slice(-6)}`,
+          action: () => {
+            setTiles((prev) => {
+              const updated = prev.map((t) => t.id === tile.id ? { ...t, groupId: g.id } : t);
+              saveCanvas(updated, viewport, nextZIndex);
+              return updated;
+            });
+          }
+        });
+      });
+      items.push({ label: "", action: () => {
+      }, divider: true });
+    }
+    items.push({ label: "Close", action: () => closeTile(tile.id), danger: true });
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [closeTile, groups, viewport, nextZIndex, saveCanvas]);
   const handleTileMouseDown = reactExports.useCallback((e, tile) => {
     e.stopPropagation();
     bringToFront(tile.id);
+    const groupSnapshots = [];
+    if (tile.groupId) {
+      setTiles((prev) => {
+        prev.filter((t) => t.groupId === tile.groupId && t.id !== tile.id).forEach((t) => groupSnapshots.push({ id: t.id, x: t.x, y: t.y }));
+        return prev;
+      });
+    }
     setDragState({
       type: "tile",
       tileId: tile.id,
       startX: e.clientX,
       startY: e.clientY,
       initX: tile.x,
-      initY: tile.y
+      initY: tile.y,
+      groupSnapshots
     });
   }, [bringToFront]);
   const handleResizeMouseDown = reactExports.useCallback((e, tile, dir) => {
@@ -22342,12 +26732,104 @@ function App() {
       const dy = e.clientY - dragState.startY;
       if (dragState.type === "pan") {
         setViewport((prev) => ({ ...prev, tx: dragState.initTx + dx, ty: dragState.initTy + dy }));
+      } else if (dragState.type === "group-resize") {
+        const wdx = dx / viewport.zoom;
+        const wdy = dy / viewport.zoom;
+        const { dir, initBounds: ib, snapshots: snaps } = dragState;
+        let nx = ib.x, ny = ib.y, nw = ib.w, nh = ib.h;
+        if (dir.includes("e")) nw = Math.max(100, ib.w + wdx);
+        if (dir.includes("s")) nh = Math.max(100, ib.h + wdy);
+        if (dir.includes("w")) {
+          nw = Math.max(100, ib.w - wdx);
+          nx = ib.x + ib.w - nw;
+        }
+        if (dir.includes("n")) {
+          nh = Math.max(100, ib.h - wdy);
+          ny = ib.y + ib.h - nh;
+        }
+        const scaleX = nw / ib.w;
+        const scaleY = nh / ib.h;
+        setTiles((prev) => prev.map((t) => {
+          const s15 = snaps.find((s22) => s22.id === t.id);
+          if (!s15) return t;
+          const relX = s15.x - ib.x;
+          const relY = s15.y - ib.y;
+          return {
+            ...t,
+            x: snap(nx + relX * scaleX),
+            y: snap(ny + relY * scaleY),
+            width: Math.max(120, snap(s15.width * scaleX)),
+            height: Math.max(80, snap(s15.height * scaleY))
+          };
+        }));
+      } else if (dragState.type === "group") {
+        const wdx = dx / viewport.zoom;
+        const wdy = dy / viewport.zoom;
+        setTiles((prev) => prev.map((t) => {
+          const snap2 = dragState.snapshots.find((s15) => s15.id === t.id);
+          if (!snap2) return t;
+          return { ...t, x: snap(snap2.x + wdx), y: snap(snap2.y + wdy) };
+        }));
+      } else if (dragState.type === "select") {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const curWx = (e.clientX - rect.left - viewport.tx) / viewport.zoom;
+        const curWy = (e.clientY - rect.top - viewport.ty) / viewport.zoom;
+        setDragState((prev) => prev.type === "select" ? { ...prev, curWx, curWy } : prev);
       } else if (dragState.type === "tile") {
         const wdx = dx / viewport.zoom;
         const wdy = dy / viewport.zoom;
-        setTiles((prev) => prev.map(
-          (t) => t.id === dragState.tileId ? { ...t, x: snap(dragState.initX + wdx), y: snap(dragState.initY + wdy) } : t
-        ));
+        const newX = snap(dragState.initX + wdx);
+        const newY = snap(dragState.initY + wdy);
+        const ddx = newX - dragState.initX;
+        const ddy = newY - dragState.initY;
+        setTiles((prev) => {
+          const dragging = prev.find((t) => t.id === dragState.tileId);
+          if (!dragging) return prev;
+          const others = prev.filter((t) => t.id !== dragState.tileId && !dragState.groupSnapshots.find((g) => g.id === t.id));
+          const w = dragging.width;
+          const h2 = dragging.height;
+          const THRESH = 6;
+          const newGuides = [];
+          for (const o2 of others) {
+            const dx_checks = [
+              [newX, o2.x],
+              [newX, o2.x + o2.width / 2 - w / 2],
+              [newX, o2.x + o2.width - w],
+              [newX + w / 2, o2.x + o2.width / 2],
+              [newX + w, o2.x],
+              [newX + w, o2.x + o2.width]
+            ];
+            for (const [a, b2] of dx_checks) {
+              if (Math.abs(a - b2) < THRESH) newGuides.push({ x: b2 });
+            }
+            const dy_checks = [
+              [newY, o2.y],
+              [newY, o2.y + o2.height / 2 - h2 / 2],
+              [newY, o2.y + o2.height - h2],
+              [newY + h2 / 2, o2.y + o2.height / 2],
+              [newY + h2, o2.y],
+              [newY + h2, o2.y + o2.height]
+            ];
+            for (const [a, b2] of dy_checks) {
+              if (Math.abs(a - b2) < THRESH) newGuides.push({ y: b2 });
+            }
+          }
+          const seen2 = /* @__PURE__ */ new Set();
+          const dedupedGuides = newGuides.filter((g) => {
+            const k2 = g.x !== void 0 ? `x:${g.x}` : `y:${g.y}`;
+            if (seen2.has(k2)) return false;
+            seen2.add(k2);
+            return true;
+          });
+          setGuides(dedupedGuides);
+          return prev.map((t) => {
+            if (t.id === dragState.tileId) return { ...t, x: newX, y: newY };
+            const snap2 = dragState.groupSnapshots.find((g) => g.id === t.id);
+            if (snap2) return { ...t, x: snap(snap2.x + ddx), y: snap(snap2.y + ddy) };
+            return t;
+          });
+        });
       } else if (dragState.type === "resize") {
         const wdx = dx / viewport.zoom;
         const wdy = dy / viewport.zoom;
@@ -22370,12 +26852,72 @@ function App() {
       }
     };
     const onUp = () => {
-      if (dragState.type === "tile" || dragState.type === "resize") {
+      if (dragState.type === "tile") {
+        setTiles((prev) => {
+          const tile = prev.find((t) => t.id === dragState.tileId);
+          if (!tile) {
+            saveCanvas(prev, viewport, nextZIndex);
+            return prev;
+          }
+          const didMove = tile.x !== dragState.initX || tile.y !== dragState.initY;
+          if (!didMove) {
+            saveCanvas(prev, viewport, nextZIndex);
+            return prev;
+          }
+          const tileCx = tile.x + tile.width / 2;
+          const tileCy = tile.y + tile.height / 2;
+          let newGroupId = tile.groupId;
+          for (const g of groups) {
+            if (g.id === tile.groupId) continue;
+            const b2 = groupBoundsRef.current(g.id);
+            if (b2 && tileCx >= b2.x && tileCx <= b2.x + b2.w && tileCy >= b2.y && tileCy <= b2.y + b2.h) {
+              newGroupId = g.id;
+              break;
+            }
+          }
+          if (tile.groupId && newGroupId === tile.groupId) {
+            const members = prev.filter((t) => t.groupId === tile.groupId && t.id !== tile.id);
+            if (members.length > 0) {
+              const PAD2 = 20;
+              const minX = Math.min(...members.map((t) => t.x)) - PAD2;
+              const minY = Math.min(...members.map((t) => t.y)) - PAD2;
+              const maxX = Math.max(...members.map((t) => t.x + t.width)) + PAD2;
+              const maxY = Math.max(...members.map((t) => t.y + t.height)) + PAD2;
+              const outside = tile.x + tile.width < minX || tile.x > maxX || tile.y + tile.height < minY || tile.y > maxY;
+              if (outside) newGroupId = void 0;
+            }
+          }
+          if (newGroupId !== tile.groupId) {
+            const updated = prev.map((t) => t.id === tile.id ? { ...t, groupId: newGroupId } : t);
+            saveCanvas(updated, viewport, nextZIndex);
+            return updated;
+          }
+          saveCanvas(prev, viewport, nextZIndex);
+          return prev;
+        });
+      } else if (dragState.type === "resize" || dragState.type === "group" || dragState.type === "group-resize") {
         setTiles((prev) => {
           saveCanvas(prev, viewport, nextZIndex);
           return prev;
         });
       }
+      if (dragState.type === "select") {
+        const minX = Math.min(dragState.startWx, dragState.curWx);
+        const maxX = Math.max(dragState.startWx, dragState.curWx);
+        const minY = Math.min(dragState.startWy, dragState.curWy);
+        const maxY = Math.max(dragState.startWy, dragState.curWy);
+        const size = Math.max(maxX - minX, maxY - minY);
+        if (size > 10) {
+          setTiles((prev) => {
+            const hit = new Set(
+              prev.filter((t) => t.x < maxX && t.x + t.width > minX && t.y < maxY && t.y + t.height > minY).map((t) => t.id)
+            );
+            setSelectedTileIds(hit);
+            return prev;
+          });
+        }
+      }
+      setGuides([]);
       setDragState({ type: null });
     };
     window.addEventListener("mousemove", onMove);
@@ -22413,10 +26955,12 @@ function App() {
       const saved = await window.electron.canvas.load(id);
       if (saved) {
         setTiles(saved.tiles ?? []);
+        setGroups(saved.groups ?? []);
         setViewport(saved.viewport ? { tx: saved.viewport.tx, ty: saved.viewport.ty, zoom: saved.viewport.zoom } : { tx: 0, ty: 0, zoom: 1 });
         setNextZIndex(saved.nextZIndex ?? 1);
       } else {
         setTiles([]);
+        setGroups([]);
         setViewport({ tx: 0, ty: 0, zoom: 1 });
         setNextZIndex(1);
       }
@@ -22432,6 +26976,309 @@ function App() {
   const handleOpenFile = reactExports.useCallback((filePath) => {
     addTile(extToType(filePath), filePath);
   }, [addTile]);
+  reactExports.useEffect(() => {
+    if (workspace) {
+      window.electron.mcp?.getMergedConfig?.(workspace.id);
+    }
+  }, [workspace?.id]);
+  const groupSelectedTiles = reactExports.useCallback(() => {
+    if (selectedTileIds.size < 2) return;
+    const groupId = `group-${Date.now()}`;
+    setGroups((prevGroups) => {
+      const childGroupIds = new Set(
+        prevGroups.filter((g) => {
+          const members = tiles.filter((t) => t.groupId === g.id);
+          return members.length > 0 && members.every((t) => selectedTileIds.has(t.id));
+        }).map((g) => g.id)
+      );
+      const updatedGroups = prevGroups.map(
+        (g) => childGroupIds.has(g.id) ? { ...g, parentGroupId: groupId } : g
+      );
+      const newGroup = { id: groupId };
+      const finalGroups = [...updatedGroups, newGroup];
+      setTiles((tPrev) => {
+        const updated = tPrev.map(
+          (t) => selectedTileIds.has(t.id) && !childGroupIds.has(t.groupId ?? "") ? { ...t, groupId } : t
+        );
+        saveCanvas(updated, viewport, nextZIndex, finalGroups);
+        return updated;
+      });
+      return finalGroups;
+    });
+    setSelectedTileIds(/* @__PURE__ */ new Set());
+  }, [selectedTileIds, tiles, viewport, nextZIndex, saveCanvas]);
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if ((e.metaKey || e.ctrlKey) && e.key === "g") {
+        e.preventDefault();
+        if (selectedTileIds.size >= 2) groupSelectedTiles();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedTileIds, groupSelectedTiles]);
+  const ungroupTiles = reactExports.useCallback((groupId) => {
+    setGroups((prevGroups) => {
+      const group = prevGroups.find((g) => g.id === groupId);
+      const parentId = group?.parentGroupId;
+      const updatedGroups = prevGroups.filter((g) => g.id !== groupId).map(
+        (g) => g.parentGroupId === groupId ? { ...g, parentGroupId: parentId } : g
+      );
+      setTiles((prev) => {
+        const updated = prev.map(
+          (t) => t.groupId === groupId ? { ...t, groupId: parentId } : t
+        );
+        saveCanvas(updated, viewport, nextZIndex, updatedGroups);
+        return updated;
+      });
+      return updatedGroups;
+    });
+  }, [viewport, nextZIndex, saveCanvas]);
+  const ungroupAll = reactExports.useCallback((groupId) => {
+    setGroups((prevGroups) => {
+      const toRemove = /* @__PURE__ */ new Set();
+      const collect = (id) => {
+        toRemove.add(id);
+        prevGroups.filter((g) => g.parentGroupId === id).forEach((g) => collect(g.id));
+      };
+      collect(groupId);
+      const updatedGroups = prevGroups.filter((g) => !toRemove.has(g.id));
+      setTiles((prev) => {
+        const updated = prev.map(
+          (t) => toRemove.has(t.groupId ?? "") ? { ...t, groupId: void 0 } : t
+        );
+        saveCanvas(updated, viewport, nextZIndex, updatedGroups);
+        return updated;
+      });
+      return updatedGroups;
+    });
+  }, [viewport, nextZIndex, saveCanvas]);
+  const getActiveTiles = reactExports.useCallback(() => {
+    return tiles.filter(
+      (t) => selectedTileIds.size > 0 ? selectedTileIds.has(t.id) : t.id === selectedTileId
+    );
+  }, [tiles, selectedTileIds, selectedTileId]);
+  const copyTiles = reactExports.useCallback((cut = false) => {
+    const active = getActiveTiles();
+    if (active.length === 0) return;
+    clipboard.current = active;
+    isCut.current = cut;
+    pasteOffset.current = 0;
+    pasteTargetGroupId.current = cut ? active[0]?.groupId : void 0;
+    if (cut) {
+      const ids = new Set(active.map((t) => t.id));
+      setTiles((prev) => {
+        const updated = prev.filter((t) => !ids.has(t.id));
+        saveCanvas(updated, viewport, nextZIndex);
+        return updated;
+      });
+      setSelectedTileId(null);
+      setSelectedTileIds(/* @__PURE__ */ new Set());
+    }
+  }, [getActiveTiles, viewport, nextZIndex, saveCanvas]);
+  const pasteTiles = reactExports.useCallback((pos, intoGroupId) => {
+    if (clipboard.current.length === 0) return;
+    if (pasteOffset.current > 10) pasteOffset.current = 0;
+    pasteOffset.current += 1;
+    const OFFSET = pasteOffset.current * 30;
+    const srcMinX = Math.min(...clipboard.current.map((t) => t.x));
+    const srcMinY = Math.min(...clipboard.current.map((t) => t.y));
+    const center = pos ?? viewportCenter();
+    const newNZ = nextZIndex + clipboard.current.length;
+    let targetGroup = intoGroupId ?? pasteTargetGroupId.current;
+    if (!targetGroup && pos) {
+      for (const g of groups) {
+        const b2 = groupBoundsRef.current(g.id);
+        if (b2 && pos.x >= b2.x && pos.x <= b2.x + b2.w && pos.y >= b2.y && pos.y <= b2.y + b2.h) {
+          targetGroup = g.id;
+          break;
+        }
+      }
+    }
+    const newTiles = clipboard.current.map((t, i) => ({
+      ...t,
+      id: `tile-${Date.now()}-${i}`,
+      x: pos ? snap(center.x + (t.x - srcMinX) - (Math.max(...clipboard.current.map((t2) => t2.x + t2.width)) - srcMinX) / 2) : snap(t.x + OFFSET),
+      y: pos ? snap(center.y + (t.y - srcMinY) - (Math.max(...clipboard.current.map((t2) => t2.y + t2.height)) - srcMinY) / 2) : snap(t.y + OFFSET),
+      zIndex: nextZIndex + i,
+      groupId: targetGroup
+    }));
+    setTiles((prev) => {
+      const updated = [...prev, ...newTiles];
+      saveCanvas(updated, viewport, newNZ);
+      return updated;
+    });
+    setNextZIndex(newNZ);
+    setSelectedTileIds(new Set(newTiles.map((t) => t.id)));
+    setSelectedTileId(null);
+  }, [viewport, nextZIndex, viewportCenter, saveCanvas, groups]);
+  const duplicateTiles = reactExports.useCallback((ids) => {
+    const targets = ids ? tiles.filter((t) => ids.includes(t.id)) : getActiveTiles();
+    if (targets.length === 0) return;
+    const newNZ = nextZIndex + targets.length;
+    const newTiles = targets.map((t, i) => ({
+      ...t,
+      id: `tile-${Date.now()}-${i}`,
+      x: snap(t.x + 40),
+      y: snap(t.y + 40),
+      zIndex: nextZIndex + i,
+      groupId: void 0
+    }));
+    setTiles((prev) => {
+      const updated = [...prev, ...newTiles];
+      saveCanvas(updated, viewport, newNZ);
+      return updated;
+    });
+    setNextZIndex(newNZ);
+    setSelectedTileIds(new Set(newTiles.map((t) => t.id)));
+    setSelectedTileId(null);
+  }, [tiles, getActiveTiles, viewport, nextZIndex, saveCanvas]);
+  const groupBounds = reactExports.useCallback((groupId) => {
+    const collectTileIds = (gid) => {
+      const direct = tiles.filter((t) => t.groupId === gid).map((t) => t.id);
+      const childGroups = groups.filter((g) => g.parentGroupId === gid);
+      return [...direct, ...childGroups.flatMap((g) => collectTileIds(g.id))];
+    };
+    const ids = new Set(collectTileIds(groupId));
+    const members = tiles.filter((t) => ids.has(t.id));
+    if (members.length === 0) return null;
+    const PAD2 = 20;
+    const minX = Math.min(...members.map((t) => t.x)) - PAD2;
+    const minY = Math.min(...members.map((t) => t.y)) - PAD2;
+    const maxX = Math.max(...members.map((t) => t.x + t.width)) + PAD2;
+    const maxY = Math.max(...members.map((t) => t.y + t.height)) + PAD2;
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }, [tiles, groups]);
+  const collectGroupTileIds = reactExports.useCallback((groupId) => {
+    const direct = tiles.filter((t) => t.groupId === groupId).map((t) => t.id);
+    const childGroups = groups.filter((g) => g.parentGroupId === groupId);
+    return [...direct, ...childGroups.flatMap((g) => collectGroupTileIds(g.id))];
+  }, [tiles, groups]);
+  pasteTilesRef.current = pasteTiles;
+  duplicateTilesRef.current = duplicateTiles;
+  copyTilesRef.current = copyTiles;
+  groupSelectedTilesRef.current = groupSelectedTiles;
+  groupBoundsRef.current = groupBounds;
+  ungroupTilesRef.current = ungroupTiles;
+  ungroupAllRef.current = ungroupAll;
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "c") {
+        e.preventDefault();
+        copyTiles(false);
+      }
+      if (mod && e.key === "x") {
+        e.preventDefault();
+        copyTiles(true);
+      }
+      if (mod && e.key === "v") {
+        e.preventDefault();
+        pasteTiles();
+      }
+      if (mod && e.key === "d") {
+        e.preventDefault();
+        duplicateTiles();
+      }
+      if ((e.key === "Backspace" || e.key === "Delete") && !mod) {
+        const active = selectedTileIds.size > 0 ? [...selectedTileIds] : selectedTileId ? [selectedTileId] : [];
+        if (active.length > 0) {
+          const ids = new Set(active);
+          setTiles((prev) => {
+            const updated = prev.filter((t) => !ids.has(t.id));
+            saveCanvas(updated, viewport, nextZIndex);
+            return updated;
+          });
+          setSelectedTileId(null);
+          setSelectedTileIds(/* @__PURE__ */ new Set());
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [copyTiles, pasteTiles, duplicateTiles, selectedTileId, selectedTileIds, viewport, nextZIndex, saveCanvas]);
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const isUndo = e.key === "z" && !e.shiftKey;
+      const isRedo = e.key === "z" && e.shiftKey || e.key === "y";
+      if (!isUndo && !isRedo) return;
+      e.preventDefault();
+      if (isUndo && historyBack.current.length > 0) {
+        const prev = historyBack.current.pop();
+        historyForward.current.push({ tiles: tilesRef.current, groups: groupsRef.current });
+        skipHistory.current = true;
+        setTiles(prev.tiles);
+        setGroups(prev.groups);
+        if (workspace) {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(() => {
+            const state = { tiles: prev.tiles, groups: prev.groups, viewport, nextZIndex };
+            window.electron.canvas.save(workspace.id, state);
+            skipHistory.current = false;
+          }, 500);
+        } else {
+          skipHistory.current = false;
+        }
+      }
+      if (isRedo && historyForward.current.length > 0) {
+        const next = historyForward.current.pop();
+        historyBack.current.push({ tiles: tilesRef.current, groups: groupsRef.current });
+        if (historyBack.current.length > 50) historyBack.current.shift();
+        skipHistory.current = true;
+        setTiles(next.tiles);
+        setGroups(next.groups);
+        if (workspace) {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(() => {
+            const state = { tiles: next.tiles, groups: next.groups, viewport, nextZIndex };
+            window.electron.canvas.save(workspace.id, state);
+            skipHistory.current = false;
+          }, 500);
+        } else {
+          skipHistory.current = false;
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [workspace, viewport, nextZIndex]);
+  const handleArrange = reactExports.useCallback((updated) => {
+    setTiles((prev) => {
+      const posIndex = {};
+      for (const t of updated) posIndex[t.id] = { x: t.x, y: t.y };
+      const merged = prev.map((t) => {
+        const pos = posIndex[t.id];
+        return pos ? { ...t, ...pos } : t;
+      });
+      saveCanvas(merged, viewport, nextZIndex);
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect && merged.length > 0) {
+        const minX = Math.min(...merged.map((t) => t.x));
+        const minY = Math.min(...merged.map((t) => t.y));
+        const maxX = Math.max(...merged.map((t) => t.x + t.width));
+        const maxY = Math.max(...merged.map((t) => t.y + t.height));
+        const PAD2 = 60;
+        const fitZoom = Math.min(
+          rect.width / (maxX - minX + PAD2 * 2),
+          rect.height / (maxY - minY + PAD2 * 2),
+          2
+        );
+        const newZoom = fitZoom * 0.9;
+        const tx = rect.width / 2 - (minX + maxX) / 2 * newZoom;
+        const ty = rect.height / 2 - (minY + maxY) / 2 * newZoom;
+        setViewport({ tx, ty, zoom: newZoom });
+      }
+      return merged;
+    });
+  }, [viewport, nextZIndex, saveCanvas]);
   const renderTileBody = (tile) => {
     switch (tile.type) {
       case "terminal":
@@ -22441,7 +27288,9 @@ function App() {
             tileId: tile.id,
             workspaceDir: workspace?.path ?? "",
             width: tile.width,
-            height: tile.height
+            height: tile.height,
+            fontSize: settings.terminalFontSize,
+            fontFamily: settings.terminalFontFamily
           }
         );
       case "code":
@@ -22450,6 +27299,28 @@ function App() {
         return /* @__PURE__ */ jsxRuntimeExports.jsx(NoteTile, { filePath: tile.filePath });
       case "image":
         return tile.filePath ? /* @__PURE__ */ jsxRuntimeExports.jsx(ImageTile, { filePath: tile.filePath }) : null;
+      case "browser":
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(BrowserTile, { tileId: tile.id, initialUrl: tile.filePath ?? "", width: tile.width, height: tile.height, zIndex: tile.zIndex });
+      case "kanban":
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          KanbanTile,
+          {
+            tileId: tile.id,
+            workspaceDir: workspace?.path ?? "",
+            width: tile.width,
+            height: tile.height,
+            onFocusTile: (linkedId) => {
+              const target = tiles.find((t) => t.id === linkedId);
+              if (!target) return;
+              bringToFront(linkedId);
+              const rect = canvasRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const newTx = rect.width / 2 - (target.x + target.width / 2) * viewport.zoom;
+              const newTy = rect.height / 2 - (target.y + target.height / 2) * viewport.zoom;
+              setViewport((prev) => ({ ...prev, tx: newTx, ty: newTy }));
+            }
+          }
+        );
       default:
         return null;
     }
@@ -22474,22 +27345,57 @@ function App() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 13, color: "#888", fontWeight: 500 }, children: workspace?.name ?? "Collaborator" }),
             workspace && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, color: "#555" }, children: workspace.path })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginLeft: "auto", marginRight: 16, display: "flex", gap: 12, alignItems: "center", WebkitAppRegion: "no-drag" }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 11, color: "#555" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginLeft: "auto", marginRight: 16, display: "flex", gap: 4, alignItems: "center", WebkitAppRegion: "no-drag" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 11, color: "#777", marginRight: 8 }, children: [
               Math.round(viewport.zoom * 100),
-              "%"
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, color: "#444" }, children: "·" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 11, color: "#555" }, children: [
+              "% · ",
               tiles.length,
               " tile",
               tiles.length !== 1 ? "s" : ""
-            ] })
+            ] }),
+            [
+              { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(AppWindow, { size: 15 }), label: "New Window (⌘N)", action: () => window.electron.window?.new(), active: false },
+              { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePlus, { size: 15 }), label: "New Tab (⌘T)", action: () => window.electron.window?.newTab(), active: false },
+              { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Map$1, { size: 15 }), label: "Minimap", action: () => setShowMinimap((p) => !p), active: showMinimap },
+              { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Server, { size: 15 }), label: "MCP Servers", action: () => {
+                setShowSettings(true);
+              }, active: false },
+              { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings2, { size: 15 }), label: "Settings", action: () => setShowSettings(true), active: false }
+            ].map((btn) => /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { label: btn.label, side: "bottom", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: btn.action,
+                style: {
+                  width: 30,
+                  height: 30,
+                  borderRadius: 6,
+                  background: btn.active ? "rgba(74,158,255,0.15)" : "transparent",
+                  border: btn.active ? "1px solid rgba(74,158,255,0.3)" : "1px solid transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: btn.active ? "#4a9eff" : "#666",
+                  transition: "all 0.1s"
+                },
+                onMouseEnter: (e) => {
+                  e.currentTarget.style.background = btn.active ? "rgba(74,158,255,0.2)" : "rgba(255,255,255,0.06)";
+                  e.currentTarget.style.color = btn.active ? "#4a9eff" : "#ccc";
+                  e.currentTarget.style.borderColor = btn.active ? "rgba(74,158,255,0.4)" : "rgba(255,255,255,0.1)";
+                },
+                onMouseLeave: (e) => {
+                  e.currentTarget.style.background = btn.active ? "rgba(74,158,255,0.15)" : "transparent";
+                  e.currentTarget.style.color = btn.active ? "#4a9eff" : "#666";
+                  e.currentTarget.style.borderColor = btn.active ? "rgba(74,158,255,0.3)" : "transparent";
+                },
+                children: btn.icon
+              }
+            ) }, btn.label))
           ] })
         ]
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 flex overflow-hidden", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 flex overflow-hidden", style: { position: "relative" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Sidebar,
         {
@@ -22498,7 +27404,46 @@ function App() {
           onSwitchWorkspace: handleSwitchWorkspace,
           onNewWorkspace: handleNewWorkspace,
           onOpenFile: handleOpenFile,
-          onNewTerminal: () => addTile("terminal")
+          onNewTerminal: () => addTile("terminal"),
+          onNewKanban: () => addTile("kanban"),
+          onNewBrowser: () => addTile("browser"),
+          collapsed: sidebarCollapsed,
+          onToggleCollapse: () => setSidebarCollapsed((p) => !p)
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          onClick: () => setSidebarCollapsed((p) => !p),
+          style: {
+            position: "absolute",
+            left: 0,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 16,
+            height: 40,
+            background: "#252525",
+            border: "1px solid #333",
+            borderLeft: "none",
+            borderRadius: "0 6px 6px 0",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#555",
+            fontSize: 9,
+            userSelect: "none",
+            zIndex: 200
+          },
+          onMouseEnter: (e) => {
+            e.currentTarget.style.background = "#333";
+            e.currentTarget.style.color = "#aaa";
+          },
+          onMouseLeave: (e) => {
+            e.currentTarget.style.background = "#252525";
+            e.currentTarget.style.color = "#555";
+          },
+          children: sidebarCollapsed ? "▸" : "◂"
         }
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -22507,12 +27452,48 @@ function App() {
           ref: canvasRef,
           className: "flex-1 relative overflow-hidden",
           style: {
-            background: "#3c3c3c",
-            cursor: isDraggingCanvas ? "grabbing" : spaceHeld.current ? "grab" : "default"
+            background: settings.canvasBackground,
+            cursor: isDraggingCanvas ? "grabbing" : spaceHeld.current ? "grab" : "default",
+            userSelect: "none",
+            WebkitUserSelect: "none"
           },
           onMouseDown: handleCanvasMouseDown,
           onDoubleClick: handleCanvasDoubleClick,
+          onContextMenu: handleCanvasContextMenu,
           onWheel: handleWheel,
+          onDragOver: (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          },
+          onDrop: (e) => {
+            e.preventDefault();
+            const world = screenToWorld(e.clientX, e.clientY);
+            const linkedTileId = e.dataTransfer.getData("application/tile-id");
+            if (linkedTileId) {
+              bringToFront(linkedTileId);
+              const target = tiles.find((t) => t.id === linkedTileId);
+              if (target) {
+                const rect = canvasRef.current?.getBoundingClientRect();
+                if (rect) {
+                  setViewport((prev) => ({
+                    ...prev,
+                    tx: rect.width / 2 - (target.x + target.width / 2) * prev.zoom,
+                    ty: rect.height / 2 - (target.y + target.height / 2) * prev.zoom
+                  }));
+                }
+              }
+              return;
+            }
+            const cardTitle = e.dataTransfer.getData("application/card-title");
+            const cardType = e.dataTransfer.getData("application/card-type");
+            const cardFile = e.dataTransfer.getData("application/card-file");
+            if (cardTitle) {
+              addTile(cardType || "note", cardFile || void 0, world);
+              return;
+            }
+            const filePath = e.dataTransfer.getData("text/plain");
+            if (filePath) addTile(extToType(filePath), filePath, world);
+          },
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "div",
@@ -22520,12 +27501,12 @@ function App() {
                 className: "absolute inset-0 pointer-events-none",
                 style: {
                   backgroundImage: `radial-gradient(circle, #4a4a4a 1.5px, transparent 1.5px)`,
-                  backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
-                  backgroundPosition: `${viewport.tx % (20 * viewport.zoom)}px ${viewport.ty % (20 * viewport.zoom)}px`
+                  backgroundSize: `${settings.gridSize * viewport.zoom}px ${settings.gridSize * viewport.zoom}px`,
+                  backgroundPosition: `${viewport.tx % (settings.gridSize * viewport.zoom)}px ${viewport.ty % (settings.gridSize * viewport.zoom)}px`
                 }
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "div",
               {
                 className: "absolute",
@@ -22533,23 +27514,278 @@ function App() {
                   transform: `translate(${viewport.tx}px, ${viewport.ty}px) scale(${viewport.zoom})`,
                   transformOrigin: "0 0"
                 },
-                children: tiles.map((tile) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  TileChrome,
-                  {
-                    tile,
-                    onClose: () => closeTile(tile.id),
-                    onTitlebarMouseDown: (e) => handleTileMouseDown(e, tile),
-                    onResizeMouseDown: (e, dir) => handleResizeMouseDown(e, tile, dir),
-                    isSelected: tile.id === selectedTileId,
-                    children: renderTileBody(tile)
-                  },
-                  tile.id
-                ))
+                children: [
+                  [...groups].sort((a, b2) => (a.parentGroupId ? 1 : 0) - (b2.parentGroupId ? 1 : 0)).map((g) => {
+                    const b2 = groupBounds(g.id);
+                    if (!b2) return null;
+                    const isNested = !!g.parentGroupId;
+                    const defaultColor = isNested ? "#ffb432" : "#4a9eff";
+                    const color = g.color ?? defaultColor;
+                    const borderColor = color + "cc";
+                    const bgColor = color + "14";
+                    const labelColor = color + "ee";
+                    const isDraggingThis = (dragState.type === "group" || dragState.type === "group-resize") && dragState.groupId === g.id;
+                    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "div",
+                      {
+                        style: {
+                          position: "absolute",
+                          left: b2.x,
+                          top: b2.y,
+                          width: b2.w,
+                          height: b2.h,
+                          border: `2px dashed ${borderColor}`,
+                          borderRadius: 12,
+                          background: bgColor,
+                          zIndex: isDraggingThis ? 99989 : isNested ? 1 : 0,
+                          boxSizing: "border-box",
+                          cursor: isDraggingThis ? "grabbing" : "grab"
+                        },
+                        onMouseDown: (e) => {
+                          if (e.target !== e.currentTarget) return;
+                          e.stopPropagation();
+                          const ids = collectGroupTileIds(g.id);
+                          const snapshots = tiles.filter((t) => ids.includes(t.id)).map((t) => ({ id: t.id, x: t.x, y: t.y }));
+                          setDragState({ type: "group", groupId: g.id, startX: e.clientX, startY: e.clientY, snapshots });
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                            "div",
+                            {
+                              onMouseDown: (e) => e.stopPropagation(),
+                              style: {
+                                position: "absolute",
+                                top: -28,
+                                left: 0,
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                                userSelect: "none",
+                                pointerEvents: "all",
+                                background: "rgba(18,18,18,0.85)",
+                                border: "1px solid #333",
+                                borderRadius: 6,
+                                padding: "3px 8px",
+                                backdropFilter: "blur(4px)"
+                              },
+                              children: [
+                                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "relative" }, children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                    "div",
+                                    {
+                                      style: {
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: "50%",
+                                        background: color,
+                                        cursor: "pointer",
+                                        flexShrink: 0,
+                                        border: "1px solid rgba(255,255,255,0.2)"
+                                      },
+                                      onClick: (e) => {
+                                        e.stopPropagation();
+                                        const input = e.currentTarget.nextSibling;
+                                        input?.click();
+                                      }
+                                    }
+                                  ),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                    "input",
+                                    {
+                                      type: "color",
+                                      value: color,
+                                      onChange: (e) => {
+                                        const newColor = e.target.value;
+                                        setGroups((prev) => {
+                                          const updated = prev.map((gr3) => gr3.id === g.id ? { ...gr3, color: newColor } : gr3);
+                                          setTiles((t) => {
+                                            saveCanvas(t, viewport, nextZIndex, updated);
+                                            return t;
+                                          });
+                                          return updated;
+                                        });
+                                      },
+                                      style: {
+                                        position: "absolute",
+                                        opacity: 0,
+                                        width: 0,
+                                        height: 0,
+                                        top: 0,
+                                        left: 0,
+                                        pointerEvents: "none"
+                                      }
+                                    }
+                                  )
+                                ] }),
+                                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                  "span",
+                                  {
+                                    contentEditable: true,
+                                    suppressContentEditableWarning: true,
+                                    onBlur: (e) => {
+                                      const newLabel = e.currentTarget.textContent?.trim() || "group";
+                                      setGroups((prev) => {
+                                        const updated = prev.map((gr3) => gr3.id === g.id ? { ...gr3, label: newLabel } : gr3);
+                                        setTiles((t) => {
+                                          saveCanvas(t, viewport, nextZIndex, updated);
+                                          return t;
+                                        });
+                                        return updated;
+                                      });
+                                    },
+                                    onKeyDown: (e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        e.target.blur();
+                                      }
+                                      e.stopPropagation();
+                                    },
+                                    onClick: (e) => e.stopPropagation(),
+                                    style: { fontSize: 11, color: labelColor, fontWeight: 500, minWidth: 30, outline: "none", cursor: "text" },
+                                    children: g.label ?? "group"
+                                  }
+                                ),
+                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 1, height: 10, background: "#444" } }),
+                                [
+                                  { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Unlink, { size: 11 }), label: "Ungroup", action: () => ungroupTilesRef.current(g.id) },
+                                  { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Layers, { size: 11 }), label: "Ungroup all", action: () => ungroupAllRef.current(g.id) },
+                                  { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Scissors, { size: 11 }), label: "Cut", action: () => {
+                                    const ids = collectGroupTileIds(g.id);
+                                    setSelectedTileIds(new Set(ids));
+                                    setSelectedTileId(null);
+                                    setTimeout(() => copyTilesRef.current(true), 0);
+                                  } },
+                                  ...clipboard.current.length > 0 ? [{ icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ClipboardPaste, { size: 11 }), label: "Paste in", action: () => pasteTilesRef.current(void 0, g.id) }] : []
+                                ].map((btn) => /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { label: btn.label, side: "bottom", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                  "div",
+                                  {
+                                    onClick: (e) => {
+                                      e.stopPropagation();
+                                      btn.action();
+                                    },
+                                    style: {
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      width: 20,
+                                      height: 20,
+                                      borderRadius: 4,
+                                      cursor: "pointer",
+                                      color: "#999"
+                                    },
+                                    onMouseEnter: (e) => e.currentTarget.style.color = "#fff",
+                                    onMouseLeave: (e) => e.currentTarget.style.color = "#999",
+                                    children: btn.icon
+                                  }
+                                ) }, btn.label))
+                              ]
+                            }
+                          ),
+                          ["n", "s", "e", "w", "ne", "nw", "se", "sw"].map((dir) => {
+                            const S2 = 10;
+                            const hs2 = { position: "absolute", zIndex: 20 };
+                            if (dir === "e") Object.assign(hs2, { right: -S2 / 2, top: S2, bottom: S2, width: S2, cursor: "col-resize" });
+                            if (dir === "w") Object.assign(hs2, { left: -S2 / 2, top: S2, bottom: S2, width: S2, cursor: "col-resize" });
+                            if (dir === "s") Object.assign(hs2, { bottom: -S2 / 2, left: S2, right: S2, height: S2, cursor: "row-resize" });
+                            if (dir === "n") Object.assign(hs2, { top: -S2 / 2, left: S2, right: S2, height: S2, cursor: "row-resize" });
+                            if (dir === "se") Object.assign(hs2, { right: -S2 / 2, bottom: -S2 / 2, width: S2 * 1.5, height: S2 * 1.5, cursor: "se-resize" });
+                            if (dir === "sw") Object.assign(hs2, { left: -S2 / 2, bottom: -S2 / 2, width: S2 * 1.5, height: S2 * 1.5, cursor: "sw-resize" });
+                            if (dir === "ne") Object.assign(hs2, { right: -S2 / 2, top: -S2 / 2, width: S2 * 1.5, height: S2 * 1.5, cursor: "ne-resize" });
+                            if (dir === "nw") Object.assign(hs2, { left: -S2 / 2, top: -S2 / 2, width: S2 * 1.5, height: S2 * 1.5, cursor: "nw-resize" });
+                            return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "div",
+                              {
+                                style: hs2,
+                                onMouseDown: (e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  const ids = collectGroupTileIds(g.id);
+                                  const snapshots = tiles.filter((t) => ids.includes(t.id)).map((t) => ({ id: t.id, x: t.x, y: t.y, width: t.width, height: t.height }));
+                                  setDragState({
+                                    type: "group-resize",
+                                    groupId: g.id,
+                                    dir,
+                                    startX: e.clientX,
+                                    startY: e.clientY,
+                                    initBounds: { x: b2.x + 20, y: b2.y + 20, w: b2.w - 40, h: b2.h - 40 },
+                                    // strip PAD
+                                    snapshots
+                                  });
+                                }
+                              },
+                              dir
+                            );
+                          })
+                        ]
+                      },
+                      g.id
+                    );
+                  }),
+                  dragState.type === "select" && (() => {
+                    const x = Math.min(dragState.startWx, dragState.curWx);
+                    const y = Math.min(dragState.startWy, dragState.curWy);
+                    const w = Math.abs(dragState.curWx - dragState.startWx);
+                    const h2 = Math.abs(dragState.curWy - dragState.startWy);
+                    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+                      position: "absolute",
+                      left: x,
+                      top: y,
+                      width: w,
+                      height: h2,
+                      border: "1px solid rgba(74,158,255,0.6)",
+                      background: "rgba(74,158,255,0.06)",
+                      borderRadius: 3,
+                      pointerEvents: "none",
+                      zIndex: 99998,
+                      boxSizing: "border-box"
+                    } });
+                  })(),
+                  guides.map(
+                    (g, i) => g.x !== void 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+                      position: "absolute",
+                      left: g.x,
+                      top: -9999,
+                      width: 1,
+                      height: 99999,
+                      background: "rgba(74,158,255,0.7)",
+                      pointerEvents: "none",
+                      zIndex: 99999
+                    } }, `gx-${i}`) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+                      position: "absolute",
+                      top: g.y,
+                      left: -9999,
+                      height: 1,
+                      width: 99999,
+                      background: "rgba(74,158,255,0.7)",
+                      pointerEvents: "none",
+                      zIndex: 99999
+                    } }, `gy-${i}`)
+                  ),
+                  tiles.map((tile) => {
+                    const isActiveDrag = dragState.type === "tile" && (dragState.tileId === tile.id || dragState.groupSnapshots.some((s15) => s15.id === tile.id)) || dragState.type === "resize" && dragState.tileId === tile.id || (dragState.type === "group" || dragState.type === "group-resize") && tile.groupId === dragState.groupId;
+                    const activeTile = isActiveDrag ? { ...tile, zIndex: 99990 } : tile;
+                    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      TileChrome,
+                      {
+                        tile: activeTile,
+                        onClose: () => closeTile(tile.id),
+                        onTitlebarMouseDown: (e) => handleTileMouseDown(e, tile),
+                        onResizeMouseDown: (e, dir) => handleResizeMouseDown(e, tile, dir),
+                        onContextMenu: (e) => handleTileContextMenu(e, tile),
+                        isSelected: tile.id === selectedTileId || selectedTileIds.has(tile.id),
+                        forceExpanded: expandedTileId === tile.id,
+                        onExpandChange: (expanded) => setExpandedTileId(expanded ? tile.id : null),
+                        children: renderTileBody(tile)
+                      },
+                      tile.id
+                    );
+                  })
+                ]
               }
             ),
             viewport.zoom !== 1 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
               position: "absolute",
-              bottom: 16,
+              bottom: 62,
               right: 16,
               background: "rgba(30,30,30,0.85)",
               border: "1px solid #3a3a3a",
@@ -22561,13 +27797,139 @@ function App() {
             }, children: [
               Math.round(viewport.zoom * 100),
               "%"
-            ] })
+            ] }),
+            selectedTileIds.size >= 2 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                onMouseDown: (e) => e.stopPropagation(),
+                style: {
+                  position: "absolute",
+                  bottom: 62,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  background: "rgba(20,20,20,0.92)",
+                  border: "1px solid #2d2d2d",
+                  borderRadius: 8,
+                  padding: "5px 12px",
+                  backdropFilter: "blur(8px)",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+                  zIndex: 1e3
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 11, color: "#666" }, children: [
+                    selectedTileIds.size,
+                    " selected"
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      onClick: groupSelectedTiles,
+                      style: {
+                        fontSize: 11,
+                        color: "#4a9eff",
+                        background: "rgba(74,158,255,0.1)",
+                        border: "1px solid rgba(74,158,255,0.3)",
+                        borderRadius: 5,
+                        padding: "3px 10px",
+                        cursor: "pointer"
+                      },
+                      onMouseEnter: (e) => e.currentTarget.style.background = "rgba(74,158,255,0.2)",
+                      onMouseLeave: (e) => e.currentTarget.style.background = "rgba(74,158,255,0.1)",
+                      children: "Group"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      onClick: () => setSelectedTileIds(/* @__PURE__ */ new Set()),
+                      style: {
+                        fontSize: 11,
+                        color: "#555",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "3px 6px"
+                      },
+                      children: "Cancel"
+                    }
+                  )
+                ]
+              }
+            ),
+            expandedTileId && (() => {
+              const tile = tiles.find((t) => t.id === expandedTileId);
+              if (!tile) return null;
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+                position: "absolute",
+                inset: 0,
+                zIndex: 99990,
+                background: "#1e1e1e",
+                display: "flex",
+                flexDirection: "column",
+                borderLeft: "1px solid #2d2d2d"
+              }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+                  height: 36,
+                  background: "#252525",
+                  borderBottom: "1px solid #2d2d2d",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0 12px 0 12px",
+                  userSelect: "none",
+                  flexShrink: 0
+                }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 13, fontWeight: 500, color: "#cccccc" }, children: tile.filePath?.replace(/\\/g, "/").split("/").pop() ?? tile.type.charAt(0).toUpperCase() + tile.type.slice(1) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      onClick: () => setExpandedTileId(null),
+                      style: {
+                        width: 14,
+                        height: 14,
+                        borderRadius: "50%",
+                        background: "#444",
+                        border: "none",
+                        cursor: "pointer",
+                        transition: "background 0.1s"
+                      },
+                      onMouseEnter: (e) => e.currentTarget.style.background = "#ff5f56",
+                      onMouseLeave: (e) => e.currentTarget.style.background = "#444"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, overflow: "hidden", minHeight: 0 }, children: renderTileBody(tile) })
+              ] });
+            })(),
+            showMinimap && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Minimap,
+              {
+                tiles,
+                viewport,
+                canvasSize: {
+                  w: canvasRef.current?.clientWidth ?? 1200,
+                  h: canvasRef.current?.clientHeight ?? 800
+                },
+                onPan: (tx, ty) => setViewport((prev) => ({ ...prev, tx, ty }))
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(ArrangeToolbar, { tiles, onArrange: handleArrange })
           ]
         }
       )
-    ] })
+    ] }),
+    showMCP && /* @__PURE__ */ jsxRuntimeExports.jsx(MCPPanel, { onClose: () => setShowMCP(false) }),
+    showSettings && /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsPanel, { onClose: () => setShowSettings(false), onSettingsChange: (s15) => setSettings(s15), workspaces }),
+    ctxMenu && /* @__PURE__ */ jsxRuntimeExports.jsx(ContextMenu, { x: ctxMenu.x, y: ctxMenu.y, items: ctxMenu.items, onClose: closeCtx })
   ] });
 }
 ReactDOM.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );
+export {
+  commonjsGlobal as c,
+  getDefaultExportFromCjs as g
+};

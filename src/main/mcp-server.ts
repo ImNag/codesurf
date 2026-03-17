@@ -38,9 +38,9 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        type:      { type: 'string', enum: ['terminal', 'code', 'note', 'image', 'kanban'] },
+        type:      { type: 'string', enum: ['terminal', 'code', 'note', 'image', 'kanban', 'browser'] },
         title:     { type: 'string' },
-        file_path: { type: 'string', description: 'Absolute path to open in the tile (for code/note/image)' },
+        file_path: { type: 'string', description: 'Absolute path to open in the tile (for code/note/image) or URL for browser' },
         x:         { type: 'number', description: 'World-space X position (optional)' },
         y:         { type: 'number', description: 'World-space Y position (optional)' }
       },

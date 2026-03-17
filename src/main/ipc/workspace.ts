@@ -2,7 +2,8 @@ import { ipcMain } from 'electron'
 import { promises as fs } from 'fs'
 import { join, resolve } from 'path'
 import { homedir } from 'os'
-import type { Config, Workspace } from '../../shared/types'
+import type { Config, Workspace, AppSettings } from '../../shared/types'
+import { DEFAULT_SETTINGS, withDefaultSettings } from '../../shared/types'
 
 const COLLAB_DIR = join(homedir(), 'clawd-collab')
 const CONFIG_PATH = join(COLLAB_DIR, 'config.json')
@@ -14,9 +15,14 @@ async function ensureDir(dir: string): Promise<void> {
 async function readConfig(): Promise<Config> {
   try {
     const raw = await fs.readFile(CONFIG_PATH, 'utf8')
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    // Merge in any missing settings keys from defaults
+    return {
+      ...parsed,
+      settings: withDefaultSettings({ ...(parsed.settings ?? {}) })
+    }
   } catch {
-    return { workspaces: [], activeWorkspaceIndex: 0 }
+    return { workspaces: [], activeWorkspaceIndex: 0, settings: { ...DEFAULT_SETTINGS } }
   }
 }
 
@@ -76,6 +82,18 @@ export function registerWorkspaceIPC(): void {
       config.activeWorkspaceIndex = idx
       await writeConfig(config)
     }
+  })
+
+  ipcMain.handle('settings:get', async () => {
+    const config = await readConfig()
+    return config.settings
+  })
+
+  ipcMain.handle('settings:set', async (_, settings: AppSettings) => {
+    const config = await readConfig()
+    config.settings = withDefaultSettings(settings)
+    await writeConfig(config)
+    return config.settings
   })
 
   ipcMain.handle('workspace:delete', async (_, id: string) => {

@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
-import ELK from 'elkjs/lib/elk.bundled.js'
 import type { TileState } from '../../../shared/types'
 
-const elk = new ELK()
+
 
 const GAP = 40
 
@@ -16,6 +15,17 @@ type Mode = 'grid' | 'column' | 'row'
 // ─── ELK grid layout ────────────────────────────────────────────────────────
 async function arrangeGrid(tiles: TileState[]): Promise<TileState[]> {
   if (tiles.length === 0) return tiles
+
+  // elk.bundled.js is a browserify bundle that clobbers globals.
+  // Save and restore Map/Set around the import to prevent React corruption.
+  const savedMap = globalThis.Map
+  const savedSet = globalThis.Set
+  await import('elkjs/lib/elk.bundled.js')
+  globalThis.Map = savedMap
+  globalThis.Set = savedSet
+  const ELK = (globalThis as any).ELK
+  if (!ELK) throw new Error('ELK failed to load')
+  const elk = new ELK()
 
   const graph = {
     id: 'root',

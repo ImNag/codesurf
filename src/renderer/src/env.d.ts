@@ -34,12 +34,22 @@ interface ElectronAPI {
     onData(tileId: string, cb: (data: string) => void): () => void
     onActive(tileId: string, cb: () => void): () => void
   }
+  browserTile: {
+    sync(payload: { tileId: string; url: string; mode: 'desktop' | 'mobile'; zIndex: number; visible: boolean; bounds: { left: number; top: number; width: number; height: number } }): Promise<unknown>
+    command(payload: { tileId: string; command: 'back' | 'forward' | 'reload' | 'stop' | 'home' | 'navigate' | 'mode'; url?: string; mode?: 'desktop' | 'mobile' }): Promise<unknown>
+    destroy(tileId: string): Promise<void>
+    onEvent(cb: (event: { tileId: string; currentUrl: string; canGoBack: boolean; canGoForward: boolean; isLoading: boolean; mode: 'desktop' | 'mobile' }) => void): () => void
+  }
   agents: {
     detect(): Promise<Array<{ id: string; label: string; cmd: string; path?: string; version?: string; available: boolean }>>
   }
   updater: {
     check(): Promise<void>
     download(): Promise<void>
+  }
+  settings: {
+    get(): Promise<import('../../shared/types').AppSettings>
+    set(settings: import('../../shared/types').AppSettings): Promise<import('../../shared/types').AppSettings>
   }
 }
 

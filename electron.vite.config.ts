@@ -31,7 +31,7 @@ export default defineConfig({
     },
     plugins: [react()],
     optimizeDeps: {
-      exclude: ['@xterm/xterm']
+      exclude: ['@xterm/xterm', 'elkjs', 'elkjs/lib/elk.bundled.js']
     }
   }
 })

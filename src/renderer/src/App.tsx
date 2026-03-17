@@ -1,5 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { Unlink, Layers, Scissors, ClipboardPaste, Map, AppWindow, SquarePlus, Server, Settings2 } from 'lucide-react'
+import { Tooltip } from './components/Tooltip'
 import type { TileState, GroupState, CanvasState, Workspace } from '../../shared/types'
+import { withDefaultSettings } from '../../shared/types'
 import { Sidebar } from './components/Sidebar'
 import { TileChrome } from './components/TileChrome'
 import { TerminalTile } from './components/TerminalTile'
@@ -7,9 +10,14 @@ import { CodeTile } from './components/CodeTile'
 import { NoteTile } from './components/NoteTile'
 import { ImageTile } from './components/ImageTile'
 import { KanbanTile } from './components/KanbanTile'
+import { BrowserTile } from './components/BrowserTile'
 import { MCPPanel } from './components/MCPPanel'
 import { ArrangeToolbar } from './components/ArrangeToolbar'
+import { Minimap } from './components/Minimap'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
+import { SettingsPanel } from './components/SettingsPanel'
+import type { AppSettings } from '../../shared/types'
+import { DEFAULT_SETTINGS } from '../../shared/types'
 
 type DragState =
   | { type: null }
@@ -20,8 +28,8 @@ type DragState =
   | { type: 'group'; groupId: string; startX: number; startY: number; snapshots: { id: string; x: number; y: number }[] }
   | { type: 'group-resize'; groupId: string; dir: 'e' | 's' | 'se' | 'w' | 'n' | 'nw' | 'ne' | 'sw'; startX: number; startY: number; initBounds: { x: number; y: number; w: number; h: number }; snapshots: { id: string; x: number; y: number; width: number; height: number }[] }
 
-const GRID = 20
-const snap = (v: number) => Math.round(v / GRID) * GRID
+const GRID = 20 // default, overridden by settings at runtime
+const snap = (v: number, grid = GRID) => Math.round(v / grid) * grid
 
 function extToType(filePath: string): TileState['type'] {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
@@ -42,6 +50,10 @@ function App(): JSX.Element {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [dragState, setDragState] = useState<DragState>({ type: null })
   const [showMCP, setShowMCP] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(false)
+  const [expandedTileId, setExpandedTileId] = useState<string | null>(null)
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [guides, setGuides] = useState<{ x?: number; y?: number }[]>([])
 
@@ -49,6 +61,26 @@ function App(): JSX.Element {
   const clipboard = useRef<TileState[]>([])
   const isCut = useRef(false)
   const pasteOffset = useRef(0)
+  const pasteTargetGroupId = useRef<string | undefined>(undefined)
+  const pasteTilesRef = useRef<(pos?: { x: number; y: number }, intoGroupId?: string) => void>(() => {})
+  const duplicateTilesRef = useRef<(ids?: string[]) => void>(() => {})
+  const copyTilesRef = useRef<(cut?: boolean) => void>(() => {})
+  const groupSelectedTilesRef = useRef<() => void>(() => {})
+  const groupBoundsRef = useRef<(id: string) => { x: number; y: number; w: number; h: number } | null>(() => null)
+  const ungroupTilesRef = useRef<(groupId: string) => void>(() => {})
+  const ungroupAllRef = useRef<(groupId: string) => void>(() => {})
+
+  // Undo/redo history stacks — each entry is a full canvas snapshot
+  type HistoryEntry = { tiles: TileState[]; groups: GroupState[] }
+  const historyBack = useRef<HistoryEntry[]>([])
+  const historyForward = useRef<HistoryEntry[]>([])
+  // Refs that always reflect the latest tiles/groups state (for use in keyboard handlers)
+  const tilesRef = useRef<TileState[]>(tiles)
+  const groupsRef = useRef<GroupState[]>(groups)
+
+  // Keep tilesRef / groupsRef in sync with state
+  tilesRef.current = tiles
+  groupsRef.current = groups
 
   // Context menus
   type CtxMenu = { x: number; y: number; items: MenuItem[] }
@@ -58,6 +90,7 @@ function App(): JSX.Element {
   const canvasRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const spaceHeld = useRef(false)
+  const skipHistory = useRef(false)
 
   // ─── Load workspace + canvas state on mount ───────────────────────────────
   useEffect(() => {
@@ -66,10 +99,12 @@ function App(): JSX.Element {
         console.warn('window.electron not available — preload may not have loaded')
         return
       }
-      const [wsList, active] = await Promise.all([
+      const [wsList, active, savedSettings] = await Promise.all([
         window.electron.workspace.list(),
-        window.electron.workspace.getActive()
+        window.electron.workspace.getActive(),
+        window.electron.settings?.get()
       ])
+      if (savedSettings) setSettings(withDefaultSettings(savedSettings))
       setWorkspaces(wsList)
       setWorkspace(active)
       if (active) {
@@ -85,6 +120,15 @@ function App(): JSX.Element {
       }
     }
     init()
+  }, [])
+
+  // ─── Escape to collapse expanded tile ────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpandedTileId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   // ─── Space key for pan mode ───────────────────────────────────────────────
@@ -113,42 +157,22 @@ function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // ─── Copy / Cut / Paste / Duplicate / Delete shortcuts ───────────────────
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key === 'c') { e.preventDefault(); copyTiles(false) }
-      if (mod && e.key === 'x') { e.preventDefault(); copyTiles(true) }
-      if (mod && e.key === 'v') { e.preventDefault(); pasteTiles() }
-      if (mod && e.key === 'd') { e.preventDefault(); duplicateTiles() }
-      if ((e.key === 'Backspace' || e.key === 'Delete') && !mod) {
-        const active = selectedTileIds.size > 0
-          ? [...selectedTileIds]
-          : selectedTileId ? [selectedTileId] : []
-        if (active.length > 0) {
-          const ids = new Set(active)
-          setTiles(prev => {
-            const updated = prev.filter(t => !ids.has(t.id))
-            saveCanvas(updated, viewport, nextZIndex)
-            return updated
-          })
-          setSelectedTileId(null)
-          setSelectedTileIds(new Set())
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [copyTiles, pasteTiles, duplicateTiles, selectedTileId, selectedTileIds, viewport, nextZIndex, saveCanvas])
-
   // ─── Auto-save canvas state ───────────────────────────────────────────────
   const saveCanvas = useCallback((tileList: TileState[], vp: { tx: number; ty: number; zoom: number }, nz: number, grps?: GroupState[]) => {
     if (!workspace) return
+    // Use explicitly passed groups, or fall back to current groups state
+    const resolvedGroups = grps ?? groupsRef.current
+
+    // Push to undo history unless this save was triggered by undo/redo itself
+    if (!skipHistory.current) {
+      historyBack.current.push({ tiles: tileList, groups: resolvedGroups })
+      if (historyBack.current.length > 50) historyBack.current.shift()
+      historyForward.current = []
+    }
+
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      const state: CanvasState = { tiles: tileList, groups: grps ?? [], viewport: vp, nextZIndex: nz }
+      const state: CanvasState = { tiles: tileList, groups: resolvedGroups, viewport: vp, nextZIndex: nz }
       window.electron.canvas.save(workspace.id, state)
     }, 500)
   }, [workspace])
@@ -172,13 +196,7 @@ function App(): JSX.Element {
   // ─── Tile creation ────────────────────────────────────────────────────────
   const addTile = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }) => {
     const center = pos ?? viewportCenter()
-    const defaultSizes: Record<TileState['type'], { w: number; h: number }> = {
-      terminal: { w: 600, h: 400 },
-      code:     { w: 680, h: 500 },
-      note:     { w: 500, h: 400 },
-      image:    { w: 440, h: 360 },
-      kanban:   { w: 900, h: 560 }
-    }
+    const defaultSizes = settings.defaultTileSizes
     const { w, h } = defaultSizes[type]
     const newTile: TileState = {
       id: `tile-${Date.now()}`,
@@ -235,13 +253,22 @@ function App(): JSX.Element {
 
   const bringToFront = useCallback((id: string) => {
     const nz = nextZIndex
-    setTiles(prev => prev.map(t => t.id === id ? { ...t, zIndex: nz } : t))
+    setTiles(prev => {
+      const tile = prev.find(t => t.id === id)
+      pasteTargetGroupId.current = tile?.groupId
+      return prev.map(t => t.id === id ? { ...t, zIndex: nz } : t)
+    })
     setNextZIndex(n => n + 1)
     setSelectedTileId(id)
   }, [nextZIndex])
 
   // ─── Canvas mouse handlers ────────────────────────────────────────────────
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    // Block if click originated from a tile or UI element (they stopPropagation — so anything
+    // that reaches here is either the canvas bg, world container, or group frames)
+    const t = e.target as HTMLElement
+    // If the target has a tile chrome ancestor, ignore (tiles call stopPropagation on titlebar)
+    if (t.closest('[data-tile-chrome]')) return
     e.preventDefault()
     const isPan = e.button === 1 || (e.button === 0 && (e.metaKey || spaceHeld.current))
     if (isPan) {
@@ -250,7 +277,7 @@ function App(): JSX.Element {
       return
     }
     if (e.button === 0) {
-      // Start rubber-band select
+      // Start rubber-band select on empty canvas
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
       const wx = (e.clientX - rect.left - viewport.tx) / viewport.zoom
@@ -271,40 +298,81 @@ function App(): JSX.Element {
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     const world = screenToWorld(e.clientX, e.clientY)
+    const hitGroup = groups.find(g => {
+      const b = groupBoundsRef.current(g.id)
+      return b && world.x >= b.x && world.x <= b.x + b.w && world.y >= b.y && world.y <= b.y + b.h
+    })
     const items: MenuItem[] = [
       { label: 'New Terminal', action: () => addTile('terminal', undefined, world) },
       { label: 'New Note',     action: () => addTile('note',     undefined, world) },
+      { label: 'New Browser',  action: () => addTile('browser',  undefined, world) },
       { label: 'New Board',    action: () => addTile('kanban',   undefined, world) },
     ]
     if (clipboard.current.length > 0) {
       items.push({ label: '', action: () => {}, divider: true })
-      items.push({ label: 'Paste', action: () => pasteTiles(world) })
+      items.push({ label: 'Paste', action: () => pasteTilesRef.current(world) })
+      if (hitGroup) {
+        items.push({ label: 'Paste into group', action: () => pasteTilesRef.current(world, hitGroup.id) })
+      }
     }
     if (selectedTileIds.size >= 2) {
       items.push({ label: '', action: () => {}, divider: true })
-      items.push({ label: `Group ${selectedTileIds.size} tiles`, action: groupSelectedTiles })
+      items.push({ label: `Group ${selectedTileIds.size} tiles`, action: () => groupSelectedTilesRef.current() })
     }
     setCtxMenu({ x: e.clientX, y: e.clientY, items })
-  }, [screenToWorld, addTile, pasteTiles, selectedTileIds, groupSelectedTiles])
+  }, [screenToWorld, addTile, selectedTileIds, groups])
 
   // Right-click on a tile titlebar
   const handleTileContextMenu = useCallback((e: React.MouseEvent, tile: TileState) => {
     e.preventDefault()
     e.stopPropagation()
     const items: MenuItem[] = [
-      { label: 'Duplicate',  action: () => duplicateTiles([tile.id]) },
-      { label: 'Copy',       action: () => { setSelectedTileId(tile.id); setSelectedTileIds(new Set()); copyTiles(false) } },
-      { label: 'Cut',        action: () => { setSelectedTileId(tile.id); setSelectedTileIds(new Set()); copyTiles(true) } },
-      { label: '',           action: () => {}, divider: true },
+      { label: 'Duplicate', action: () => duplicateTilesRef.current([tile.id]) },
+      { label: 'Copy',      action: () => { setSelectedTileId(tile.id); setSelectedTileIds(new Set()); copyTilesRef.current(false) } },
+      { label: 'Cut',       action: () => { setSelectedTileId(tile.id); setSelectedTileIds(new Set()); copyTilesRef.current(true) } },
     ]
+    // Paste options
+    if (clipboard.current.length > 0) {
+      items.push({ label: '', action: () => {}, divider: true })
+      items.push({ label: 'Paste', action: () => pasteTilesRef.current() })
+      if (tile.groupId) {
+        items.push({ label: 'Paste into this group', action: () => pasteTilesRef.current(undefined, tile.groupId) })
+      }
+    }
+    items.push({ label: '', action: () => {}, divider: true })
+    // Group membership
     if (tile.groupId) {
-      items.push({ label: 'Ungroup',     action: () => ungroupTiles(tile.groupId!) })
-      items.push({ label: 'Ungroup All', action: () => ungroupAll(tile.groupId!) })
+      items.push({ label: 'Remove from group', action: () => {
+        setTiles(prev => {
+          const updated = prev.map(t => t.id === tile.id ? { ...t, groupId: undefined } : t)
+          saveCanvas(updated, viewport, nextZIndex)
+          return updated
+        })
+      }})
+      items.push({ label: 'Ungroup',     action: () => ungroupTilesRef.current(tile.groupId!) })
+      items.push({ label: 'Ungroup All', action: () => ungroupAllRef.current(tile.groupId!) })
+      items.push({ label: '', action: () => {}, divider: true })
+    }
+    // Add to group options — show available groups this tile isn't already in
+    const availableGroups = groups.filter(g => g.id !== tile.groupId)
+    if (availableGroups.length > 0) {
+      availableGroups.forEach(g => {
+        items.push({
+          label: `Add to ${g.label ?? g.id.slice(-6)}`,
+          action: () => {
+            setTiles(prev => {
+              const updated = prev.map(t => t.id === tile.id ? { ...t, groupId: g.id } : t)
+              saveCanvas(updated, viewport, nextZIndex)
+              return updated
+            })
+          }
+        })
+      })
       items.push({ label: '', action: () => {}, divider: true })
     }
     items.push({ label: 'Close', action: () => closeTile(tile.id), danger: true })
     setCtxMenu({ x: e.clientX, y: e.clientY, items })
-  }, [duplicateTiles, copyTiles, closeTile, ungroupTiles, ungroupAll])
+  }, [closeTile, groups, viewport, nextZIndex, saveCanvas])
 
   const handleTileMouseDown = useCallback((e: React.MouseEvent, tile: TileState) => {
     e.stopPropagation()
@@ -454,7 +522,53 @@ function App(): JSX.Element {
     }
 
     const onUp = () => {
-      if (dragState.type === 'tile' || dragState.type === 'resize' || dragState.type === 'group') {
+      if (dragState.type === 'tile') {
+        setTiles(prev => {
+          const tile = prev.find(t => t.id === dragState.tileId)
+          if (!tile) { saveCanvas(prev, viewport, nextZIndex); return prev }
+
+          // If tile didn't actually move, don't touch group membership
+          const didMove = tile.x !== dragState.initX || tile.y !== dragState.initY
+          if (!didMove) { saveCanvas(prev, viewport, nextZIndex); return prev }
+
+          const tileCx = tile.x + tile.width / 2
+          const tileCy = tile.y + tile.height / 2
+
+          // Check if dropped inside a different group's bounds
+          let newGroupId: string | undefined = tile.groupId
+          for (const g of groups) {
+            if (g.id === tile.groupId) continue // already in this group
+            const b = groupBoundsRef.current(g.id)
+            if (b && tileCx >= b.x && tileCx <= b.x + b.w && tileCy >= b.y && tileCy <= b.y + b.h) {
+              newGroupId = g.id
+              break
+            }
+          }
+
+          // Check if dragged outside its current group
+          if (tile.groupId && newGroupId === tile.groupId) {
+            const members = prev.filter(t => t.groupId === tile.groupId && t.id !== tile.id)
+            if (members.length > 0) {
+              const PAD = 20
+              const minX = Math.min(...members.map(t => t.x)) - PAD
+              const minY = Math.min(...members.map(t => t.y)) - PAD
+              const maxX = Math.max(...members.map(t => t.x + t.width)) + PAD
+              const maxY = Math.max(...members.map(t => t.y + t.height)) + PAD
+              const outside = tile.x + tile.width < minX || tile.x > maxX ||
+                              tile.y + tile.height < minY || tile.y > maxY
+              if (outside) newGroupId = undefined
+            }
+          }
+
+          if (newGroupId !== tile.groupId) {
+            const updated = prev.map(t => t.id === tile.id ? { ...t, groupId: newGroupId } : t)
+            saveCanvas(updated, viewport, nextZIndex)
+            return updated
+          }
+          saveCanvas(prev, viewport, nextZIndex)
+          return prev
+        })
+      } else if (dragState.type === 'resize' || dragState.type === 'group' || dragState.type === 'group-resize') {
         setTiles(prev => { saveCanvas(prev, viewport, nextZIndex); return prev })
       }
       if (dragState.type === 'select') {
@@ -542,6 +656,13 @@ function App(): JSX.Element {
     addTile(extToType(filePath), filePath)
   }, [addTile])
 
+  // Rebuild merged MCP config whenever workspace changes
+  useEffect(() => {
+    if (workspace) {
+      window.electron.mcp?.getMergedConfig?.(workspace.id)
+    }
+  }, [workspace?.id])
+
   // ─── Group selected tiles (supports nesting — wraps existing groups too) ──
   const groupSelectedTiles = useCallback(() => {
     if (selectedTileIds.size < 2) return
@@ -579,6 +700,20 @@ function App(): JSX.Element {
     })
     setSelectedTileIds(new Set())
   }, [selectedTileIds, tiles, viewport, nextZIndex, saveCanvas])
+
+  // ─── Cmd+G to group ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+        e.preventDefault()
+        if (selectedTileIds.size >= 2) groupSelectedTiles()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedTileIds, groupSelectedTiles])
 
   // Ungroup one level — tiles revert to parentGroupId if present
   const ungroupTiles = useCallback((groupId: string) => {
@@ -643,6 +778,9 @@ function App(): JSX.Element {
     clipboard.current = active
     isCut.current = cut
     pasteOffset.current = 0
+    // For cut: remember source group so Cmd+V pastes back in by default
+    // For copy: clear target so Cmd+V pastes freely (use "paste in" label to target a group)
+    pasteTargetGroupId.current = cut ? active[0]?.groupId : undefined
     if (cut) {
       const ids = new Set(active.map(t => t.id))
       setTiles(prev => {
@@ -655,14 +793,27 @@ function App(): JSX.Element {
     }
   }, [getActiveTiles, viewport, nextZIndex, saveCanvas])
 
-  const pasteTiles = useCallback((pos?: { x: number; y: number }) => {
+  const pasteTiles = useCallback((pos?: { x: number; y: number }, intoGroupId?: string) => {
     if (clipboard.current.length === 0) return
+    if (pasteOffset.current > 10) pasteOffset.current = 0
     pasteOffset.current += 1
     const OFFSET = pasteOffset.current * 30
     const srcMinX = Math.min(...clipboard.current.map(t => t.x))
     const srcMinY = Math.min(...clipboard.current.map(t => t.y))
     const center = pos ?? viewportCenter()
     const newNZ = nextZIndex + clipboard.current.length
+    // Resolve target group: explicit > position-based > ref > none
+    let targetGroup = intoGroupId ?? pasteTargetGroupId.current
+    if (!targetGroup && pos) {
+      // Check if paste position is inside a group frame
+      for (const g of groups) {
+        const b = groupBoundsRef.current(g.id)
+        if (b && pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) {
+          targetGroup = g.id
+          break
+        }
+      }
+    }
     const newTiles = clipboard.current.map((t, i) => ({
       ...t,
       id: `tile-${Date.now()}-${i}`,
@@ -673,7 +824,7 @@ function App(): JSX.Element {
         ? snap(center.y + (t.y - srcMinY) - (Math.max(...clipboard.current.map(t2 => t2.y + t2.height)) - srcMinY) / 2)
         : snap(t.y + OFFSET),
       zIndex: nextZIndex + i,
-      groupId: undefined
+      groupId: targetGroup
     }))
     setTiles(prev => {
       const updated = [...prev, ...newTiles]
@@ -683,7 +834,7 @@ function App(): JSX.Element {
     setNextZIndex(newNZ)
     setSelectedTileIds(new Set(newTiles.map(t => t.id)))
     setSelectedTileId(null)
-  }, [viewport, nextZIndex, viewportCenter, saveCanvas])
+  }, [viewport, nextZIndex, viewportCenter, saveCanvas, groups])
 
   const duplicateTiles = useCallback((ids?: string[]) => {
     const targets = ids
@@ -709,13 +860,133 @@ function App(): JSX.Element {
     setSelectedTileId(null)
   }, [tiles, getActiveTiles, viewport, nextZIndex, saveCanvas])
 
+  // ─── Group frame bounds (recursive — includes child group tiles) ─────────
+  const groupBounds = useCallback((groupId: string): { x: number; y: number; w: number; h: number } | null => {
+    const collectTileIds = (gid: string): string[] => {
+      const direct = tiles.filter(t => t.groupId === gid).map(t => t.id)
+      const childGroups = groups.filter(g => g.parentGroupId === gid)
+      return [...direct, ...childGroups.flatMap(g => collectTileIds(g.id))]
+    }
+    const ids = new Set(collectTileIds(groupId))
+    const members = tiles.filter(t => ids.has(t.id))
+    if (members.length === 0) return null
+    const PAD = 20
+    const minX = Math.min(...members.map(t => t.x)) - PAD
+    const minY = Math.min(...members.map(t => t.y)) - PAD
+    const maxX = Math.max(...members.map(t => t.x + t.width)) + PAD
+    const maxY = Math.max(...members.map(t => t.y + t.height)) + PAD
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+  }, [tiles, groups])
+
+  // Collect all tile ids in a group tree (for drag)
+  const collectGroupTileIds = useCallback((groupId: string): string[] => {
+    const direct = tiles.filter(t => t.groupId === groupId).map(t => t.id)
+    const childGroups = groups.filter(g => g.parentGroupId === groupId)
+    return [...direct, ...childGroups.flatMap(g => collectGroupTileIds(g.id))]
+  }, [tiles, groups])
+
+  // Keep action refs in sync so early-defined callbacks can call them safely
+  pasteTilesRef.current = pasteTiles
+  duplicateTilesRef.current = duplicateTiles
+  copyTilesRef.current = copyTiles
+  groupSelectedTilesRef.current = groupSelectedTiles
+  groupBoundsRef.current = groupBounds
+  ungroupTilesRef.current = ungroupTiles
+  ungroupAllRef.current = ungroupAll
+
+  // ─── Copy / Cut / Paste / Duplicate / Delete shortcuts ───────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 'c') { e.preventDefault(); copyTiles(false) }
+      if (mod && e.key === 'x') { e.preventDefault(); copyTiles(true) }
+      if (mod && e.key === 'v') { e.preventDefault(); pasteTiles() }
+      if (mod && e.key === 'd') { e.preventDefault(); duplicateTiles() }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !mod) {
+        const active = selectedTileIds.size > 0
+          ? [...selectedTileIds]
+          : selectedTileId ? [selectedTileId] : []
+        if (active.length > 0) {
+          const ids = new Set(active)
+          setTiles(prev => {
+            const updated = prev.filter(t => !ids.has(t.id))
+            saveCanvas(updated, viewport, nextZIndex)
+            return updated
+          })
+          setSelectedTileId(null)
+          setSelectedTileIds(new Set())
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [copyTiles, pasteTiles, duplicateTiles, selectedTileId, selectedTileIds, viewport, nextZIndex, saveCanvas])
+
+  // ─── Undo / redo ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+
+      const isUndo = e.key === 'z' && !e.shiftKey
+      const isRedo = (e.key === 'z' && e.shiftKey) || e.key === 'y'
+      if (!isUndo && !isRedo) return
+      e.preventDefault()
+
+      if (isUndo && historyBack.current.length > 0) {
+        const prev = historyBack.current.pop()!
+        historyForward.current.push({ tiles: tilesRef.current, groups: groupsRef.current })
+        skipHistory.current = true
+        setTiles(prev.tiles)
+        setGroups(prev.groups)
+        // Persist the restored state without adding another history entry
+        if (workspace) {
+          if (saveTimer.current) clearTimeout(saveTimer.current)
+          saveTimer.current = setTimeout(() => {
+            const state: CanvasState = { tiles: prev.tiles, groups: prev.groups, viewport: viewport, nextZIndex: nextZIndex }
+            window.electron.canvas.save(workspace.id, state)
+            skipHistory.current = false
+          }, 500)
+        } else {
+          skipHistory.current = false
+        }
+      }
+
+      if (isRedo && historyForward.current.length > 0) {
+        const next = historyForward.current.pop()!
+        historyBack.current.push({ tiles: tilesRef.current, groups: groupsRef.current })
+        if (historyBack.current.length > 50) historyBack.current.shift()
+        skipHistory.current = true
+        setTiles(next.tiles)
+        setGroups(next.groups)
+        if (workspace) {
+          if (saveTimer.current) clearTimeout(saveTimer.current)
+          saveTimer.current = setTimeout(() => {
+            const state: CanvasState = { tiles: next.tiles, groups: next.groups, viewport: viewport, nextZIndex: nextZIndex }
+            window.electron.canvas.save(workspace.id, state)
+            skipHistory.current = false
+          }, 500)
+        } else {
+          skipHistory.current = false
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [workspace, viewport, nextZIndex])
+
   // ─── Arrange handler ──────────────────────────────────────────────────────
   const handleArrange = useCallback((updated: TileState[]) => {
     // Merge positions back — preserve zIndex / other fields from current state
     setTiles(prev => {
-      const posMap = new Map(updated.map(t => [t.id, { x: t.x, y: t.y }]))
+      const posIndex: Record<string, { x: number; y: number }> = {}
+      for (const t of updated) posIndex[t.id] = { x: t.x, y: t.y }
       const merged = prev.map(t => {
-        const pos = posMap.get(t.id)
+        const pos = posIndex[t.id]
         return pos ? { ...t, ...pos } : t
       })
       saveCanvas(merged, viewport, nextZIndex)
@@ -753,6 +1024,8 @@ function App(): JSX.Element {
             workspaceDir={workspace?.path ?? ''}
             width={tile.width}
             height={tile.height}
+            fontSize={settings.terminalFontSize}
+            fontFamily={settings.terminalFontFamily}
           />
         )
       case 'code':
@@ -761,6 +1034,8 @@ function App(): JSX.Element {
         return <NoteTile filePath={tile.filePath} />
       case 'image':
         return tile.filePath ? <ImageTile filePath={tile.filePath} /> : null
+      case 'browser':
+        return <BrowserTile tileId={tile.id} initialUrl={tile.filePath ?? ''} width={tile.width} height={tile.height} zIndex={tile.zIndex} />
       case 'kanban':
         return (
           <KanbanTile
@@ -789,32 +1064,6 @@ function App(): JSX.Element {
 
   const isDraggingCanvas = dragState.type === 'pan'
 
-  // ─── Group frame bounds (recursive — includes child group tiles) ─────────
-  const groupBounds = useCallback((groupId: string): { x: number; y: number; w: number; h: number } | null => {
-    // Collect all tile ids in this group tree
-    const collectTileIds = (gid: string): string[] => {
-      const direct = tiles.filter(t => t.groupId === gid).map(t => t.id)
-      const childGroups = groups.filter(g => g.parentGroupId === gid)
-      return [...direct, ...childGroups.flatMap(g => collectTileIds(g.id))]
-    }
-    const ids = new Set(collectTileIds(groupId))
-    const members = tiles.filter(t => ids.has(t.id))
-    if (members.length === 0) return null
-    const PAD = 20
-    const minX = Math.min(...members.map(t => t.x)) - PAD
-    const minY = Math.min(...members.map(t => t.y)) - PAD
-    const maxX = Math.max(...members.map(t => t.x + t.width)) + PAD
-    const maxY = Math.max(...members.map(t => t.y + t.height)) + PAD
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
-  }, [tiles, groups])
-
-  // Collect all tile ids in a group tree (for drag)
-  const collectGroupTileIds = useCallback((groupId: string): string[] => {
-    const direct = tiles.filter(t => t.groupId === groupId).map(t => t.id)
-    const childGroups = groups.filter(g => g.parentGroupId === groupId)
-    return [...direct, ...childGroups.flatMap(g => collectGroupTileIds(g.id))]
-  }, [tiles, groups])
-
   return (
     <div className="w-full h-full flex flex-col" style={{ background: '#1e1e1e', color: '#d4d4d4', fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif' }}>
       {/* Titlebar — traffic lights area */}
@@ -837,18 +1086,46 @@ function App(): JSX.Element {
             <span style={{ fontSize: 11, color: '#555' }}>{workspace.path}</span>
           )}
         </div>
-        <div style={{ marginLeft: 'auto', marginRight: 16, display: 'flex', gap: 12, alignItems: 'center', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <span style={{ fontSize: 11, color: '#555' }}>{Math.round(viewport.zoom * 100)}%</span>
-          <span style={{ fontSize: 11, color: '#444' }}>·</span>
-          <span style={{ fontSize: 11, color: '#555' }}>{tiles.length} tile{tiles.length !== 1 ? 's' : ''}</span>
-          <button
-            onClick={() => setShowMCP(true)}
-            style={{ fontSize: 10, color: '#444', background: '#161b22', border: '1px solid #21262d', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'monospace' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#3fb950'; e.currentTarget.style.borderColor = '#3fb95044' }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#444'; e.currentTarget.style.borderColor = '#21262d' }}
-          >
-            MCP
-          </button>
+        <div style={{ marginLeft: 'auto', marginRight: 16, display: 'flex', gap: 4, alignItems: 'center', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* Stats */}
+          <span style={{ fontSize: 11, color: '#777', marginRight: 8 }}>
+            {Math.round(viewport.zoom * 100)}% · {tiles.length} tile{tiles.length !== 1 ? 's' : ''}
+          </span>
+
+          {/* Icon buttons */}
+          {([
+            { icon: <AppWindow size={15} />, label: 'New Window (⌘N)', action: () => window.electron.window?.new(), active: false },
+            { icon: <SquarePlus size={15} />, label: 'New Tab (⌘T)', action: () => window.electron.window?.newTab(), active: false },
+            { icon: <Map size={15} />, label: 'Minimap', action: () => setShowMinimap(p => !p), active: showMinimap },
+            { icon: <Server size={15} />, label: 'MCP Servers', action: () => { setShowSettings(true) }, active: false },
+            { icon: <Settings2 size={15} />, label: 'Settings', action: () => setShowSettings(true), active: false },
+          ] as { icon: React.ReactNode; label: string; action: () => void; active: boolean }[]).map(btn => (
+            <Tooltip key={btn.label} label={btn.label} side="bottom">
+              <button
+                onClick={btn.action}
+                style={{
+                  width: 30, height: 30, borderRadius: 6,
+                  background: btn.active ? 'rgba(74,158,255,0.15)' : 'transparent',
+                  border: btn.active ? '1px solid rgba(74,158,255,0.3)' : '1px solid transparent',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: btn.active ? '#4a9eff' : '#666',
+                  transition: 'all 0.1s'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = btn.active ? 'rgba(74,158,255,0.2)' : 'rgba(255,255,255,0.06)'
+                  e.currentTarget.style.color = btn.active ? '#4a9eff' : '#ccc'
+                  e.currentTarget.style.borderColor = btn.active ? 'rgba(74,158,255,0.4)' : 'rgba(255,255,255,0.1)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = btn.active ? 'rgba(74,158,255,0.15)' : 'transparent'
+                  e.currentTarget.style.color = btn.active ? '#4a9eff' : '#666'
+                  e.currentTarget.style.borderColor = btn.active ? 'rgba(74,158,255,0.3)' : 'transparent'
+                }}
+              >
+                {btn.icon}
+              </button>
+            </Tooltip>
+          ))}
         </div>
       </div>
 
@@ -862,6 +1139,7 @@ function App(): JSX.Element {
           onOpenFile={handleOpenFile}
           onNewTerminal={() => addTile('terminal')}
           onNewKanban={() => addTile('kanban')}
+          onNewBrowser={() => addTile('browser')}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(p => !p)}
         />
@@ -898,7 +1176,7 @@ function App(): JSX.Element {
           ref={canvasRef}
           className="flex-1 relative overflow-hidden"
           style={{
-            background: '#3c3c3c',
+            background: settings.canvasBackground,
             cursor: isDraggingCanvas ? 'grabbing' : (spaceHeld.current ? 'grab' : 'default'),
             userSelect: 'none',
             WebkitUserSelect: 'none',
@@ -949,8 +1227,8 @@ function App(): JSX.Element {
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: `radial-gradient(circle, #4a4a4a 1.5px, transparent 1.5px)`,
-              backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
-              backgroundPosition: `${viewport.tx % (20 * viewport.zoom)}px ${viewport.ty % (20 * viewport.zoom)}px`
+              backgroundSize: `${settings.gridSize * viewport.zoom}px ${settings.gridSize * viewport.zoom}px`,
+              backgroundPosition: `${viewport.tx % (settings.gridSize * viewport.zoom)}px ${viewport.ty % (settings.gridSize * viewport.zoom)}px`
             }}
           />
 
@@ -969,63 +1247,161 @@ function App(): JSX.Element {
                 const b = groupBounds(g.id)
                 if (!b) return null
                 const isNested = !!g.parentGroupId
-                const borderColor = isNested ? 'rgba(255,180,50,0.4)' : 'rgba(74,158,255,0.35)'
-                const bgColor    = isNested ? 'rgba(255,180,50,0.02)' : 'rgba(74,158,255,0.03)'
-                const labelColor = isNested ? 'rgba(255,180,50,0.5)'  : 'rgba(74,158,255,0.45)'
+                const defaultColor = isNested ? '#ffb432' : '#4a9eff'
+                const color = g.color ?? defaultColor
+                const borderColor = color + 'cc'
+                const bgColor = color + '14'
+                const labelColor = color + 'ee'
+                const isDraggingThis = (dragState.type === 'group' || dragState.type === 'group-resize') && dragState.groupId === g.id
                 return (
                   <div
                     key={g.id}
                     style={{
                       position: 'absolute',
                       left: b.x, top: b.y, width: b.w, height: b.h,
-                      border: `1.5px dashed ${borderColor}`,
+                      border: `2px dashed ${borderColor}`,
                       borderRadius: 12,
                       background: bgColor,
-                      zIndex: isNested ? 1 : 0,
+                      zIndex: isDraggingThis ? 99989 : isNested ? 1 : 0,
                       boxSizing: 'border-box',
-                      cursor: 'grab',
+                      cursor: isDraggingThis ? 'grabbing' : 'grab',
                     }}
                     onMouseDown={e => {
-                      // Only fire if clicking the frame itself, not a child tile
                       if ((e.target as HTMLElement) !== e.currentTarget) return
                       e.stopPropagation()
                       const ids = collectGroupTileIds(g.id)
                       const snapshots = tiles
                         .filter(t => ids.includes(t.id))
                         .map(t => ({ id: t.id, x: t.x, y: t.y }))
-                      setDragState({
-                        type: 'group',
-                        groupId: g.id,
-                        startX: e.clientX,
-                        startY: e.clientY,
-                        snapshots
-                      })
+                      setDragState({ type: 'group', groupId: g.id, startX: e.clientX, startY: e.clientY, snapshots })
                     }}
                   >
                     {/* Label bar */}
-                    <div style={{
-                      position: 'absolute', top: -22, left: 0,
-                      display: 'flex', gap: 8, alignItems: 'center',
-                      userSelect: 'none', pointerEvents: 'all'
-                    }}>
-                      <span style={{ fontSize: 10, color: labelColor, letterSpacing: '0.04em' }}>
+                    <div
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        position: 'absolute', top: -28, left: 0,
+                        display: 'flex', gap: 6, alignItems: 'center',
+                        userSelect: 'none', pointerEvents: 'all',
+                        background: 'rgba(18,18,18,0.85)',
+                        border: '1px solid #333',
+                        borderRadius: 6, padding: '3px 8px',
+                        backdropFilter: 'blur(4px)',
+                      }}>
+                      {/* Color swatch / picker */}
+                      <div style={{ position: 'relative' }}>
+                        <div
+                          style={{
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: color, cursor: 'pointer', flexShrink: 0,
+                            border: '1px solid rgba(255,255,255,0.2)'
+                          }}
+                          onClick={e => {
+                            e.stopPropagation()
+                            const input = e.currentTarget.nextSibling as HTMLInputElement
+                            input?.click()
+                          }}
+                        />
+                        <input
+                          type="color"
+                          value={color}
+                          onChange={e => {
+                            const newColor = e.target.value
+                            setGroups(prev => {
+                              const updated = prev.map(gr => gr.id === g.id ? { ...gr, color: newColor } : gr)
+                              setTiles(t => { saveCanvas(t, viewport, nextZIndex, updated); return t })
+                              return updated
+                            })
+                          }}
+                          style={{
+                            position: 'absolute', opacity: 0, width: 0, height: 0,
+                            top: 0, left: 0, pointerEvents: 'none'
+                          }}
+                        />
+                      </div>
+
+                      {/* Editable label */}
+                      <span
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={e => {
+                          const newLabel = e.currentTarget.textContent?.trim() || 'group'
+                          setGroups(prev => {
+                            const updated = prev.map(gr => gr.id === g.id ? { ...gr, label: newLabel } : gr)
+                            setTiles(t => { saveCanvas(t, viewport, nextZIndex, updated); return t })
+                            return updated
+                          })
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur() } e.stopPropagation() }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ fontSize: 11, color: labelColor, fontWeight: 500, minWidth: 30, outline: 'none', cursor: 'text' }}>
                         {g.label ?? 'group'}
                       </span>
-                      <span
-                        style={{ fontSize: 10, color: labelColor, cursor: 'pointer', opacity: 0.7 }}
-                        onClick={e => { e.stopPropagation(); ungroupTiles(g.id) }}
-                        title="Ungroup one level"
-                      >
-                        ungroup
-                      </span>
-                      <span
-                        style={{ fontSize: 10, color: labelColor, cursor: 'pointer', opacity: 0.5 }}
-                        onClick={e => { e.stopPropagation(); ungroupAll(g.id) }}
-                        title="Ungroup all (recursive)"
-                      >
-                        ungroup all
-                      </span>
+
+                      <span style={{ width: 1, height: 10, background: '#444' }} />
+
+                      {([
+                        { icon: <Unlink size={11} />, label: 'Ungroup', action: () => ungroupTilesRef.current(g.id) },
+                        { icon: <Layers size={11} />, label: 'Ungroup all', action: () => ungroupAllRef.current(g.id) },
+                        { icon: <Scissors size={11} />, label: 'Cut', action: () => {
+                          const ids = collectGroupTileIds(g.id)
+                          setSelectedTileIds(new Set(ids))
+                          setSelectedTileId(null)
+                          setTimeout(() => copyTilesRef.current(true), 0)
+                        }},
+                        ...(clipboard.current.length > 0 ? [{ icon: <ClipboardPaste size={11} />, label: 'Paste in', action: () => pasteTilesRef.current(undefined, g.id) }] : [])
+                      ] as { icon: React.ReactNode; label: string; action: () => void }[]).map(btn => (
+                        <Tooltip key={btn.label} label={btn.label} side="bottom">
+                          <div
+                            onClick={e => { e.stopPropagation(); btn.action() }}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: 20, height: 20, borderRadius: 4, cursor: 'pointer',
+                              color: '#999',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#999')}
+                          >
+                            {btn.icon}
+                          </div>
+                        </Tooltip>
+                      ))}
                     </div>
+
+                    {/* Resize handles */}
+                    {([ 'n','s','e','w','ne','nw','se','sw' ] as const).map(dir => {
+                      const S = 10
+                      const hs: React.CSSProperties = { position: 'absolute', zIndex: 20 }
+                      if (dir === 'e')  Object.assign(hs, { right: -S/2,  top: S,      bottom: S,      width: S,  cursor: 'col-resize' })
+                      if (dir === 'w')  Object.assign(hs, { left: -S/2,   top: S,      bottom: S,      width: S,  cursor: 'col-resize' })
+                      if (dir === 's')  Object.assign(hs, { bottom: -S/2, left: S,     right: S,       height: S, cursor: 'row-resize' })
+                      if (dir === 'n')  Object.assign(hs, { top: -S/2,    left: S,     right: S,       height: S, cursor: 'row-resize' })
+                      if (dir === 'se') Object.assign(hs, { right: -S/2,  bottom: -S/2, width: S*1.5, height: S*1.5, cursor: 'se-resize' })
+                      if (dir === 'sw') Object.assign(hs, { left: -S/2,   bottom: -S/2, width: S*1.5, height: S*1.5, cursor: 'sw-resize' })
+                      if (dir === 'ne') Object.assign(hs, { right: -S/2,  top: -S/2,    width: S*1.5, height: S*1.5, cursor: 'ne-resize' })
+                      if (dir === 'nw') Object.assign(hs, { left: -S/2,   top: -S/2,    width: S*1.5, height: S*1.5, cursor: 'nw-resize' })
+                      return (
+                        <div
+                          key={dir}
+                          style={hs}
+                          onMouseDown={e => {
+                            e.stopPropagation()
+                            e.preventDefault()
+                            const ids = collectGroupTileIds(g.id)
+                            const snapshots = tiles
+                              .filter(t => ids.includes(t.id))
+                              .map(t => ({ id: t.id, x: t.x, y: t.y, width: t.width, height: t.height }))
+                            setDragState({
+                              type: 'group-resize',
+                              groupId: g.id, dir,
+                              startX: e.clientX, startY: e.clientY,
+                              initBounds: { x: b.x + 20, y: b.y + 20, w: b.w - 40, h: b.h - 40 }, // strip PAD
+                              snapshots
+                            })
+                          }}
+                        />
+                      )
+                    })}
                   </div>
                 )
               })
@@ -1077,19 +1453,29 @@ function App(): JSX.Element {
               )
             )}
 
-            {tiles.map(tile => (
-              <TileChrome
-                key={tile.id}
-                tile={tile}
-                onClose={() => closeTile(tile.id)}
-                onTitlebarMouseDown={e => handleTileMouseDown(e, tile)}
-                onResizeMouseDown={(e, dir) => handleResizeMouseDown(e, tile, dir)}
-                onContextMenu={e => handleTileContextMenu(e, tile)}
-                isSelected={tile.id === selectedTileId || selectedTileIds.has(tile.id)}
-              >
-                {renderTileBody(tile)}
-              </TileChrome>
-            ))}
+            {tiles.map(tile => {
+              // Tile being dragged (or part of a group being dragged) gets max z-index
+              const isActiveDrag =
+                (dragState.type === 'tile' && (dragState.tileId === tile.id || dragState.groupSnapshots.some(s => s.id === tile.id))) ||
+                (dragState.type === 'resize' && dragState.tileId === tile.id) ||
+                ((dragState.type === 'group' || dragState.type === 'group-resize') && tile.groupId === dragState.groupId)
+              const activeTile = isActiveDrag ? { ...tile, zIndex: 99990 } : tile
+              return (
+                <TileChrome
+                  key={tile.id}
+                  tile={activeTile}
+                  onClose={() => closeTile(tile.id)}
+                  onTitlebarMouseDown={e => handleTileMouseDown(e, tile)}
+                  onResizeMouseDown={(e, dir) => handleResizeMouseDown(e, tile, dir)}
+                  onContextMenu={e => handleTileContextMenu(e, tile)}
+                  isSelected={tile.id === selectedTileId || selectedTileIds.has(tile.id)}
+                  forceExpanded={expandedTileId === tile.id}
+                  onExpandChange={expanded => setExpandedTileId(expanded ? tile.id : null)}
+                >
+                  {renderTileBody(tile)}
+                </TileChrome>
+              )
+            })}
           </div>
 
           {/* Zoom indicator */}
@@ -1107,7 +1493,9 @@ function App(): JSX.Element {
 
           {/* Group button — appears when 2+ tiles are rubber-band selected */}
           {selectedTileIds.size >= 2 && (
-            <div style={{
+            <div
+              onMouseDown={e => e.stopPropagation()}
+              style={{
               position: 'absolute', bottom: 62, left: '50%', transform: 'translateX(-50%)',
               display: 'flex', gap: 8, alignItems: 'center',
               background: 'rgba(20,20,20,0.92)', border: '1px solid #2d2d2d',
@@ -1141,11 +1529,65 @@ function App(): JSX.Element {
             </div>
           )}
 
+          {/* Expanded tile — fills the canvas panel, canvas disabled */}
+          {expandedTileId && (() => {
+            const tile = tiles.find(t => t.id === expandedTileId)
+            if (!tile) return null
+            return (
+              <div style={{
+                position: 'absolute', inset: 0,
+                zIndex: 99990,
+                background: '#1e1e1e',
+                display: 'flex', flexDirection: 'column',
+                borderLeft: '1px solid #2d2d2d',
+              }}>
+                {/* Titlebar */}
+                <div style={{
+                  height: 36, background: '#252525', borderBottom: '1px solid #2d2d2d',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '0 12px 0 12px', userSelect: 'none', flexShrink: 0
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: '#cccccc' }}>
+                    {tile.filePath?.replace(/\\/g, '/').split('/').pop() ?? tile.type.charAt(0).toUpperCase() + tile.type.slice(1)}
+                  </span>
+                  <button
+                    onClick={() => setExpandedTileId(null)}
+                    style={{
+                      width: 14, height: 14, borderRadius: '50%', background: '#444',
+                      border: 'none', cursor: 'pointer', transition: 'background 0.1s'
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#ff5f56')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '#444')}
+                  />
+                </div>
+                {/* Content */}
+                <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+                  {renderTileBody(tile)}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Minimap */}
+          {showMinimap && (
+            <Minimap
+              tiles={tiles}
+              viewport={viewport}
+              canvasSize={{
+                w: canvasRef.current?.clientWidth ?? 1200,
+                h: canvasRef.current?.clientHeight ?? 800
+              }}
+              onPan={(tx, ty) => setViewport(prev => ({ ...prev, tx, ty }))}
+            />
+          )}
+
           {/* Arrange toolbar */}
           <ArrangeToolbar tiles={tiles} onArrange={handleArrange} />
         </div>
       </div>
       {showMCP && <MCPPanel onClose={() => setShowMCP(false)} />}
+      {/* showMCP now opens Settings on MCP tab — kept for backwards compat */}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} onSettingsChange={s => setSettings(s)} workspaces={workspaces} />}
       {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxMenu.items} onClose={closeCtx} />}
     </div>
   )
