@@ -255,7 +255,15 @@ export function KanbanCard({
     >
       {/* ── Collapsed header ── */}
       <div
-        style={{ padding: '8px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+        style={{
+          padding: '8px 10px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'rgba(255,255,255,0.06)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)'
+        }}
         onClick={() => setExpanded(p => !p)}
       >
         {/* Status indicator */}
