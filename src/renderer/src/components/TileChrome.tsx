@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { TileState } from '../../../shared/types'
+
+// --- Drawer data types ---
 
 interface TaskItem {
   id: string
@@ -8,6 +10,41 @@ interface TaskItem {
   detail?: string
   timestamp: number
 }
+
+interface ToolItem {
+  id: string
+  name: string
+  status: 'running' | 'done' | 'error'
+  input?: string
+  output?: string
+  elapsed?: number
+  timestamp: number
+}
+
+interface FileItem {
+  id: string
+  path: string
+  action: 'read' | 'write' | 'create' | 'delete' | 'edit'
+  timestamp: number
+}
+
+interface NoteItem {
+  id: string
+  content: string
+  source?: string
+  timestamp: number
+}
+
+type DrawerTab = 'tasks' | 'tools' | 'files' | 'notes'
+
+interface DrawerData {
+  tasks: TaskItem[]
+  tools: ToolItem[]
+  files: FileItem[]
+  notes: NoteItem[]
+}
+
+// --- TileChrome props ---
 
 interface Props {
   tile: TileState
@@ -18,12 +55,12 @@ interface Props {
   onExpandChange?: (expanded: boolean) => void
   children: React.ReactNode
   isSelected?: boolean
-  forceExpanded?: boolean // controlled from outside
-  busChannel?: string           // channel this tile subscribes to (default: `tile:${tile.id}`)
-  busUnreadCount?: number       // unread count passed from parent
-  onBusPopupToggle?: () => void // callback when badge is clicked
-  showBusPopup?: boolean        // controlled popup visibility
-  busEvents?: Array<{           // recent events to show in popup
+  forceExpanded?: boolean
+  busChannel?: string
+  busUnreadCount?: number
+  onBusPopupToggle?: () => void
+  showBusPopup?: boolean
+  busEvents?: Array<{
     id: string
     type: string
     timestamp: number
@@ -61,7 +98,46 @@ function ResizeHandle({ dir, onMouseDown }: {
   return <div style={style} onMouseDown={e => { e.stopPropagation(); e.preventDefault(); onMouseDown(e) }} />
 }
 
-// --- Task status icons ---
+// ─── Tab icons (12x12 SVGs) ──────────────────────────────────────────────────
+
+function TabIcon({ tab }: { tab: DrawerTab }): JSX.Element {
+  if (tab === 'tasks') return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <rect x="1" y="1.5" width="3" height="3" rx="0.6" stroke="currentColor" strokeWidth="1" />
+      <rect x="1" y="7.5" width="3" height="3" rx="0.6" stroke="currentColor" strokeWidth="1" />
+      <path d="M6 3h5M6 9h5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  )
+  if (tab === 'tools') return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M7.5 2.5l2 2-5 5-2.5.5.5-2.5 5-5z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M6.5 3.5l2 2" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  )
+  if (tab === 'files') return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M3 1.5h4l2.5 2.5V10.5H3z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M7 1.5V4h2.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+  // notes
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1" />
+      <path d="M3.5 4h5M3.5 6h5M3.5 8h3" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+// ─── Tab labels ──────────────────────────────────────────────────────────────
+
+const TAB_LABELS: Record<DrawerTab, string> = {
+  tasks: 'Tasks', tools: 'Tools', files: 'Files', notes: 'Notes'
+}
+
+const ALL_TABS: DrawerTab[] = ['tasks', 'tools', 'files', 'notes']
+
+// ─── Status icons ────────────────────────────────────────────────────────────
 
 function TaskStatusIcon({ status }: { status: TaskItem['status'] }): JSX.Element {
   if (status === 'done') return (
@@ -82,7 +158,6 @@ function TaskStatusIcon({ status }: { status: TaskItem['status'] }): JSX.Element
       <path d="M6 3v3.5l2.5 1.5" stroke="#4a9eff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
-  // pending
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
       <circle cx="6" cy="6" r="5" stroke="#555" strokeWidth="1.2" />
@@ -90,104 +165,314 @@ function TaskStatusIcon({ status }: { status: TaskItem['status'] }): JSX.Element
   )
 }
 
-// --- Drawer panel ---
+function ToolStatusIcon({ status }: { status: ToolItem['status'] }): JSX.Element {
+  if (status === 'done') return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <circle cx="6" cy="6" r="5" stroke="#3fb950" strokeWidth="1.2" />
+      <path d="M3.5 6l2 2 3-3.5" stroke="#3fb950" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+  if (status === 'error') return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <circle cx="6" cy="6" r="5" stroke="#e54d2e" strokeWidth="1.2" />
+      <path d="M4 4l4 4M8 4l-4 4" stroke="#e54d2e" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  )
+  // running - pulsing dot
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <circle cx="6" cy="6" r="5" stroke="#4a9eff" strokeWidth="1.2" />
+      <circle cx="6" cy="6" r="2" fill="#4a9eff" opacity="0.6" />
+    </svg>
+  )
+}
 
-function TaskDrawer({ tasks, tileId }: { tasks: TaskItem[]; tileId: string }): JSX.Element {
+const FILE_ACTION_COLORS: Record<FileItem['action'], string> = {
+  read: '#888', write: '#e2c08d', create: '#73c991', delete: '#f44747', edit: '#4a9eff'
+}
+
+const FILE_ACTION_LABELS: Record<FileItem['action'], string> = {
+  read: 'R', write: 'W', create: '+', delete: 'D', edit: 'E'
+}
+
+// ─── Drawer tab content panels ───────────────────────────────────────────────
+
+function TasksPanel({ tasks }: { tasks: TaskItem[] }): JSX.Element {
   const pending = tasks.filter(t => t.status !== 'done')
   const done = tasks.filter(t => t.status === 'done')
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      {tasks.length === 0 ? (
+        <EmptyState text="No tasks yet" />
+      ) : (
+        <>
+          {pending.map(t => (
+            <div key={t.id} style={{ padding: '5px 12px', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+              <div style={{ marginTop: 1, flexShrink: 0 }}><TaskStatusIcon status={t.status} /></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: '#bbb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                {t.detail && <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>{t.detail}</div>}
+              </div>
+            </div>
+          ))}
+          {done.length > 0 && pending.length > 0 && <Divider />}
+          {done.map(t => (
+            <div key={t.id} style={{ padding: '5px 12px', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+              <div style={{ marginTop: 1, flexShrink: 0 }}><TaskStatusIcon status={t.status} /></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: '#555', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+function ToolsPanel({ tools }: { tools: ToolItem[] }): JSX.Element {
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      {tools.length === 0 ? (
+        <EmptyState text="No tool calls yet" />
+      ) : (
+        tools.slice().reverse().map(t => (
+          <div key={t.id} style={{ padding: '5px 12px', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            <div style={{ marginTop: 1, flexShrink: 0 }}><ToolStatusIcon status={t.status} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: '#bbb', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+              {t.input && <div style={{ fontSize: 10, color: '#555', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.input}</div>}
+              {t.elapsed != null && t.status === 'done' && (
+                <div style={{ fontSize: 9, color: '#444', marginTop: 1 }}>{(t.elapsed / 1000).toFixed(1)}s</div>
+              )}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
+function FilesPanel({ files }: { files: FileItem[] }): JSX.Element {
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      {files.length === 0 ? (
+        <EmptyState text="No file activity yet" />
+      ) : (
+        files.slice().reverse().map(f => (
+          <div key={f.id} style={{ padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              fontSize: 9, fontWeight: 700, width: 14, textAlign: 'center',
+              color: FILE_ACTION_COLORS[f.action],
+            }}>
+              {FILE_ACTION_LABELS[f.action]}
+            </span>
+            <span style={{
+              fontSize: 11, color: '#aaa', flex: 1, minWidth: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              direction: 'rtl', textAlign: 'left',
+            }}>
+              {f.path.split('/').pop()}
+            </span>
+            <span style={{ fontSize: 9, color: '#333', flexShrink: 0 }}>
+              {new Date(f.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
+function NotesPanel({ notes }: { notes: NoteItem[] }): JSX.Element {
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      {notes.length === 0 ? (
+        <EmptyState text="No notes yet" />
+      ) : (
+        notes.slice().reverse().map(n => (
+          <div key={n.id} style={{ padding: '5px 12px', borderBottom: '1px solid #1a1a1a' }}>
+            <div style={{ fontSize: 11, color: '#bbb', lineHeight: 1.4 }}>{n.content}</div>
+            <div style={{ fontSize: 9, color: '#444', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+              {n.source && <span>{n.source}</span>}
+              <span>{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
+function EmptyState({ text }: { text: string }): JSX.Element {
+  return <div style={{ padding: '24px 12px', textAlign: 'center', color: '#444', fontSize: 11 }}>{text}</div>
+}
+
+function Divider(): JSX.Element {
+  return <div style={{ height: 1, background: '#1a1a1a', margin: '4px 12px' }} />
+}
+
+// ─── Tabbed drawer container ─────────────────────────────────────────────────
+
+function DrawerPanel({ data, activeTab, onTabChange }: {
+  data: DrawerData
+  activeTab: DrawerTab
+  onTabChange: (tab: DrawerTab) => void
+}): JSX.Element {
+  const counts: Record<DrawerTab, number> = {
+    tasks: data.tasks.filter(t => t.status !== 'done').length,
+    tools: data.tools.filter(t => t.status === 'running').length,
+    files: data.files.length,
+    notes: data.notes.length,
+  }
 
   return (
-    <div style={{
-      width: '100%', height: '100%',
-      display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-    }}>
-      {/* Header */}
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Tab bar — same style as old header */}
       <div style={{
         height: 32, flexShrink: 0,
         display: 'flex', alignItems: 'center',
-        padding: '0 12px',
         borderBottom: '1px solid #222',
-        fontSize: 11, fontWeight: 600, color: '#888',
+        padding: '0 4px',
+        gap: 0,
       }}>
-        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style={{ marginRight: 6, opacity: 0.6 }}>
-          <rect x="1" y="2" width="12" height="1.5" rx="0.75" fill="currentColor" />
-          <rect x="1" y="6.25" width="12" height="1.5" rx="0.75" fill="currentColor" />
-          <rect x="1" y="10.5" width="12" height="1.5" rx="0.75" fill="currentColor" />
-          <circle cx="2.5" cy="2.75" r="1.5" fill="currentColor" />
-          <circle cx="2.5" cy="7" r="1.5" fill="currentColor" />
-          <circle cx="2.5" cy="11.25" r="1.5" fill="currentColor" />
-        </svg>
-        Tasks
-        {tasks.length > 0 && (
-          <span style={{ marginLeft: 'auto', color: '#555', fontWeight: 400 }}>
-            {done.length}/{tasks.length}
-          </span>
-        )}
+        {ALL_TABS.map(tab => {
+          const active = tab === activeTab
+          const count = counts[tab]
+          return (
+            <TabButton
+              key={tab}
+              tab={tab}
+              active={active}
+              count={count}
+              onClick={() => onTabChange(tab)}
+            />
+          )
+        })}
       </div>
 
-      {/* Task list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        {tasks.length === 0 ? (
-          <div style={{
-            padding: '24px 12px', textAlign: 'center',
-            color: '#444', fontSize: 11,
-          }}>
-            No tasks yet. Agent activity will appear here.
-          </div>
-        ) : (
-          <>
-            {pending.map(task => (
-              <TaskRow key={task.id} task={task} />
-            ))}
-            {done.length > 0 && pending.length > 0 && (
-              <div style={{ height: 1, background: '#1a1a1a', margin: '4px 12px' }} />
-            )}
-            {done.map(task => (
-              <TaskRow key={task.id} task={task} />
-            ))}
-          </>
-        )}
-      </div>
+      {/* Active panel */}
+      {activeTab === 'tasks' && <TasksPanel tasks={data.tasks} />}
+      {activeTab === 'tools' && <ToolsPanel tools={data.tools} />}
+      {activeTab === 'files' && <FilesPanel files={data.files} />}
+      {activeTab === 'notes' && <NotesPanel notes={data.notes} />}
     </div>
   )
 }
 
-function TaskRow({ task }: { task: TaskItem }): JSX.Element {
+function TabButton({ tab, active, count, onClick }: {
+  tab: DrawerTab; active: boolean; count: number; onClick: () => void
+}): JSX.Element {
   const [h, setH] = useState(false)
   return (
-    <div
-      style={{
-        padding: '5px 12px',
-        display: 'flex', alignItems: 'flex-start', gap: 6,
-        background: h ? 'rgba(255,255,255,0.02)' : 'transparent',
-        transition: 'background 0.1s',
-      }}
+    <button
+      onClick={onClick}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
+      style={{
+        flex: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+        height: 28,
+        background: active ? 'rgba(255,255,255,0.05)' : (h ? 'rgba(255,255,255,0.02)' : 'transparent'),
+        border: 'none',
+        borderBottom: active ? '1.5px solid #4a9eff' : '1.5px solid transparent',
+        cursor: 'pointer',
+        color: active ? '#ccc' : (h ? '#888' : '#555'),
+        fontSize: 10, fontWeight: active ? 600 : 400,
+        padding: '0 4px',
+        transition: 'color 0.1s, background 0.1s',
+      }}
     >
-      <div style={{ marginTop: 1, flexShrink: 0 }}>
-        <TaskStatusIcon status={task.status} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 11, color: task.status === 'done' ? '#555' : '#bbb',
-          textDecoration: task.status === 'done' ? 'line-through' : 'none',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      <TabIcon tab={tab} />
+      <span>{TAB_LABELS[tab]}</span>
+      {count > 0 && (
+        <span style={{
+          fontSize: 8, fontWeight: 700,
+          color: active ? '#4a9eff' : '#555',
+          minWidth: 10, textAlign: 'center',
         }}>
-          {task.title}
-        </div>
-        {task.detail && (
-          <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>
-            {task.detail}
-          </div>
-        )}
-      </div>
-    </div>
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </button>
   )
 }
 
-// --- Main TileChrome ---
+// ─── Event processing helpers ────────────────────────────────────────────────
+
+function processEvent(evt: { type: string; payload: Record<string, unknown>; id: string; timestamp: number }, setData: React.Dispatch<React.SetStateAction<DrawerData>>): void {
+  const p = evt.payload as any
+
+  if (evt.type === 'task') {
+    if (p?.action === 'create' || (!p?.action && p?.title)) {
+      setData(prev => {
+        if (prev.tasks.some(t => t.id === (p.task_id ?? p.id))) return prev
+        return { ...prev, tasks: [...prev.tasks, {
+          id: p.task_id ?? p.id ?? evt.id,
+          title: p.title ?? 'Untitled task',
+          status: p.status ?? 'pending',
+          detail: p.detail,
+          timestamp: evt.timestamp,
+        }]}
+      })
+    } else if (p?.action === 'update' && p?.task_id) {
+      setData(prev => ({ ...prev, tasks: prev.tasks.map(t =>
+        t.id === p.task_id
+          ? { ...t, status: p.status ?? t.status, title: p.title ?? t.title, detail: p.detail ?? t.detail }
+          : t
+      )}))
+    }
+  }
+
+  if (evt.type === 'tool_start' || evt.type === 'tool') {
+    setData(prev => {
+      const toolId = p?.tool_id ?? p?.id ?? evt.id
+      if (evt.type === 'tool_start') {
+        if (prev.tools.some(t => t.id === toolId)) return prev
+        return { ...prev, tools: [...prev.tools, {
+          id: toolId,
+          name: p?.name ?? p?.tool ?? 'Unknown tool',
+          status: 'running',
+          input: typeof p?.input === 'string' ? p.input.slice(0, 120) : undefined,
+          timestamp: evt.timestamp,
+        }]}
+      }
+      // tool complete/update
+      return { ...prev, tools: prev.tools.map(t =>
+        t.id === toolId
+          ? { ...t, status: p?.error ? 'error' : 'done', output: p?.output?.toString()?.slice(0, 120), elapsed: p?.elapsed }
+          : t
+      )}
+    })
+  }
+
+  if (evt.type === 'file' || evt.type === 'file_activity') {
+    setData(prev => {
+      const fileId = p?.file_id ?? evt.id
+      if (prev.files.some(f => f.id === fileId)) return prev
+      return { ...prev, files: [...prev.files, {
+        id: fileId,
+        path: p?.path ?? p?.file ?? 'unknown',
+        action: (p?.action as FileItem['action']) ?? 'read',
+        timestamp: evt.timestamp,
+      }]}
+    })
+  }
+
+  if (evt.type === 'note' || evt.type === 'notification' || evt.type === 'progress') {
+    setData(prev => {
+      if (prev.notes.some(n => n.id === evt.id)) return prev
+      return { ...prev, notes: [...prev.notes, {
+        id: evt.id,
+        content: p?.message ?? p?.text ?? p?.title ?? p?.status ?? JSON.stringify(p).slice(0, 200),
+        source: p?.source ?? evt.type,
+        timestamp: evt.timestamp,
+      }]}
+    })
+  }
+}
+
+// ─── Main TileChrome ─────────────────────────────────────────────────────────
 
 export function TileChrome({
   tile, onClose, onTitlebarMouseDown, onResizeMouseDown, onContextMenu,
@@ -197,7 +482,8 @@ export function TileChrome({
   const [localExpanded, setLocalExpanded] = useState(false)
   const expanded = forceExpanded ?? localExpanded
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [activeTab, setActiveTab] = useState<DrawerTab>('tasks')
+  const [data, setData] = useState<DrawerData>({ tasks: [], tools: [], files: [], notes: [] })
   const hasDrawer = DRAWER_TYPES.has(tile.type)
 
   const toggle = () => {
@@ -206,63 +492,26 @@ export function TileChrome({
     onExpandChange?.(next)
   }
 
-  // Listen for task events on this tile's bus channel
+  // Listen for all event types on this tile's bus channel
   useEffect(() => {
     if (!hasDrawer) return
     const channel = `tile:${tile.id}`
     const unsub = window.electron?.bus?.subscribe(channel, (event: any) => {
-      if (event?.type !== 'task') return
-      const p = event.payload
-      if (p?.action === 'create' || (!p?.action && p?.title)) {
-        setTasks(prev => {
-          if (prev.some(t => t.id === (p.task_id ?? p.id))) return prev
-          return [...prev, {
-            id: p.task_id ?? p.id ?? crypto.randomUUID(),
-            title: p.title ?? 'Untitled task',
-            status: p.status ?? 'pending',
-            detail: p.detail,
-            timestamp: event.timestamp ?? Date.now(),
-          }]
-        })
-      } else if (p?.action === 'update' && p?.task_id) {
-        setTasks(prev => prev.map(t =>
-          t.id === p.task_id
-            ? { ...t, status: p.status ?? t.status, title: p.title ?? t.title, detail: p.detail ?? t.detail }
-            : t
-        ))
-      }
+      if (!event?.type) return
+      processEvent(event, setData)
     })
     return () => { unsub?.then?.(fn => fn?.()) ?? unsub?.() }
   }, [tile.id, hasDrawer])
 
-  // Also extract tasks from busEvents prop
+  // Also extract from busEvents prop
   useEffect(() => {
     if (!busEvents || !hasDrawer) return
     for (const evt of busEvents) {
-      if (evt.type !== 'task') continue
-      const p = evt.payload as any
-      if (p?.action === 'create' || (!p?.action && p?.title)) {
-        setTasks(prev => {
-          if (prev.some(t => t.id === (p.task_id ?? p.id))) return prev
-          return [...prev, {
-            id: p.task_id ?? p.id ?? evt.id,
-            title: p.title ?? 'Untitled task',
-            status: p.status ?? 'pending',
-            detail: p.detail,
-            timestamp: evt.timestamp,
-          }]
-        })
-      } else if (p?.action === 'update' && p?.task_id) {
-        setTasks(prev => prev.map(t =>
-          t.id === p.task_id
-            ? { ...t, status: p.status ?? t.status, title: p.title ?? t.title, detail: p.detail ?? t.detail }
-            : t
-        ))
-      }
+      processEvent(evt as any, setData)
     }
   }, [busEvents, hasDrawer])
 
-  // ─── Native mousedown listener on the titlebar ───────────────────────────
+  // Native mousedown listener on the titlebar
   const titlebarRef = useRef<HTMLDivElement>(null)
   const mouseDownRef = useRef(onTitlebarMouseDown)
   useEffect(() => { mouseDownRef.current = onTitlebarMouseDown })
@@ -278,7 +527,8 @@ export function TileChrome({
     return () => el.removeEventListener('mousedown', handler)
   }, [])
 
-  const taskCount = tasks.filter(t => t.status !== 'done').length
+  const pendingTasks = data.tasks.filter(t => t.status !== 'done').length
+  const totalActivity = pendingTasks + data.tools.filter(t => t.status === 'running').length
 
   return (
     <div
@@ -311,7 +561,7 @@ export function TileChrome({
           overflow: 'hidden',
           paddingLeft: 12,
         }}>
-          <TaskDrawer tasks={tasks} tileId={tile.id} />
+          <DrawerPanel data={data} activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
       )}
 
@@ -379,7 +629,7 @@ export function TileChrome({
             </span>
           )}
 
-          {/* Task drawer toggle — only for terminal/chat */}
+          {/* Drawer toggle — only for terminal/chat */}
           {hasDrawer && (
             <button
               data-no-drag=""
@@ -394,14 +644,12 @@ export function TileChrome({
               onMouseDown={e => e.stopPropagation()}
               onMouseEnter={e => { if (!drawerOpen) e.currentTarget.style.color = '#aaa' }}
               onMouseLeave={e => { if (!drawerOpen) e.currentTarget.style.color = '#666' }}
-              title={drawerOpen ? 'Hide tasks' : 'Show tasks'}
+              title={drawerOpen ? 'Hide panel' : 'Show panel'}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M3 3.5h8M3 7h8M3 10.5h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                <path d="M1 3.5l1 1 1.5-2" stroke="currentColor" strokeWidth="0" fill="none" />
               </svg>
-              {/* Pending count badge */}
-              {taskCount > 0 && !drawerOpen && (
+              {totalActivity > 0 && !drawerOpen && (
                 <span style={{
                   position: 'absolute', top: 1, right: 1,
                   minWidth: 12, height: 12, borderRadius: 6,
@@ -410,7 +658,7 @@ export function TileChrome({
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: '0 2px',
                 }}>
-                  {taskCount > 9 ? '9+' : taskCount}
+                  {totalActivity > 9 ? '9+' : totalActivity}
                 </span>
               )}
             </button>
