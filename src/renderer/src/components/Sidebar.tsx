@@ -458,7 +458,6 @@ function TreeNode({
   const isRenaming = renamingPath === entry.path
   const isCreateTarget = creatingIn?.dir === entry.path && entry.isDir
   const isSelected = selectedPath === entry.path
-  const isSelectedAncestor = !!selectedPath && entry.isDir && selectedPath.startsWith(`${entry.path}/`)
 
   useEffect(() => {
     if (isRenaming) setRenameVal(entry.name)
@@ -472,16 +471,12 @@ function TreeNode({
           height: 26, paddingLeft: 8 + depth * 16, paddingRight: 12,
           cursor: 'pointer', userSelect: 'none',
           background: isSelected
-            ? 'linear-gradient(180deg, rgba(74,158,255,0.20) 0%, rgba(74,158,255,0.10) 100%)'
-            : isSelectedAncestor
-              ? 'rgba(74,158,255,0.08)'
-              : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
-          border: `1px solid ${isSelected ? 'rgba(90,170,255,0.42)' : isSelectedAncestor ? 'rgba(90,170,255,0.18)' : 'transparent'}`,
-          boxShadow: isSelected
-            ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.20), 0 0 0 1px rgba(74,158,255,0.08)'
-            : 'none',
-          backdropFilter: isSelected ? 'blur(14px)' : 'none',
-          WebkitBackdropFilter: isSelected ? 'blur(14px)' : 'none',
+            ? 'rgba(74,158,255,0.08)'
+            : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          border: `1px solid ${isSelected ? 'rgba(90,170,255,0.18)' : 'transparent'}`,
+          boxShadow: 'none',
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
           position: 'relative',
           borderRadius: 8,
           margin: '0 6px'
@@ -520,7 +515,7 @@ function TreeNode({
         ) : (
           <span style={{
             fontSize: fonts.size,
-            color: isSelected ? '#d7ebff' : isSelectedAncestor ? '#b7d9ff' : entry.isDir ? '#d4d4d4' : '#b8b8b8',
+            color: isSelected ? '#b7d9ff' : entry.isDir ? '#d4d4d4' : '#b8b8b8',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             flex: 1
           }}>
@@ -635,14 +630,12 @@ function FlatEntry({
         height: 26, paddingLeft: 10, paddingRight: 12,
         cursor: 'pointer', userSelect: 'none',
         background: isSelected
-          ? 'linear-gradient(180deg, rgba(74,158,255,0.20) 0%, rgba(74,158,255,0.10) 100%)'
+          ? 'rgba(74,158,255,0.08)'
           : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
-        border: `1px solid ${isSelected ? 'rgba(90,170,255,0.42)' : 'transparent'}`,
-        boxShadow: isSelected
-          ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.20), 0 0 0 1px rgba(74,158,255,0.08)'
-          : 'none',
-        backdropFilter: isSelected ? 'blur(14px)' : 'none',
-        WebkitBackdropFilter: isSelected ? 'blur(14px)' : 'none',
+        border: `1px solid ${isSelected ? 'rgba(90,170,255,0.18)' : 'transparent'}`,
+        boxShadow: 'none',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
         borderRadius: 8,
         margin: '0 6px',
       }}
@@ -667,7 +660,7 @@ function FlatEntry({
         <>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <span style={{
-              fontSize: fonts.size, fontFamily: 'inherit', color: isSelected ? '#d7ebff' : '#b8b8b8',
+              fontSize: fonts.size, fontFamily: 'inherit', color: isSelected ? '#b7d9ff' : '#b8b8b8',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
             }}>
               <span style={{ fontWeight: 400 }}>{entry.name.replace(entry.ext, '')}</span>
