@@ -1374,7 +1374,7 @@ function App(): JSX.Element {
             WebkitAppRegion: 'drag',
             paddingLeft: panelLayout
               ? (sidebarCollapsed ? 84 : 296)
-              : (sidebarCollapsed ? 90 : 16),
+              : (sidebarCollapsed ? 90 : 296),
             transition: 'padding-left 0.15s ease',
             position: 'relative',
             zIndex: 90,
