@@ -133,6 +133,9 @@ function MiniTerminal({ termId, workspaceDir, launchCmd }: {
   useEffect(() => {
     if (!ref.current || mounted.current) return
     mounted.current = true
+    let aborted = false
+    let asyncCleanup: (() => void) | undefined
+
     const term = new Terminal({
       theme: {
         background: '#0a0e14', foreground: '#b3b1ad', cursor: '#e6b450',
@@ -157,14 +160,21 @@ function MiniTerminal({ termId, workspaceDir, launchCmd }: {
       ? window.electron.terminal.create(termId, workspaceDir, parsed.bin, parsed.args)
       : window.electron.terminal.create(termId, workspaceDir)
     cp.then(() => {
-      const cleanup = window.electron.terminal.onData(termId, d => term.write(d))
+      if (aborted) return  // Component already unmounted — don't wire up listeners
+
+      const dataCleanup = window.electron.terminal.onData(termId, d => term.write(d))
       term.onData(d => window.electron.terminal.write(termId, d))
       term.onResize(({ cols, rows }) => window.electron.terminal.resize(termId, cols, rows))
-      ;(ref.current as any).__cleanup = () => { cleanup(); ro.disconnect() }
-    }).catch(err => term.write(`\x1b[31m${err?.message ?? err}\x1b[0m\r\n`))
+
+      asyncCleanup = () => { dataCleanup(); ro.disconnect() }
+    }).catch(err => {
+      if (!aborted) term.write(`\x1b[31m${err?.message ?? err}\x1b[0m\r\n`)
+    })
     return () => {
+      aborted = true
       mounted.current = false
-      ;(ref.current as any)?.__cleanup?.()
+      asyncCleanup?.()
+      ro.disconnect()
       window.electron.terminal.destroy(termId)
       term.dispose()
     }
