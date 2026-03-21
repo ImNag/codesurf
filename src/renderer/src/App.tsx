@@ -476,18 +476,20 @@ function App(): JSX.Element {
       zIndex: nextZIndex,
       filePath
     }
-    const updated = [...tiles, newTile]
     const newNZ = nextZIndex + 1
-    setTiles(updated)
+    setTiles(prev => {
+      const updated = [...prev, newTile]
+      saveCanvas(updated, viewport, newNZ)
+      return updated
+    })
     setNextZIndex(newNZ)
     setSelectedTileId(newTile.id)
-    saveCanvas(updated, viewport, newNZ)
 
     // If in expanded/tabbed mode, add as a tab to the active panel
     if (panelLayout && activePanelId) {
       setPanelLayout(prev => prev ? addTabToLeaf(prev, activePanelId, newTile.id) : prev)
     }
-  }, [tiles, nextZIndex, viewport, viewportCenter, saveCanvas, panelLayout, activePanelId, settings.defaultTileSizes])
+  }, [nextZIndex, viewport, viewportCenter, saveCanvas, panelLayout, activePanelId, settings.defaultTileSizes])
 
   useEffect(() => {
     if (!tiles.some(tile => tile.width < getMinTileWidth(tile) || tile.height < getMinTileHeight(tile))) return
