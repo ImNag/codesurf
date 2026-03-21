@@ -278,15 +278,17 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'stretch', height: 36,
-      background: '#1e1e1e', borderBottom: '1px solid #2d2d2d',
+      display: 'flex', alignItems: 'center', height: 38,
+      background: '#171a1f', borderBottom: '1px solid #262b33',
       overflow: 'hidden', flexShrink: 0, zIndex: 1,
+      padding: '0 8px',
     }}>
       {/* Scrollable tab strip */}
       <div ref={scrollRef} style={{
-        display: 'flex', alignItems: 'stretch',
+        display: 'flex', alignItems: 'center', gap: 4,
         flex: 1, overflowX: 'auto', overflowY: 'hidden',
         scrollbarWidth: 'none',
+        padding: '0 0 1px',
       }}>
         {tabs.map(tab => {
           const isActive = tab.id === activeTab
@@ -305,16 +307,32 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
               }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '0 12px', cursor: 'grab', userSelect: 'none',
-                fontSize: 12, color: isActive ? '#e0e0e0' : '#888',
-                background: isActive ? '#252525' : 'transparent',
-                borderBottom: isActive ? '2px solid #4a9eff' : '2px solid transparent',
-                borderRight: '1px solid #2d2d2d',
-                transition: 'background 0.15s, color 0.15s',
-                flexShrink: 0, maxWidth: 180,
+                height: 28,
+                padding: '0 11px', cursor: 'grab', userSelect: 'none',
+                fontSize: 11, color: isActive ? '#58a6ff' : '#6f7782',
+                background: isActive ? '#21262d' : 'transparent',
+                border: `1px solid ${isActive ? '#30363d' : 'transparent'}`,
+                borderRadius: 7,
+                transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                flexShrink: 0, maxWidth: 220,
+                fontWeight: isActive ? 700 : 500,
+                letterSpacing: 0.3,
+                textTransform: 'uppercase',
               }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#2a2a2a' }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+              onMouseEnter={e => {
+                if (!isActive) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+                  e.currentTarget.style.color = '#aeb8c4'
+                  e.currentTarget.style.borderColor = '#2a2f38'
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isActive) {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#6f7782'
+                  e.currentTarget.style.borderColor = 'transparent'
+                }
+              }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                 {tab.label}
@@ -322,9 +340,9 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
               <span
                 onMouseDown={e => e.stopPropagation()}
                 onClick={e => { e.stopPropagation(); onClose(tab.id) }}
-                style={{ width: 16, height: 16, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#666', flexShrink: 0, cursor: 'pointer' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#666'; e.currentTarget.style.background = 'transparent' }}
+                style={{ width: 14, height: 14, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: isActive ? '#4f647b' : '#4f5761', flexShrink: 0, cursor: 'pointer', transition: 'color 0.15s, background 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.color = isActive ? '#9cc9ff' : '#c2cad4'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                onMouseLeave={e => { e.currentTarget.style.color = isActive ? '#4f647b' : '#4f5761'; e.currentTarget.style.background = 'transparent' }}
               >
                 ×
               </span>

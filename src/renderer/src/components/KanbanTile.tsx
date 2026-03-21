@@ -628,7 +628,7 @@ export function KanbanTile({ tileId, workspaceId, workspaceDir, width, height, o
                   fontFamily: 'inherit', textTransform: 'uppercase', letterSpacing: 0.5,
                 }}
               >
-                {m}
+                {m === 'overview' ? 'Activity' : 'Board'}
               </button>
             ))}
           </div>
