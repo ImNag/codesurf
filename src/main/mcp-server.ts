@@ -14,6 +14,10 @@ import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { app, BrowserWindow } from 'electron'
+import { randomUUID } from 'node:crypto'
+
+const MCP_TOKEN = randomUUID()
+const MAX_BODY = 1024 * 1024 // 1MB
 
 const getHome = (): string => app.getPath('home') || process.env.HOME || process.env.USERPROFILE || ''
 
@@ -599,11 +603,18 @@ export async function startMCPServer(): Promise<number> {
       // CORS preflight
       if (req.method === 'OPTIONS') {
         res.writeHead(200, {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': 'http://127.0.0.1',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Cache-Control'
+          'Access-Control-Allow-Headers': 'Content-Type, Cache-Control, Authorization'
         })
         res.end()
+        return
+      }
+
+      // Auth check — every non-OPTIONS request must carry the bearer token
+      if (req.headers.authorization !== `Bearer ${MCP_TOKEN}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Unauthorized' }))
         return
       }
 
@@ -613,8 +624,7 @@ export async function startMCPServer(): Promise<number> {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*'
+          'Connection': 'keep-alive'
         })
         res.write(':connected\n\n')
 
@@ -636,13 +646,23 @@ export async function startMCPServer(): Promise<number> {
       // SSE push: POST /push — agent sends an event to the canvas
       if (req.method === 'POST' && url.pathname === '/push') {
         let body = ''
-        req.on('data', chunk => { body += chunk })
+        let bodySize = 0
+        req.on('data', (chunk: Buffer | string) => {
+          bodySize += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length
+          if (bodySize > MAX_BODY) {
+            res.writeHead(413, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Request body too large' }))
+            req.destroy()
+            return
+          }
+          body += chunk
+        })
         req.on('end', () => {
           try {
             const { card_id, event, data } = JSON.parse(body)
             pushSSE(card_id, event, data)
             sendToRenderer(event, { cardId: card_id, ...data })
-            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end('{"ok":true}')
           } catch {
             res.writeHead(400); res.end()
@@ -654,7 +674,17 @@ export async function startMCPServer(): Promise<number> {
       // Canvas → Agent: POST /inject — write a message into agent's terminal
       if (req.method === 'POST' && url.pathname === '/inject') {
         let body = ''
-        req.on('data', chunk => { body += chunk })
+        let bodySize = 0
+        req.on('data', (chunk: Buffer | string) => {
+          bodySize += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length
+          if (bodySize > MAX_BODY) {
+            res.writeHead(413, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Request body too large' }))
+            req.destroy()
+            return
+          }
+          body += chunk
+        })
         req.on('end', () => {
           try {
             const { card_id, message, append_newline = true } = JSON.parse(body)
@@ -664,7 +694,7 @@ export async function startMCPServer(): Promise<number> {
             })
             // Also push SSE so other agents/subscribers know
             pushSSE(card_id, 'canvas_message', { message })
-            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end('{"ok":true}')
           } catch {
             res.writeHead(400); res.end()
@@ -679,14 +709,23 @@ export async function startMCPServer(): Promise<number> {
       }
 
       let body = ''
-      req.on('data', chunk => { body += chunk })
+      let bodySize = 0
+      req.on('data', (chunk: Buffer | string) => {
+        bodySize += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length
+        if (bodySize > MAX_BODY) {
+          res.writeHead(413, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Request body too large' }))
+          req.destroy()
+          return
+        }
+        body += chunk
+      })
       req.on('end', async () => {
         try {
           const mcpReq: MCPRequest = JSON.parse(body)
           const response = await handleMCP(mcpReq)
           res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': 'application/json'
           })
           res.end(JSON.stringify(response))
         } catch (e) {
@@ -727,6 +766,7 @@ export async function startMCPServer(): Promise<number> {
         ...(existingConfig ?? {}),
         port: serverPort,
         url: baseUrl,
+        token: MCP_TOKEN,
         updatedAt: new Date().toISOString(),
         mcpServers: normalizedServers,
         tools: TOOLS.map(t => ({ name: t.name, description: t.description })),
@@ -789,6 +829,7 @@ export async function writeMCPConfigToWorkspace(workspacePath: string): Promise<
   existingServers['contex'] = {
     type: 'http',
     url: contexUrl,
+    token: MCP_TOKEN,
   }
 
   const config = {
