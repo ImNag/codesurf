@@ -24,6 +24,14 @@ function tileStatePath(workspaceId: string, tileId: string): string {
   return join(CONTEX_HOME, 'workspaces', workspaceId, `tile-state-${tileId}.json`)
 }
 
+async function deleteFileIfExists(path: string): Promise<void> {
+  try {
+    await fs.unlink(path)
+  } catch {
+    // ignore missing files
+  }
+}
+
 export function registerCanvasIPC(): void {
   ipcMain.handle('canvas:load', async (_, workspaceId: string) => {
     try {
@@ -71,10 +79,13 @@ export function registerCanvasIPC(): void {
   })
 
   ipcMain.handle('canvas:clearTileState', async (_, workspaceId: string, tileId: string) => {
-    try {
-      await fs.unlink(tileStatePath(workspaceId, tileId))
-    } catch {
-      // ignore missing files
-    }
+    await deleteFileIfExists(tileStatePath(workspaceId, tileId))
+  })
+
+  ipcMain.handle('canvas:deleteTileArtifacts', async (_, workspaceId: string, tileId: string) => {
+    await Promise.all([
+      deleteFileIfExists(tileStatePath(workspaceId, tileId)),
+      deleteFileIfExists(kanbanStatePath(workspaceId, tileId)),
+    ])
   })
 }

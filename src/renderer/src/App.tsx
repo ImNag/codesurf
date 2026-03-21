@@ -6,6 +6,7 @@ import type { MenuItem } from './components/ContextMenu'
 import { FontProvider, FontTokenProvider, SANS_DEFAULT, MONO_DEFAULT } from './FontContext'
 import type { PanelNode } from './components/PanelLayout'
 import { createLeaf, removeTileFromTree, addTabToLeaf, getAllTileIds, splitLeaf, closeOthersInLeaf, closeToRightInLeaf, findLeafById } from './components/PanelLayout'
+import { getDroppedPaths } from './utils/dnd'
 
 const LazyPanelLayout = React.lazy(() => import('./components/PanelLayout').then(m => ({ default: m.PanelLayout })))
 
@@ -38,6 +39,7 @@ const LazyTerminalTile = React.lazy(() => import('./components/TerminalTile').th
 const LazyCodeTile = React.lazy(() => import('./components/CodeTile').then(m => ({ default: m.CodeTile })))
 const LazyNoteTile = React.lazy(() => import('./components/NoteTile').then(m => ({ default: m.NoteTile })))
 const LazyChatTile = React.lazy(() => import('./components/ChatTile').then(m => ({ default: m.ChatTile })))
+const LazyFileTile = React.lazy(() => import('./components/FileTile').then(m => ({ default: m.FileTile })))
 const LazyClusoWidgetMount = React.lazy(() => import('./components/ClusoWidgetMount').then(m => ({ default: m.ClusoWidgetMount })))
 
 type DragState =
@@ -100,11 +102,14 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 function getMinTileWidth(tileOrType: TileState | TileState['type']): number {
   const type = typeof tileOrType === 'string' ? tileOrType : tileOrType.type
-  return type === 'chat' ? 450 : 200
+  if (type === 'chat') return 450
+  if (type === 'file') return 200
+  return 200
 }
 
-function getMinTileHeight(_tileOrType: TileState | TileState['type']): number {
-  return 150
+function getMinTileHeight(tileOrType: TileState | TileState['type']): number {
+  const type = typeof tileOrType === 'string' ? tileOrType : tileOrType.type
+  return type === 'file' ? 200 : 150
 }
 
 function App(): JSX.Element {
@@ -501,13 +506,17 @@ function App(): JSX.Element {
       window.electron.terminal.destroy(id)
     }
     if (workspace?.id) {
-      window.electron.canvas.clearTileState(workspace.id, id)
+      void Promise.allSettled([
+        window.electron.canvas.deleteTileArtifacts(workspace.id, id),
+        window.electron.activity.clearTile(workspace.id, id),
+        workspace.path ? window.electron.collab.removeTileDir(workspace.path, id) : Promise.resolve(true),
+      ])
     }
     const updated = tiles.filter(t => t.id !== id)
     setTiles(updated)
     if (selectedTileId === id) setSelectedTileId(null)
     saveCanvas(updated, viewport, nextZIndex)
-  }, [tiles, workspace?.id, selectedTileId, viewport, nextZIndex, saveCanvas])
+  }, [tiles, workspace?.id, workspace?.path, selectedTileId, viewport, nextZIndex, saveCanvas])
 
   const bringToFront = useCallback((id: string) => {
     const nz = nextZIndex
@@ -631,6 +640,13 @@ function App(): JSX.Element {
             })
           }
         })
+      })
+      items.push({ label: '', action: () => {}, divider: true })
+    }
+    if (tile.type === 'file' && tile.filePath && workspace?.path && !tile.filePath.startsWith(workspace.path)) {
+      items.push({
+        label: 'Add to workspace',
+        action: () => { void importFileToWorkspace(tile.filePath!, tile.id) }
       })
       items.push({ label: '', action: () => {}, divider: true })
     }
@@ -966,6 +982,22 @@ function App(): JSX.Element {
     setSidebarSelectedPath(filePath)
     addTile(extToType(filePath), filePath)
   }, [addTile])
+
+  const importFileToWorkspace = useCallback(async (sourcePath: string, tileId?: string) => {
+    if (!workspace?.path) return null
+    const { path: importedPath } = await window.electron.fs.copyIntoDir(sourcePath, workspace.path)
+
+    if (tileId) {
+      setTiles(prev => {
+        const updated = prev.map(tile => tile.id === tileId ? { ...tile, filePath: importedPath } : tile)
+        saveCanvas(updated, viewport, nextZIndex)
+        return updated
+      })
+    }
+
+    setSidebarSelectedPath(importedPath)
+    return importedPath
+  }, [workspace?.path, viewport, nextZIndex, saveCanvas])
 
   // Rebuild merged MCP config whenever workspace changes
   useEffect(() => {
@@ -1555,23 +1587,17 @@ function App(): JSX.Element {
                   style={{
                     height: 26, paddingLeft: 12, paddingRight: openWorkspaceIds.length > 1 ? 6 : 12,
                     borderRadius: 8,
-                    background: isActive
-                      ? 'linear-gradient(180deg, rgba(74,158,255,0.20) 0%, rgba(74,158,255,0.10) 100%)'
-                      : 'transparent',
-                    border: `1px solid ${isActive ? 'rgba(90,170,255,0.42)' : 'transparent'}`,
-                    color: isActive ? '#d7ebff' : '#555',
-                    fontSize: 12, fontWeight: isActive ? 500 : 400,
+                    background: 'transparent',
+                    border: '1px solid transparent',
+                    color: isActive ? '#e6e6e6' : '#666',
+                    fontSize: 12, fontWeight: isActive ? 700 : 400,
                     cursor: isActive ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6,
-                    whiteSpace: 'nowrap', transition: 'all 0.1s',
-                    boxShadow: isActive
-                      ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.28), 0 0 0 1px rgba(74,158,255,0.08)'
-                      : 'none',
-                    backdropFilter: isActive ? 'blur(14px)' : 'none',
-                    WebkitBackdropFilter: isActive ? 'blur(14px)' : 'none',
+                    whiteSpace: 'nowrap', transition: 'color 0.1s',
+                    boxShadow: 'none',
                   }}
-                  onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#aaa' } }}
-                  onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#555' } }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#8fbfff' }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#666' }}
                 >
                   <span>{ws.name}</span>
                   {openWorkspaceIds.length > 1 && (
@@ -1584,9 +1610,9 @@ function App(): JSX.Element {
                           return next
                         })
                       }}
-                      style={{ fontSize: 14, lineHeight: 1, color: isActive ? '#8fbfff' : '#444', cursor: 'pointer', padding: '0 2px' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#ccc' }}
-                      onMouseLeave={e => { e.currentTarget.style.color = isActive ? '#8fbfff' : '#444' }}
+                      style={{ fontSize: 14, lineHeight: 1, color: isActive ? '#777' : '#444', cursor: 'pointer', padding: '0 2px' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#8fbfff' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = isActive ? '#777' : '#444' }}
                     >×</span>
                   )}
                 </button>

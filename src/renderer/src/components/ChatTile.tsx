@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import type { AppSettings } from '../../../shared/types'
+import { basename, getDroppedPaths, isImagePath, toFileUrl } from '../utils/dnd'
 import {
   Paperclip, ShieldCheck, Mic, Activity, ChevronDown,
   Check, ArrowUp, Square, MessageSquare, Bot,
@@ -78,6 +79,11 @@ interface ChatMessage {
   toolBlocks?: ToolBlock[]
   cost?: number
   turns?: number
+}
+
+interface PendingAttachment {
+  path: string
+  kind: 'image' | 'file'
 }
 
 interface Props {
@@ -277,6 +283,8 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [showThinkingMenu, setShowThinkingMenu] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [opencodeModels, setOllamaModels] = useState<ModelOption[]>(DEFAULT_MODELS.opencode)
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
+  const [isDropTarget, setIsDropTarget] = useState(false)
   const stateLoadedRef = useRef(false)
 
   // Voice dictation state
@@ -342,6 +350,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       if (!saved) return
       if (Array.isArray(saved.messages)) setMessages(saved.messages)
       if (typeof saved.input === 'string') setInput(saved.input)
+      if (Array.isArray(saved.attachments)) {
+        setAttachments(saved.attachments.filter((item: any) => typeof item?.path === 'string').map((item: any) => ({
+          path: item.path,
+          kind: item.kind === 'image' || isImagePath(item.path) ? 'image' : 'file',
+        })))
+      }
       if (saved.provider) setProvider(saved.provider)
       if (typeof saved.model === 'string') setModel(saved.model)
       if (typeof saved.mcpEnabled === 'boolean') setMcpEnabled(saved.mcpEnabled)
@@ -359,6 +373,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     window.electron.canvas.saveTileState(workspaceId, tileId, {
       messages,
       input,
+      attachments,
       provider,
       model,
       mcpEnabled,
@@ -367,7 +382,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       agentMode,
       sessionId,
     }).catch(() => {})
-  }, [workspaceId, tileId, messages, input, provider, model, mcpEnabled, mode, thinking, agentMode, sessionId, isStreaming])
+  }, [workspaceId, tileId, messages, input, attachments, provider, model, mcpEnabled, mode, thinking, agentMode, sessionId, isStreaming])
 
   const providerModels: Record<Provider, ModelOption[]> = {
     claude: DEFAULT_MODELS.claude,
@@ -572,13 +587,78 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     })
   }, [])
 
+  const syncComposerHeight = useCallback(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 134)}px`
+  }, [])
+
+  const addAttachments = useCallback((paths: string[]) => {
+    if (paths.length === 0) return
+    setAttachments(prev => {
+      const seen = new Set(prev.map(item => item.path))
+      const next = [...prev]
+      for (const path of paths) {
+        if (seen.has(path)) continue
+        seen.add(path)
+        next.push({ path, kind: isImagePath(path) ? 'image' : 'file' })
+      }
+      return next
+    })
+    setAcType(null)
+    setAcQuery('')
+    requestAnimationFrame(() => {
+      syncComposerHeight()
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      const pos = ta.value.length
+      ta.setSelectionRange(pos, pos)
+    })
+  }, [syncComposerHeight])
+
+  const removeAttachment = useCallback((path: string) => {
+    setAttachments(prev => prev.filter(item => item.path !== path))
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [])
+
+  const handleTileDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (getDroppedPaths(e.dataTransfer).length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setIsDropTarget(true)
+  }, [])
+
+  const handleTileDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setIsDropTarget(false)
+  }, [])
+
+  const handleTileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const droppedPaths = getDroppedPaths(e.dataTransfer)
+    if (droppedPaths.length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDropTarget(false)
+    addAttachments(droppedPaths)
+  }, [addAttachments])
+
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || isStreaming) return
+    if (isStreaming) return
+
+    const trimmedInput = input.trim()
+    const attachmentBlock = attachments.length > 0
+      ? `Attached file paths:\n${attachments.map(item => item.path).join('\n')}`
+      : ''
+    const messageContent = [trimmedInput, attachmentBlock].filter(Boolean).join('\n\n').trim()
+    if (!messageContent) return
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageContent,
       timestamp: Date.now()
     }
 
@@ -586,6 +666,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setInput('')
     setAcType(null)
     setAcQuery('')
+    setAttachments([])
     setIsStreaming(true)
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
@@ -616,7 +697,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       setIsStreaming(false)
       focusComposer()
     }
-  }, [input, isStreaming, messages, tileId, provider, model, mode, thinking, focusComposer])
+  }, [input, attachments, isStreaming, messages, tileId, provider, model, mode, thinking, focusComposer])
 
   const stopStreaming = useCallback(() => {
     window.electron?.chat?.stop?.(tileId)
@@ -628,6 +709,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const clearConversation = useCallback(() => {
     if (isStreaming) return
     setMessages([])
+    setAttachments([])
     setSessionId(null)
     window.electron?.chat?.clearSession?.(tileId)
   }, [isStreaming, tileId])
@@ -657,13 +739,14 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
     // Restore focus and cursor position after React re-render
     requestAnimationFrame(() => {
+      syncComposerHeight()
       if (ta) {
         ta.focus()
         const newPos = triggerStart + replacement.length
         ta.setSelectionRange(newPos, newPos)
       }
     })
-  }, [input, acType])
+  }, [input, acType, syncComposerHeight])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Autocomplete keyboard navigation
@@ -700,11 +783,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
-    const ta = textareaRef.current
-    if (ta) {
-      ta.style.height = 'auto'
-      ta.style.height = `${Math.min(ta.scrollHeight, 134)}px`
-    }
+    syncComposerHeight()
 
     // Detect autocomplete triggers based on cursor position
     const pos = e.target.selectionStart ?? val.length
@@ -731,18 +810,24 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     // No trigger active
     setAcType(null)
     setAcQuery('')
-  }, [])
+  }, [syncComposerHeight])
 
   const fontCtxValue = React.useMemo(() => ({ sans: fontSans, mono: fontMono, size: fontSize, monoSize }), [fontSans, fontMono, fontSize, monoSize])
 
   return (
     <FontCtx.Provider value={fontCtxValue}>
-    <div style={{
-      width: '100%', height: '100%',
-      display: 'flex', flexDirection: 'column',
-      background: '#0d0d0d', color: '#d4d4d4',
-      fontFamily: fontSans, fontSize,
-    }}>
+    <div
+      onDragOver={handleTileDragOver}
+      onDragLeave={handleTileDragLeave}
+      onDrop={handleTileDrop}
+      style={{
+        width: '100%', height: '100%',
+        display: 'flex', flexDirection: 'column',
+        background: '#0d0d0d', color: '#d4d4d4',
+        fontFamily: fontSans, fontSize,
+        position: 'relative',
+      }}
+    >
 
       {/* Header bar with session indicator */}
       {sessionId && (
@@ -872,9 +957,11 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       {/* Input bar */}
       <div style={{
         flexShrink: 0, margin: '0 10px 10px 10px',
-        border: '1px solid #333', borderRadius: 14,
-        background: '#161616',
+        border: isDropTarget ? '1px solid rgba(88,166,255,0.85)' : '1px solid #333', borderRadius: 14,
+        background: isDropTarget ? 'rgba(20, 34, 51, 0.92)' : '#161616',
         position: 'relative',
+        boxShadow: isDropTarget ? '0 0 0 1px rgba(88,166,255,0.28), 0 0 22px rgba(56,139,253,0.12)' : 'none',
+        transition: 'border-color 120ms ease, background 120ms ease, box-shadow 120ms ease',
       }}>
         {/* Autocomplete popup */}
         {acType && acItems.length > 0 && (
@@ -942,12 +1029,75 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           </div>
         )}
 
+        {attachments.length > 0 && (
+          <div style={{
+            display: 'flex', gap: 8, padding: '8px 14px 4px 14px',
+            overflowX: 'auto',
+          }}>
+            {attachments.map(item => (
+              <div
+                key={item.path}
+                title={item.path}
+                style={{
+                  flexShrink: 0,
+                  maxWidth: item.kind === 'image' ? 140 : 180,
+                  height: 54,
+                  borderRadius: 12,
+                  border: '1px solid #2a2a2a',
+                  background: '#121212',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'stretch',
+                }}
+              >
+                {item.kind === 'image' ? (
+                  <img
+                    src={item.path}
+                    alt={basename(item.path)}
+                    style={{ width: 54, height: 54, objectFit: 'cover', display: 'block', background: '#0d0d0d', flexShrink: 0 }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 36, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#7f8ea3', borderRight: '1px solid #1f1f1f', fontSize: 15,
+                  }}>
+                    <Paperclip size={14} />
+                  </div>
+                )}
+                <div style={{
+                  minWidth: 0,
+                  padding: '8px 26px 8px 10px',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                }}>
+                  <div style={{ fontSize: 11, color: '#d4d4d4', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{basename(item.path)}</div>
+                  <div style={{ fontSize: 9, color: '#666', fontFamily: fontMono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.kind === 'image' ? 'image' : 'file'}</div>
+                </div>
+                <button
+                  onClick={() => removeAttachment(item.path)}
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    width: 16, height: 16, borderRadius: 8,
+                    border: '1px solid #2d2d2d', background: 'rgba(10,10,10,0.85)',
+                    color: '#aaa', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 0,
+                  }}
+                  title="Remove attachment"
+                >
+                  <Trash2 size={9} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder={isDictating ? 'Listening...' : 'Message the agent, tag @files, or use /commands and /skills'}
+          placeholder={isDictating ? 'Listening...' : 'Message the agent, or use /commands and /skills'}
           rows={1}
           style={{
             width: '100%', boxSizing: 'border-box',
@@ -1130,20 +1280,20 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
             <button
               onClick={sendMessage}
               onMouseDown={e => e.preventDefault()}
-              disabled={!input.trim()}
+              disabled={!input.trim() && attachments.length === 0}
               style={{
                 width: 28, height: 28, minWidth: 28, borderRadius: '50%',
-                background: input.trim() ? '#4a9eff' : '#252525',
+                background: input.trim() || attachments.length > 0 ? '#4a9eff' : '#252525',
                 border: 'none',
-                cursor: input.trim() ? 'pointer' : 'default',
+                cursor: input.trim() || attachments.length > 0 ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: 0, transition: 'background 0.15s', flexShrink: 0,
               }}
-              onMouseEnter={e => { if (input.trim()) e.currentTarget.style.background = '#58a6ff' }}
-              onMouseLeave={e => { if (input.trim()) e.currentTarget.style.background = '#4a9eff' }}
+              onMouseEnter={e => { if (input.trim() || attachments.length > 0) e.currentTarget.style.background = '#58a6ff' }}
+              onMouseLeave={e => { if (input.trim() || attachments.length > 0) e.currentTarget.style.background = '#4a9eff' }}
               title="Send message"
             >
-              <ArrowUp size={16} color="#fff" strokeWidth={2.5} style={{ opacity: input.trim() ? 1 : 0.3 }} />
+              <ArrowUp size={16} color="#fff" strokeWidth={2.5} style={{ opacity: input.trim() || attachments.length > 0 ? 1 : 0.3 }} />
             </button>
           )}
         </div>

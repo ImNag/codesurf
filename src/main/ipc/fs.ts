@@ -1,6 +1,6 @@
 import { app, ipcMain, shell, BrowserWindow } from 'electron'
 import { promises as fs, watch as fsWatch, FSWatcher } from 'fs'
-import { basename, extname, join } from 'path'
+import { basename, extname, join, parse } from 'path'
 import { homedir } from 'os'
 
 const watchers = new Map<string, FSWatcher>()
@@ -27,6 +27,23 @@ export interface FsEntry {
   path: string
   isDir: boolean
   ext: string
+}
+
+async function getUniqueCopyPath(destDir: string, sourcePath: string): Promise<string> {
+  const resolvedDir = resolveFsPath(destDir)
+  const parsed = parse(resolveFsPath(sourcePath))
+  let attempt = 0
+
+  while (true) {
+    const suffix = attempt === 0 ? '' : ` ${attempt + 1}`
+    const candidate = join(resolvedDir, `${parsed.name}${suffix}${parsed.ext}`)
+    try {
+      await fs.access(candidate)
+      attempt += 1
+    } catch {
+      return candidate
+    }
+  }
 }
 
 export function registerFsIPC(): void {
@@ -99,6 +116,34 @@ export function registerFsIPC(): void {
     const briefPath = join(briefDir, `${cardId}.md`)
     await fs.writeFile(briefPath, content, 'utf8')
     return briefPath
+  })
+
+  ipcMain.handle('fs:stat', async (_, filePath: string) => {
+    const stats = await fs.stat(resolveFsPath(filePath))
+    return {
+      size: stats.size,
+      mtimeMs: stats.mtimeMs,
+      isFile: stats.isFile(),
+      isDir: stats.isDirectory(),
+    }
+  })
+
+  ipcMain.handle('fs:copyIntoDir', async (_, sourcePath: string, destDir: string) => {
+    const resolvedSource = resolveFsPath(sourcePath)
+    const resolvedDestDir = resolveFsPath(destDir)
+    await fs.mkdir(resolvedDestDir, { recursive: true })
+
+    const sourceStats = await fs.stat(resolvedSource)
+    if (!sourceStats.isFile()) throw new Error('Only files can be copied into a workspace')
+
+    const directTarget = join(resolvedDestDir, basename(resolvedSource))
+    const destPath = directTarget === resolvedSource ? resolvedSource : await getUniqueCopyPath(resolvedDestDir, resolvedSource)
+
+    if (destPath !== resolvedSource) {
+      await fs.copyFile(resolvedSource, destPath)
+    }
+
+    return { path: destPath }
   })
 
   ipcMain.handle('fs:watchStart', async (event, dirPath: string) => {

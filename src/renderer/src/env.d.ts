@@ -25,6 +25,8 @@ interface ElectronAPI {
     basename(path: string): Promise<string>
     revealInFinder?(path: string): Promise<void>
     writeBrief(cardId: string, content: string): Promise<string>
+    stat(path: string): Promise<{ size: number; mtimeMs: number; isFile: boolean; isDir: boolean }>
+    copyIntoDir(sourcePath: string, destDir: string): Promise<{ path: string }>
     watch(dirPath: string, callback: () => void): () => void
   }
   git?: {
@@ -62,6 +64,7 @@ interface ElectronAPI {
     loadTileState(workspaceId: string, tileId: string): Promise<any>
     saveTileState(workspaceId: string, tileId: string, state: any): Promise<void>
     clearTileState(workspaceId: string, tileId: string): Promise<void>
+    deleteTileArtifacts(workspaceId: string, tileId: string): Promise<void>
   }
   kanban?: {
     load(workspaceId: string, tileId: string): Promise<{ columns: Array<{ id: string; title: string }>; cards: import('./components/KanbanCard').KanbanCardData[] } | null>
@@ -94,6 +97,47 @@ interface ElectronAPI {
     set(settings: import('../../shared/types').AppSettings): Promise<import('../../shared/types').AppSettings>
     getRawJson(): Promise<{ path: string; content: string }>
     setRawJson(json: string): Promise<{ ok: boolean; error?: string; settings?: import('../../shared/types').AppSettings }>
+  }
+  activity: {
+    upsert(workspaceId: string, data: {
+      id?: string
+      tileId: string
+      type: 'task' | 'tool' | 'skill' | 'context'
+      status?: 'pending' | 'running' | 'done' | 'error' | 'paused'
+      title: string
+      detail?: string
+      metadata?: Record<string, unknown>
+      agent?: string
+    }): Promise<unknown>
+    query(query: {
+      workspaceId: string
+      tileId?: string
+      type?: string
+      status?: string
+      agent?: string
+      limit?: number
+    }): Promise<unknown[]>
+    byTile(workspaceId: string, tileId: string): Promise<unknown[]>
+    delete(workspaceId: string, id: string): Promise<boolean>
+    clearTile(workspaceId: string, tileId: string): Promise<number>
+    byAgent(workspaceId: string): Promise<Record<string, unknown[]>>
+  }
+  collab: {
+    ensureDir(workspacePath: string, tileId: string): Promise<boolean>
+    writeObjective(workspacePath: string, tileId: string, md: string): Promise<boolean>
+    readObjective(workspacePath: string, tileId: string): Promise<string | null>
+    writeSkills(workspacePath: string, tileId: string, skills: { enabled: string[]; disabled: string[] }): Promise<boolean>
+    readSkills(workspacePath: string, tileId: string): Promise<{ enabled: string[]; disabled: string[] }>
+    writeState(workspacePath: string, tileId: string, state: any): Promise<boolean>
+    readState(workspacePath: string, tileId: string): Promise<any>
+    addContext(workspacePath: string, tileId: string, filename: string, content: string): Promise<boolean>
+    removeContext(workspacePath: string, tileId: string, filename: string): Promise<boolean>
+    listContext(workspacePath: string, tileId: string): Promise<string[]>
+    readContext(workspacePath: string, tileId: string, filename: string): Promise<string | null>
+    watchState(workspacePath: string, tileId: string): Promise<boolean>
+    unwatchState(workspacePath: string, tileId: string): Promise<boolean>
+    removeTileDir(workspacePath: string, tileId: string): Promise<boolean>
+    onStateChanged(callback: (data: { workspacePath: string; tileId: string; state: any }) => void): () => void
   }
   bus: {
     publish(channel: string, type: string, source: string, payload: Record<string, unknown>): Promise<import('../../shared/types').BusEvent>

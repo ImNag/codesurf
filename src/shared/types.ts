@@ -4,7 +4,7 @@ export interface Workspace {
   path: string
 }
 
-export type TileType = 'terminal' | 'note' | 'code' | 'image' | 'kanban' | 'browser' | 'chat'
+export type TileType = 'terminal' | 'note' | 'code' | 'image' | 'kanban' | 'browser' | 'chat' | 'file'
 
 // ─── Font Token System ──────────────────────────────────────────────────────
 // VS Code-style granular font settings. Every token has family, size, lineHeight,
@@ -219,6 +219,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     kanban:   { w: 900, h: 560 },
     browser:  { w: 1000, h: 700 },
     chat:     { w: 420, h: 600 },
+    file:     { w: 240, h: 240 },
   }
 }
 

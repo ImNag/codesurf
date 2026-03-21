@@ -38,7 +38,9 @@ contextBridge.exposeInMainWorld('electron', {
       }
     },
     revealInFinder: (path: string) => ipcRenderer.invoke('fs:revealInFinder', path),
-    writeBrief: (cardId: string, content: string) => ipcRenderer.invoke('fs:writeBrief', cardId, content)
+    writeBrief: (cardId: string, content: string) => ipcRenderer.invoke('fs:writeBrief', cardId, content),
+    stat: (path: string) => ipcRenderer.invoke('fs:stat', path),
+    copyIntoDir: (sourcePath: string, destDir: string) => ipcRenderer.invoke('fs:copyIntoDir', sourcePath, destDir)
   },
 
   // Canvas state persistence
@@ -47,7 +49,8 @@ contextBridge.exposeInMainWorld('electron', {
     save: (workspaceId: string, state: any) => ipcRenderer.invoke('canvas:save', workspaceId, state),
     loadTileState: (workspaceId: string, tileId: string) => ipcRenderer.invoke('canvas:loadTileState', workspaceId, tileId),
     saveTileState: (workspaceId: string, tileId: string, state: any) => ipcRenderer.invoke('canvas:saveTileState', workspaceId, tileId, state),
-    clearTileState: (workspaceId: string, tileId: string) => ipcRenderer.invoke('canvas:clearTileState', workspaceId, tileId)
+    clearTileState: (workspaceId: string, tileId: string) => ipcRenderer.invoke('canvas:clearTileState', workspaceId, tileId),
+    deleteTileArtifacts: (workspaceId: string, tileId: string) => ipcRenderer.invoke('canvas:deleteTileArtifacts', workspaceId, tileId)
   },
 
   // Kanban board state persistence
@@ -211,6 +214,7 @@ contextBridge.exposeInMainWorld('electron', {
     readContext: (workspacePath: string, tileId: string, filename: string) => ipcRenderer.invoke('collab:readContext', workspacePath, tileId, filename),
     watchState: (workspacePath: string, tileId: string) => ipcRenderer.invoke('collab:watchState', workspacePath, tileId),
     unwatchState: (workspacePath: string, tileId: string) => ipcRenderer.invoke('collab:unwatchState', workspacePath, tileId),
+    removeTileDir: (workspacePath: string, tileId: string) => ipcRenderer.invoke('collab:removeTileDir', workspacePath, tileId),
     onStateChanged: (callback: (data: { workspacePath: string, tileId: string, state: any }) => void) => {
       ipcRenderer.on('collab:stateChanged', (_, data) => callback(data))
       return () => ipcRenderer.removeAllListeners('collab:stateChanged')

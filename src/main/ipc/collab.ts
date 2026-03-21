@@ -44,6 +44,14 @@ async function writeJson(path: string, data: unknown): Promise<void> {
   await fs.writeFile(path, JSON.stringify(data, null, 2))
 }
 
+async function removeDirIfExists(path: string): Promise<void> {
+  try {
+    await fs.rm(path, { recursive: true, force: true })
+  } catch {
+    // ignore missing paths
+  }
+}
+
 // ─── Watcher state ──────────────────────────────────────────────────────────
 
 const watchers = new Map<string, { close: () => void }>()
@@ -200,6 +208,15 @@ export function registerCollabIPC(): void {
 
   ipcMain.handle('collab:unwatchState', (_, workspacePath: string, tileId: string) => {
     stopWatcher(workspacePath, tileId)
+    return true
+  })
+
+  ipcMain.handle('collab:removeTileDir', async (_, workspacePath: string, tileId: string) => {
+    stopWatcher(workspacePath, tileId)
+    await Promise.all([
+      removeDirIfExists(collabDir(workspacePath, tileId)),
+      removeDirIfExists(legacyCollabDir(workspacePath, tileId)),
+    ])
     return true
   })
 }

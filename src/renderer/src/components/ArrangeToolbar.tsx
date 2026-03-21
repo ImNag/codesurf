@@ -100,7 +100,7 @@ function Btn({ label, title, active, loading, onClick }: {
       disabled={loading}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: 29, height: 29, borderRadius: 9,
+        width: 23, height: 23, borderRadius: 7,
         border: `1px solid ${active ? 'rgba(90,170,255,0.42)' : '#2d2d2d'}`,
         // @ts-ignore
         WebkitAppRegion: 'no-drag',
@@ -110,7 +110,7 @@ function Btn({ label, title, active, loading, onClick }: {
         color: active ? '#d7ebff' : '#888',
         cursor: loading ? 'wait' : 'pointer',
         transition: 'all 0.12s ease',
-        fontSize: 13,
+        fontSize: 12,
         opacity: loading ? 0.5 : 1,
         boxShadow: active
           ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.28), 0 0 0 1px rgba(74,158,255,0.08)'
@@ -138,7 +138,7 @@ function Btn({ label, title, active, loading, onClick }: {
 
 // ─── SVG icons ───────────────────────────────────────────────────────────────
 const TabsIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
     <rect x="1" y="5" width="14" height="10" rx="1"/>
     <rect x="1" y="2" width="4" height="4" rx="1"/>
     <rect x="6" y="2" width="4" height="4" rx="1"/>
@@ -146,7 +146,7 @@ const TabsIcon = () => (
 )
 
 const GridIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
     <rect x="1" y="1" width="6" height="6" rx="1"/>
     <rect x="9" y="1" width="6" height="6" rx="1"/>
     <rect x="1" y="9" width="6" height="6" rx="1"/>
@@ -155,7 +155,7 @@ const GridIcon = () => (
 )
 
 const ColumnIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
     <rect x="2" y="1" width="12" height="4" rx="1"/>
     <rect x="2" y="6" width="12" height="4" rx="1"/>
     <rect x="2" y="11" width="12" height="4" rx="1"/>
@@ -163,7 +163,7 @@ const ColumnIcon = () => (
 )
 
 const RowIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
     <rect x="1" y="2" width="4" height="12" rx="1"/>
     <rect x="6" y="2" width="4" height="12" rx="1"/>
     <rect x="11" y="2" width="4" height="12" rx="1"/>
@@ -242,12 +242,13 @@ export function ArrangeToolbar({ tiles, onArrange, zoom, onZoomToggle, onToggleT
         style={{
           display: 'flex',
           gap: 4,
-          padding: '4px 6px',
+          height: 29,
+          padding: '2px 6px',
           background: 'rgba(20,20,20,0.92)',
           // @ts-ignore
           WebkitAppRegion: 'no-drag',
           border: '1px solid #2d2d2d',
-          borderRadius: 8,
+          borderRadius: 9,
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
@@ -255,11 +256,11 @@ export function ArrangeToolbar({ tiles, onArrange, zoom, onZoomToggle, onToggleT
         }}
       >
         <Btn label={<TabsIcon />}   title="Tabbed view"              active={isTabbedView}                              loading={false}   onClick={onToggleTabs} />
-        <div style={{ width: 1, height: 18, background: '#2d2d2d', margin: '0 1px' }} />
+        <div style={{ width: 1, height: 14, background: '#2d2d2d', margin: '0 1px' }} />
         <Btn label={<GridIcon />}   title="Grid layout (auto-wrap)"  active={!isTabbedView && activeCanvasMode === 'grid'}   loading={loading} onClick={() => run('grid')} />
         <Btn label={<ColumnIcon />} title="Stack in column"          active={!isTabbedView && activeCanvasMode === 'column'} loading={loading} onClick={() => run('column')} />
         <Btn label={<RowIcon />}    title="Arrange in row"           active={!isTabbedView && activeCanvasMode === 'row'}    loading={loading} onClick={() => run('row')} />
-        <div style={{ width: 1, height: 18, background: '#2d2d2d', margin: '0 1px' }} />
+        <div style={{ width: 1, height: 14, background: '#2d2d2d', margin: '0 1px' }} />
         <button
           onClick={onZoomToggle}
           title="Toggle zoom to 100%"
@@ -267,11 +268,14 @@ export function ArrangeToolbar({ tiles, onArrange, zoom, onZoomToggle, onToggleT
             fontSize: 10,
             color: zoom === 1 ? '#4a9eff' : '#888',
             background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
             // @ts-ignore
             WebkitAppRegion: 'no-drag',
             border: 'none',
             cursor: 'pointer',
-            padding: '4px 5px',
+            padding: '0 5px',
             borderRadius: 4,
             userSelect: 'none',
             fontFamily: 'inherit',

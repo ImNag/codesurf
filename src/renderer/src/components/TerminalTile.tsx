@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useAppFonts } from '../FontContext'
+import { getDroppedPaths, shellEscapePath } from '../utils/dnd'
 
 interface Props {
   tileId: string
@@ -21,6 +22,7 @@ export function TerminalTile({ tileId, workspaceDir, width, height, fontSize = 1
   const fitRef = useRef<FitAddon | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
   const mountedRef = useRef(false)
+  const [isDropTarget, setIsDropTarget] = useState(false)
 
   const doFit = () => {
     if (!fitRef.current || !termRef.current) return
@@ -110,10 +112,54 @@ export function TerminalTile({ tileId, workspaceDir, width, height, fontSize = 1
     doFit()
   }, [width, height])
 
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (getDroppedPaths(e.dataTransfer).length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setIsDropTarget(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setIsDropTarget(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const droppedPaths = getDroppedPaths(e.dataTransfer)
+    if (droppedPaths.length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDropTarget(false)
+    const payload = droppedPaths.map(shellEscapePath).join(' ')
+    if (!payload) return
+    termRef.current?.focus()
+    window.electron?.terminal?.write(tileId, `${payload} `)
+  }, [tileId])
+
   return (
     <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%', background: '#1e1e1e', overflow: 'hidden' }}
-    />
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      style={{
+        width: '100%', height: '100%', background: isDropTarget ? '#202734' : '#1e1e1e', overflow: 'hidden', position: 'relative',
+        boxShadow: isDropTarget ? 'inset 0 0 0 2px rgba(88,166,255,0.9), 0 0 22px rgba(56,139,253,0.14)' : 'none',
+        transition: 'background 120ms ease, box-shadow 120ms ease'
+      }}
+    >
+      <div
+        ref={containerRef}
+        style={{ width: '100%', height: '100%', background: '#1e1e1e', overflow: 'hidden' }}
+      />
+      {isDropTarget && (
+        <div style={{
+          position: 'absolute', inset: 12, zIndex: 2,
+          border: '1px dashed rgba(88,166,255,0.85)', borderRadius: 10,
+          background: 'rgba(13, 33, 55, 0.12)',
+          pointerEvents: 'none',
+        }} />
+      )}
+    </div>
   )
 }
