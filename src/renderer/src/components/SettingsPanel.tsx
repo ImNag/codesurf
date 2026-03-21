@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import type { AppSettings, FontConfig, FontSettings } from '../../../shared/types'
 import { DEFAULT_SETTINGS, DEFAULT_FONTS, withDefaultSettings } from '../../../shared/types'
-import { Settings, Type, Monitor, Terminal, FolderOpen, Layout, Sliders, Network, Plus, Trash2, ChevronDown, ChevronRight, FileJson, AlertTriangle, Check, Copy, RotateCcw } from 'lucide-react'
+import { Settings, Type, Monitor, Terminal, FolderOpen, Layout, Sliders, Network, Plus, Trash2, ChevronDown, ChevronRight, FileJson, AlertTriangle, Check, Copy, RotateCcw, FormInput, Code2 } from 'lucide-react'
 import { useAppFonts } from '../FontContext'
 
 interface Workspace {
@@ -16,11 +16,10 @@ interface Props {
   workspaces?: Workspace[]
 }
 
-type Section = 'general' | 'fonts' | 'canvas' | 'terminal' | 'sidebar' | 'tiles' | 'behaviour' | 'mcp'
+type Section = 'general' | 'canvas' | 'terminal' | 'sidebar' | 'tiles' | 'behaviour' | 'mcp'
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode; description: string }[] = [
-  { id: 'general',   label: 'General',   icon: <Type size={15} />,      description: 'App typography — primary, secondary and monospace fonts' },
-  { id: 'fonts',     label: 'Font Tokens',icon: <FileJson size={15} />, description: 'VS Code-style granular font overrides (settings.json)' },
+  { id: 'general',   label: 'General',   icon: <Type size={15} />,      description: 'Display settings — fonts, weights, sizes, line heights, and raw JSON' },
   { id: 'canvas',    label: 'Canvas',    icon: <Monitor size={15} />,   description: 'Background, grid and snap settings' },
   { id: 'terminal',  label: 'Terminal',  icon: <Terminal size={15} />,  description: 'Font size and family for terminal tiles' },
   { id: 'sidebar',   label: 'Sidebar',   icon: <FolderOpen size={15} />,description: 'File tree sort and ignored folders' },
@@ -123,13 +122,27 @@ const SANS_FONTS = [
   '"Helvetica Neue", Helvetica, Arial, sans-serif',
   '"Inter", "Segoe UI", sans-serif',
   '"Geist", "SF Pro Text", sans-serif',
+  '"Armata", sans-serif',
+  '"Blinker", sans-serif',
+  '"Datatype", sans-serif',
+  '"Doto", sans-serif',
+  '"Exo 2", sans-serif',
+  '"Jockey One", sans-serif',
+  '"Metrophobic", sans-serif',
   '"Orbitron", sans-serif',
+  '"Oxanium", sans-serif',
+  '"Quantico", sans-serif',
+  '"Russo One", sans-serif',
+  '"Saira", sans-serif',
+  '"Saira Condensed", sans-serif',
+  '"Tektur", sans-serif',
   '"Rajdhani", sans-serif',
   'system-ui, sans-serif',
 ]
 
 const MONO_FONTS = [
   '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", "Fira Code", monospace',
+  '"IBM Plex Mono", monospace',
   '"Fira Code", "JetBrains Mono", monospace',
   '"SF Mono", "Menlo", "Monaco", monospace',
   '"Cascadia Code", "Fira Code", monospace',
@@ -343,6 +356,19 @@ export function SettingsPanel({ onClose, onSettingsChange, workspaces = [] }: Pr
     })
   }, [onSettingsChange])
 
+  const updateSettingsPatch = useCallback((patch: Partial<AppSettings>) => {
+    setSettings(prev => {
+      const next = withDefaultSettings({ ...prev, ...patch })
+      window.electron.settings?.set(next).then((saved: AppSettings) => {
+        if (saved) onSettingsChange(saved)
+        if (patch.translucentBackground !== undefined && prev.translucentBackground !== patch.translucentBackground) {
+          window.electron.app?.relaunch?.()
+        }
+      })
+      return next
+    })
+  }, [onSettingsChange])
+
   // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -356,93 +382,14 @@ export function SettingsPanel({ onClose, onSettingsChange, workspaces = [] }: Pr
     switch (section) {
       case 'general':
         return (
-          <>
-            <FontGroup label="Primary Font" font={settings.primaryFont} onChange={v => update('primaryFont', v)} fonts={SANS_FONTS} />
-            <FontGroup label="Secondary Font" font={settings.secondaryFont} onChange={v => update('secondaryFont', v)} fonts={SANS_FONTS} />
-            <FontGroup label="Monospace Font" font={settings.monoFont} onChange={v => update('monoFont', v)} fonts={MONO_FONTS} />
-            <SectionLabel label="Updates" />
-            <SettingRow label="Current version" description="Installed desktop build version">
-              <span style={{ fontSize: 12, color: '#aaa', fontFamily: fonts.mono }}>{updateState.result?.currentVersion ?? __VERSION__}</span>
-            </SettingRow>
-            <SettingRow label="Check for updates" description="Look for a newer GitHub release and show install actions here">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button
-                  onClick={checkForUpdates}
-                  disabled={updateState.checking}
-                  style={{
-                    padding: '7px 12px',
-                    fontSize: 12,
-                    background: updateState.checking ? '#1a1a1a' : '#222',
-                    color: updateState.checking ? '#666' : '#ddd',
-                    border: '1px solid #333',
-                    borderRadius: 8,
-                    cursor: updateState.checking ? 'default' : 'pointer'
-                  }}
-                >
-                  {updateState.checking ? 'Checking…' : 'Check now'}
-                </button>
-                {updateState.result?.updateAvailable && (
-                  <button
-                    onClick={downloadUpdate}
-                    disabled={updateState.downloading}
-                    style={{
-                      padding: '7px 12px',
-                      fontSize: 12,
-                      background: updateState.downloading ? '#1a1a1a' : '#2a2416',
-                      color: updateState.downloading ? '#666' : '#f0d28a',
-                      border: '1px solid #4a3a16',
-                      borderRadius: 8,
-                      cursor: updateState.downloading ? 'default' : 'pointer'
-                    }}
-                  >
-                    {updateState.downloading ? 'Downloading…' : 'Download'}
-                  </button>
-                )}
-                {updateState.result?.status === 'downloaded' && (
-                  <button
-                    onClick={() => window.electron.updater.quitAndInstall()}
-                    style={{
-                      padding: '7px 12px',
-                      fontSize: 12,
-                      background: '#16261a',
-                      color: '#8fdb9a',
-                      border: '1px solid #23482a',
-                      borderRadius: 8,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Restart to install
-                  </button>
-                )}
-              </div>
-            </SettingRow>
-            {updateState.result && (
-              <div style={{ marginBottom: 8, padding: '12px 16px', background: '#0d0d0d', borderRadius: 10, border: '1px solid #1a1a1a' }}>
-                <div style={{ fontSize: 12, color: updateState.result.ok ? '#777' : '#c77' }}>
-                  {updateState.result.updateAvailable
-                    ? `Update available${updateState.result.updateInfo?.version ? `: ${updateState.result.updateInfo.version}` : ''}`
-                    : updateState.result.status === 'up-to-date'
-                      ? 'You are up to date.'
-                      : updateState.result.status}
-                </div>
-                {updateState.result.updateInfo?.releaseDate && (
-                  <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
-                    Released {new Date(updateState.result.updateInfo.releaseDate).toLocaleString()}
-                  </div>
-                )}
-              </div>
-            )}
-            <div style={{ marginTop: 16, padding: '12px 16px', background: '#0d0d0d', borderRadius: 10, border: '1px solid #1a1a1a' }}>
-              <div style={{ fontSize: 12, color: '#555' }}>
-                <strong style={{ color: '#666' }}>Primary</strong> — headings, labels, and UI text.{' '}
-                <strong style={{ color: '#666' }}>Secondary</strong> — descriptions, metadata, and smaller text.{' '}
-                <strong style={{ color: '#666' }}>Monospace</strong> — code, terminals, and data.
-              </div>
-            </div>
-          </>
+          <DisplaySettingsEditor
+            settings={settings}
+            onApply={updateSettingsPatch}
+            updateState={updateState}
+            onCheckForUpdates={checkForUpdates}
+            onDownloadUpdate={downloadUpdate}
+          />
         )
-      case 'fonts':
-        return <FontTokenEditor settings={settings} onSettingsChange={onSettingsChange} />
       case 'canvas':
         return (
           <>
@@ -951,6 +898,366 @@ const FONT_TOKEN_GROUPS: { label: string; tokens: { key: keyof FontSettings; des
     { key: 'settingsLabel', description: 'Settings field labels' },
   ]},
 ]
+
+const SANS_TOKEN_KEYS = new Set<keyof FontSettings>([
+  'sans', 'title', 'sectionLabel', 'subtitle',
+  'sidebarFileList', 'sidebarHeader',
+  'chatMessage', 'chatInput', 'chatToolbar',
+  'kanbanCardTitle', 'kanbanBadge', 'kanbanTab',
+  'dataBadge', 'button', 'formLabel', 'formInput',
+  'settingsHeader', 'settingsLabel',
+])
+
+const MONO_TOKEN_KEYS = new Set<keyof FontSettings>([
+  'mono', 'sidebarPath', 'terminal', 'codeEditor', 'inlineCode', 'commandPreview',
+  'chatMeta', 'chatThinking',
+  'dataUrl', 'dataPath', 'dataKeyValue', 'dataTimestamp', 'dataNumeric',
+])
+
+function buildDisplayJson(settings: AppSettings): string {
+  return JSON.stringify({
+    primaryFont: settings.primaryFont,
+    secondaryFont: settings.secondaryFont,
+    monoFont: settings.monoFont,
+    fonts: settings.fonts,
+  }, null, 2)
+}
+
+function validateTokenLike(value: unknown, path: string): string | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return `${path} must be an object`
+  const validProps = new Set(['family', 'size', 'lineHeight', 'weight', 'letterSpacing'])
+  const invalidProps = Object.keys(value as object).filter(key => !validProps.has(key))
+  if (invalidProps.length > 0) return `${path} has unknown propert${invalidProps.length > 1 ? 'ies' : 'y'}: ${invalidProps.join(', ')}`
+  const token = value as Record<string, unknown>
+  if (token.family !== undefined && typeof token.family !== 'string') return `${path}.family must be a string`
+  if (token.size !== undefined && (typeof token.size !== 'number' || token.size < 1 || token.size > 72)) return `${path}.size must be 1-72`
+  if (token.lineHeight !== undefined && (typeof token.lineHeight !== 'number' || token.lineHeight < 0.5 || token.lineHeight > 4)) return `${path}.lineHeight must be 0.5-4`
+  if (token.weight !== undefined && (typeof token.weight !== 'number' || token.weight < 100 || token.weight > 900)) return `${path}.weight must be 100-900`
+  if (token.letterSpacing !== undefined && typeof token.letterSpacing !== 'number') return `${path}.letterSpacing must be a number`
+  return null
+}
+
+function validateDisplayJson(value: string): { ok: true; parsed: Partial<AppSettings> } | { ok: false; error: string } {
+  try {
+    const parsed = JSON.parse(value)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { ok: false, error: 'Must be a JSON object' }
+    }
+
+    const topLevel = new Set(['primaryFont', 'secondaryFont', 'monoFont', 'fonts'])
+    const invalidTopLevel = Object.keys(parsed).filter(key => !topLevel.has(key))
+    if (invalidTopLevel.length > 0) {
+      return { ok: false, error: `Unknown key${invalidTopLevel.length > 1 ? 's' : ''}: ${invalidTopLevel.join(', ')}` }
+    }
+
+    const config = parsed as Record<string, unknown>
+    for (const key of ['primaryFont', 'secondaryFont', 'monoFont'] as const) {
+      if (config[key] !== undefined) {
+        const error = validateTokenLike(config[key], key)
+        if (error) return { ok: false, error }
+      }
+    }
+
+    if (config.fonts !== undefined) {
+      if (typeof config.fonts !== 'object' || config.fonts === null || Array.isArray(config.fonts)) {
+        return { ok: false, error: 'fonts must be an object' }
+      }
+      const validTokenKeys = new Set(Object.keys(DEFAULT_FONTS))
+      const invalidTokenKeys = Object.keys(config.fonts as object).filter(key => !validTokenKeys.has(key))
+      if (invalidTokenKeys.length > 0) {
+        return { ok: false, error: `Unknown font token${invalidTokenKeys.length > 1 ? 's' : ''}: ${invalidTokenKeys.join(', ')}` }
+      }
+      for (const [tokenKey, tokenVal] of Object.entries(config.fonts as Record<string, unknown>)) {
+        const error = validateTokenLike(tokenVal, `fonts.${tokenKey}`)
+        if (error) return { ok: false, error }
+      }
+    }
+
+    return { ok: true, parsed: parsed as Partial<AppSettings> }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Invalid JSON' }
+  }
+}
+
+function SliderField({ value, min, max, step, onChange, format }: {
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (value: number) => void
+  format?: (value: number) => string
+}): JSX.Element {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140 }}>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: 92 }}
+      />
+      <span style={{ width: 38, textAlign: 'right', fontSize: 11, color: '#888', fontVariantNumeric: 'tabular-nums' }}>
+        {format ? format(value) : value}
+      </span>
+    </div>
+  )
+}
+
+function CompactFontRow({ label, description, token, fontOptions, onChange }: {
+  label: string
+  description: string
+  token: FontToken
+  fontOptions: string[]
+  onChange: (next: FontToken) => void
+}): JSX.Element {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(150px, 180px) minmax(210px, 1fr) 140px 140px 140px',
+      gap: 12,
+      alignItems: 'center',
+      padding: '10px 12px',
+      background: '#141414',
+      border: '1px solid #1f1f1f',
+      borderRadius: 10,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: '#e6e6e6', fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 11, color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{description}</div>
+      </div>
+      <FontSelect value={token.family} onChange={family => onChange({ ...token, family })} fonts={fontOptions} />
+      <SliderField value={token.size} min={8} max={32} step={1} onChange={size => onChange({ ...token, size })} format={value => `${value}px`} />
+      <SliderField value={token.weight ?? 400} min={100} max={900} step={100} onChange={weight => onChange({ ...token, weight })} />
+      <SliderField value={token.lineHeight} min={1} max={2.2} step={0.05} onChange={lineHeight => onChange({ ...token, lineHeight })} format={value => value.toFixed(2)} />
+    </div>
+  )
+}
+
+function DisplaySettingsEditor({
+  settings,
+  onApply,
+  updateState,
+  onCheckForUpdates,
+  onDownloadUpdate,
+}: {
+  settings: AppSettings
+  onApply: (patch: Partial<AppSettings>) => void
+  updateState: { checking: boolean; downloading: boolean; result: null | { ok: boolean; currentVersion: string; status: string; updateAvailable: boolean; updateInfo?: { version?: string; releaseName?: string; releaseDate?: string } } }
+  onCheckForUpdates: () => void
+  onDownloadUpdate: () => void
+}): JSX.Element {
+  const fonts = useAppFonts()
+  const [view, setView] = useState<'display' | 'json'>('display')
+  const [rawJson, setRawJson] = useState(() => buildDisplayJson(settings))
+  const [jsonError, setJsonError] = useState<string | null>(null)
+  const [configPath, setConfigPath] = useState('')
+  const jsonSyncTimeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (typeof window.electron.settings.getRawJson !== 'function') return
+    window.electron.settings.getRawJson().then(({ path }) => setConfigPath(path)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const next = buildDisplayJson(settings)
+    setRawJson(current => current === next ? current : next)
+  }, [settings])
+
+  useEffect(() => {
+    if (jsonSyncTimeoutRef.current) window.clearTimeout(jsonSyncTimeoutRef.current)
+    const validation = validateDisplayJson(rawJson)
+    if (!validation.ok) {
+      setJsonError(validation.error)
+      return
+    }
+    setJsonError(null)
+    jsonSyncTimeoutRef.current = window.setTimeout(() => {
+      onApply(withDefaultSettings({ ...settings, ...validation.parsed }))
+    }, 180)
+    return () => {
+      if (jsonSyncTimeoutRef.current) window.clearTimeout(jsonSyncTimeoutRef.current)
+    }
+  }, [rawJson])
+
+  const updateBaseFont = useCallback((key: 'primaryFont' | 'secondaryFont' | 'monoFont', tokenKey: keyof FontSettings, next: FontToken) => {
+    onApply({
+      [key]: next,
+      fonts: { ...settings.fonts, [tokenKey]: next },
+    } as Partial<AppSettings>)
+  }, [onApply, settings.fonts])
+
+  const updateToken = useCallback((key: keyof FontSettings, next: FontToken) => {
+    const patch: Partial<AppSettings> = {
+      fonts: { ...settings.fonts, [key]: next },
+    }
+    if (key === 'sans') patch.primaryFont = next
+    if (key === 'subtitle') patch.secondaryFont = next
+    if (key === 'mono') patch.monoFont = next
+    onApply(patch)
+  }, [onApply, settings.fonts])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid #1a1a1a', paddingBottom: 8 }}>
+        {[
+          { id: 'display' as const, label: 'Display', icon: <FormInput size={14} /> },
+          { id: 'json' as const, label: '<>', icon: <Code2 size={14} /> },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setView(tab.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', borderRadius: 8, border: '1px solid',
+              borderColor: view === tab.id ? 'rgba(88,166,255,0.35)' : '#222',
+              background: view === tab.id ? 'rgba(56,139,253,0.12)' : '#111',
+              color: view === tab.id ? '#e6edf3' : '#777',
+              cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'display' ? (
+        <>
+          <SectionLabel label="Base Styles" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <CompactFontRow label="Primary" description="Main UI font" token={settings.primaryFont} fontOptions={SANS_FONTS} onChange={next => updateBaseFont('primaryFont', 'sans', next)} />
+            <CompactFontRow label="Secondary" description="Secondary / metadata font" token={settings.secondaryFont} fontOptions={SANS_FONTS} onChange={next => updateBaseFont('secondaryFont', 'subtitle', next)} />
+            <CompactFontRow label="Monospace" description="Code and data font" token={settings.monoFont} fontOptions={MONO_FONTS} onChange={next => updateBaseFont('monoFont', 'mono', next)} />
+          </div>
+
+          {FONT_TOKEN_GROUPS.map(group => (
+            <div key={group.label}>
+              <SectionLabel label={group.label} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {group.tokens.map(({ key, description }) => (
+                  <CompactFontRow
+                    key={key}
+                    label={key}
+                    description={description}
+                    token={settings.fonts[key]}
+                    fontOptions={MONO_TOKEN_KEYS.has(key) ? MONO_FONTS : SANS_TOKEN_KEYS.has(key) ? SANS_FONTS : [...SANS_FONTS, ...MONO_FONTS]}
+                    onChange={next => updateToken(key, next)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <SectionLabel label="Updates" />
+          <SettingRow label="Current version" description="Installed desktop build version">
+            <span style={{ fontSize: 12, color: '#aaa', fontFamily: fonts.mono }}>{updateState.result?.currentVersion ?? __VERSION__}</span>
+          </SettingRow>
+          <SettingRow label="Check for updates" description="Look for a newer GitHub release and show install actions here">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={onCheckForUpdates}
+                disabled={updateState.checking}
+                style={{
+                  padding: '7px 12px',
+                  fontSize: 12,
+                  background: updateState.checking ? '#1a1a1a' : '#222',
+                  color: updateState.checking ? '#666' : '#ddd',
+                  border: '1px solid #333',
+                  borderRadius: 8,
+                  cursor: updateState.checking ? 'default' : 'pointer'
+                }}
+              >
+                {updateState.checking ? 'Checking…' : 'Check now'}
+              </button>
+              {updateState.result?.updateAvailable && (
+                <button
+                  onClick={onDownloadUpdate}
+                  disabled={updateState.downloading}
+                  style={{
+                    padding: '7px 12px',
+                    fontSize: 12,
+                    background: updateState.downloading ? '#1a1a1a' : '#2a2416',
+                    color: updateState.downloading ? '#666' : '#f0d28a',
+                    border: '1px solid #4a3a16',
+                    borderRadius: 8,
+                    cursor: updateState.downloading ? 'default' : 'pointer'
+                  }}
+                >
+                  {updateState.downloading ? 'Downloading…' : 'Download'}
+                </button>
+              )}
+              {updateState.result?.status === 'downloaded' && (
+                <button
+                  onClick={() => window.electron.updater.quitAndInstall()}
+                  style={{
+                    padding: '7px 12px',
+                    fontSize: 12,
+                    background: '#16261a',
+                    color: '#8fdb9a',
+                    border: '1px solid #23482a',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Restart to install
+                </button>
+              )}
+            </div>
+          </SettingRow>
+          {updateState.result && (
+            <div style={{ marginBottom: 8, padding: '12px 16px', background: '#0d0d0d', borderRadius: 10, border: '1px solid #1a1a1a' }}>
+              <div style={{ fontSize: 12, color: updateState.result.ok ? '#777' : '#c77' }}>
+                {updateState.result.updateAvailable
+                  ? `Update available${updateState.result.updateInfo?.version ? `: ${updateState.result.updateInfo.version}` : ''}`
+                  : updateState.result.status === 'up-to-date'
+                    ? 'You are up to date.'
+                    : updateState.result.status}
+              </div>
+              {updateState.result.updateInfo?.releaseDate && (
+                <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+                  Released {new Date(updateState.result.updateInfo.releaseDate).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Code2 size={14} color="#555" />
+            <span style={{ fontSize: 10, color: '#555', fontFamily: fonts.mono }}>{configPath || 'settings.json'}</span>
+            <span style={{ fontSize: 9, color: '#388bfd', fontFamily: fonts.mono }}>settings.display</span>
+            {jsonError && (
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: '#ff7b72', fontSize: 11 }}>
+                <AlertTriangle size={12} />
+                {jsonError}
+              </span>
+            )}
+          </div>
+          <textarea
+            value={rawJson}
+            onChange={e => setRawJson(e.target.value)}
+            spellCheck={false}
+            style={{
+              width: '100%', minHeight: 520,
+              padding: '12px 14px', borderRadius: 10,
+              background: '#0a0a0a', color: jsonError ? '#ff9080' : '#c9d1d9',
+              border: `1px solid ${jsonError ? '#ff7b7244' : '#1a1a1a'}`,
+              outline: 'none', resize: 'vertical',
+              fontFamily: fonts.mono, fontSize: 12, lineHeight: 1.6,
+              tabSize: 2, boxSizing: 'border-box',
+            }}
+          />
+          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
+            Edit the display settings as JSON. Valid top-level keys: <span style={{ fontFamily: fonts.mono }}>primaryFont</span>, <span style={{ fontFamily: fonts.mono }}>secondaryFont</span>, <span style={{ fontFamily: fonts.mono }}>monoFont</span>, <span style={{ fontFamily: fonts.mono }}>fonts</span>. The form and JSON stay in sync when the JSON is valid.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Font Token JSON Editor ─────────────────────────────────────────────────
 
