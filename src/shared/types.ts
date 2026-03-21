@@ -184,6 +184,7 @@ export interface AppSettings {
   // Appearance (legacy — prefer fonts.sans.size)
   uiFontSize: number
   translucentBackground: boolean
+  translucentBackgroundOpacity: number
   // Sidebar
   sidebarDefaultSort: 'name' | 'type' | 'ext'
   sidebarIgnored: string[]
@@ -208,6 +209,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontFamily: MONO_STACK,
   uiFontSize: 12,
   translucentBackground: false,
+  translucentBackgroundOpacity: 0.74,
   sidebarDefaultSort: 'name',
   sidebarIgnored: ['.git', 'node_modules', '.next', 'dist', 'dist-electron', '.DS_Store', '__pycache__', '.cache', 'out'],
   autoSaveIntervalMs: 500,

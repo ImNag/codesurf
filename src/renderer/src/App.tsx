@@ -1496,7 +1496,8 @@ function App(): JSX.Element {
   const sidebarBackground = 'transparent'
   const pillBackground = '#252525'
   const toolbarBackground = 'transparent'
-  const canvasBackground = translucentBackground ? withAlpha(settings.canvasBackground, 0.74) : settings.canvasBackground
+  const translucentBackgroundOpacity = Math.max(0.05, Math.min(1, settings.translucentBackgroundOpacity ?? 0.74))
+  const canvasBackground = translucentBackground ? withAlpha(settings.canvasBackground, translucentBackgroundOpacity) : settings.canvasBackground
   const openSidebarToolbarPadding = sidebarWidth + 16
   const openSidebarPillLeft = sidebarWidth + 18
   const expandedLayoutLeft = sidebarWidth + 8

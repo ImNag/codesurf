@@ -85,6 +85,36 @@ function NumInput({ value, min, max, step = 1, onChange }: { value: number; min:
   )
 }
 
+function RangeInput({ value, min, max, step = 0.01, onChange }: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void }): JSX.Element {
+  const clamped = Math.max(min, Math.min(max, value))
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <input
+        type="range"
+        value={clamped}
+        min={min}
+        max={max}
+        step={step}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: 160 }}
+      />
+      <div style={{
+        minWidth: 44,
+        padding: '5px 8px',
+        fontSize: 12,
+        textAlign: 'right',
+        color: '#aaa',
+        background: '#222',
+        border: '1px solid #333',
+        borderRadius: 8,
+        fontVariantNumeric: 'tabular-nums'
+      }}>
+        {Math.round(clamped * 100)}%
+      </div>
+    </div>
+  )
+}
+
 function TextInput({ value, onChange, width = 240 }: { value: string; onChange: (v: string) => void; width?: number }): JSX.Element {
   return (
     <input
@@ -399,6 +429,9 @@ export function SettingsPanel({ onClose, onSettingsChange, workspaces = [] }: Pr
             </SettingRow>
             <SettingRow label="Translucent canvas background" description="Use macOS vibrancy behind the canvas while leaving sidebar and tiles opaque">
               <Toggle value={settings.translucentBackground} onChange={v => update('translucentBackground', v)} />
+            </SettingRow>
+            <SettingRow label="Translucency level" description="Adjust how much of the background shows through when translucency is enabled">
+              <RangeInput value={settings.translucentBackgroundOpacity} min={0.05} max={1} step={0.01} onChange={v => update('translucentBackgroundOpacity', Number(v.toFixed(2)))} />
             </SettingRow>
             <SectionLabel label="Grid" />
             <SettingRow label="Small dot colour" description="Color of the small grid dots">
