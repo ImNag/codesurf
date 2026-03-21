@@ -48,6 +48,8 @@ interface Props {
   onNewWorkspace: (name: string) => void
   onOpenFolder: () => void
   onOpenFile: (filePath: string) => void
+  selectedPath?: string | null
+  onSelectPath?: (path: string | null) => void
   onNewTerminal: () => void
   onNewKanban: () => void
   onNewBrowser: () => void
@@ -425,6 +427,8 @@ function TreeNode({
   onSubmitCreate,
   onCancelCreate,
   renamingPath,
+  selectedPath,
+  onSelectPath,
   onRenameSubmit,
   onRenameCancel,
 }: {
@@ -442,6 +446,8 @@ function TreeNode({
   onSubmitCreate: () => void
   onCancelCreate: () => void
   renamingPath: string | null
+  selectedPath?: string | null
+  onSelectPath?: (path: string | null) => void
   onRenameSubmit: (oldPath: string, newName: string) => void
   onRenameCancel: () => void
 }): JSX.Element {
@@ -451,6 +457,8 @@ function TreeNode({
   const [renameVal, setRenameVal] = useState(entry.name)
   const isRenaming = renamingPath === entry.path
   const isCreateTarget = creatingIn?.dir === entry.path && entry.isDir
+  const isSelected = selectedPath === entry.path
+  const isSelectedAncestor = !!selectedPath && entry.isDir && selectedPath.startsWith(`${entry.path}/`)
 
   useEffect(() => {
     if (isRenaming) setRenameVal(entry.name)
@@ -463,12 +471,28 @@ function TreeNode({
           display: 'flex', alignItems: 'center',
           height: 26, paddingLeft: 8 + depth * 16, paddingRight: 12,
           cursor: 'pointer', userSelect: 'none',
-          background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
-          position: 'relative'
+          background: isSelected
+            ? 'linear-gradient(180deg, rgba(74,158,255,0.20) 0%, rgba(74,158,255,0.10) 100%)'
+            : isSelectedAncestor
+              ? 'rgba(74,158,255,0.08)'
+              : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          border: `1px solid ${isSelected ? 'rgba(90,170,255,0.42)' : isSelectedAncestor ? 'rgba(90,170,255,0.18)' : 'transparent'}`,
+          boxShadow: isSelected
+            ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.20), 0 0 0 1px rgba(74,158,255,0.08)'
+            : 'none',
+          backdropFilter: isSelected ? 'blur(14px)' : 'none',
+          WebkitBackdropFilter: isSelected ? 'blur(14px)' : 'none',
+          position: 'relative',
+          borderRadius: 8,
+          margin: '0 6px'
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onClick={isRenaming ? undefined : () => (entry.isDir ? onToggle(entry.path) : onOpenFile(entry.path))}
+        onClick={isRenaming ? undefined : () => {
+          onSelectPath?.(entry.path)
+          if (entry.isDir) onToggle(entry.path)
+          else onOpenFile(entry.path)
+        }}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onCtxMenu(e, entry) }}
         draggable={!entry.isDir && !isRenaming}
         onDragStart={e => {
@@ -496,7 +520,7 @@ function TreeNode({
         ) : (
           <span style={{
             fontSize: fonts.size,
-                       color: entry.isDir ? '#d4d4d4' : '#b8b8b8',
+            color: isSelected ? '#d7ebff' : isSelectedAncestor ? '#b7d9ff' : entry.isDir ? '#d4d4d4' : '#b8b8b8',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             flex: 1
           }}>
@@ -555,6 +579,8 @@ function TreeNode({
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
                 onCtxMenu={onCtxMenu}
+                selectedPath={selectedPath}
+                onSelectPath={onSelectPath}
                 onSubmitCreate={onSubmitCreate}
                 onCancelCreate={onCancelCreate}
                 renamingPath={renamingPath}
@@ -576,6 +602,8 @@ function FlatEntry({
   onOpenFile,
   onCtxMenu,
   renamingPath,
+  selectedPath,
+  onSelectPath,
   onRenameSubmit,
   onRenameCancel,
 }: {
@@ -585,6 +613,8 @@ function FlatEntry({
   onOpenFile: (path: string) => void
   onCtxMenu: (e: React.MouseEvent, entry: FsEntry) => void
   renamingPath: string | null
+  selectedPath?: string | null
+  onSelectPath?: (path: string | null) => void
   onRenameSubmit: (oldPath: string, newName: string) => void
   onRenameCancel: () => void
 }): JSX.Element {
@@ -592,6 +622,7 @@ function FlatEntry({
   const [hovered, setHovered] = useState(false)
   const [renameVal, setRenameVal] = useState(entry.name)
   const isRenaming = renamingPath === entry.path
+  const isSelected = selectedPath === entry.path
 
   useEffect(() => {
     if (isRenaming) setRenameVal(entry.name)
@@ -603,11 +634,24 @@ function FlatEntry({
         display: 'flex', alignItems: 'center',
         height: 26, paddingLeft: 10, paddingRight: 12,
         cursor: 'pointer', userSelect: 'none',
-        background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+        background: isSelected
+          ? 'linear-gradient(180deg, rgba(74,158,255,0.20) 0%, rgba(74,158,255,0.10) 100%)'
+          : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+        border: `1px solid ${isSelected ? 'rgba(90,170,255,0.42)' : 'transparent'}`,
+        boxShadow: isSelected
+          ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.20), 0 0 0 1px rgba(74,158,255,0.08)'
+          : 'none',
+        backdropFilter: isSelected ? 'blur(14px)' : 'none',
+        WebkitBackdropFilter: isSelected ? 'blur(14px)' : 'none',
+        borderRadius: 8,
+        margin: '0 6px',
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={isRenaming ? undefined : () => onOpenFile(entry.path)}
+      onClick={isRenaming ? undefined : () => {
+        onSelectPath?.(entry.path)
+        onOpenFile(entry.path)
+      }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onCtxMenu(e, entry) }}
     >
       <FileIcon name={entry.name} ext={entry.ext} />
@@ -623,7 +667,7 @@ function FlatEntry({
         <>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <span style={{
-              fontSize: fonts.size, fontFamily: 'inherit', color: '#b8b8b8',
+              fontSize: fonts.size, fontFamily: 'inherit', color: isSelected ? '#d7ebff' : '#b8b8b8',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
             }}>
               <span style={{ fontWeight: 400 }}>{entry.name.replace(entry.ext, '')}</span>
@@ -646,7 +690,7 @@ function FlatEntry({
 }
 
 export function Sidebar({
-  workspace, workspaces, onSwitchWorkspace, onNewWorkspace, onOpenFolder, onOpenFile, onNewTerminal, onNewKanban, onNewBrowser, onNewChat,
+  workspace, workspaces, onSwitchWorkspace, onNewWorkspace, onOpenFolder, onOpenFile, selectedPath, onSelectPath, onNewTerminal, onNewKanban, onNewBrowser, onNewChat,
   collapsed, width, onWidthChange, onResizeStateChange, onToggleCollapse: _onToggleCollapse
 }: Props): JSX.Element {
   const fonts = useAppFonts()
@@ -772,6 +816,37 @@ export function Sidebar({
     const unsub = window.electron.fs.watch(workspace.path, () => { void reloadAll() })
     return () => unsub?.()
   }, [workspace, reloadAll])
+
+  useEffect(() => {
+    if (!workspace || !selectedPath || !selectedPath.startsWith(workspace.path)) return
+
+    const relative = selectedPath.slice(workspace.path.length).replace(/^\/+/, '')
+    const segments = relative.split('/').filter(Boolean)
+    const parentDirs: string[] = []
+    let current = workspace.path
+
+    for (const segment of segments.slice(0, -1)) {
+      current = `${current}/${segment}`
+      parentDirs.push(current)
+    }
+
+    if (parentDirs.length === 0) return
+
+    setExpandedPaths(prev => {
+      const next = new Set(prev)
+      next.add(workspace.path)
+      parentDirs.forEach(dir => next.add(dir))
+      return next
+    })
+
+    void (async () => {
+      const dirsToLoad = [workspace.path, ...parentDirs]
+      for (const dir of dirsToLoad) {
+        const children = await loadDirChildren(dir)
+        setTreeEntries(prev => dir === workspace.path ? children : updateChildrenInTree(prev, dir, children))
+      }
+    })()
+  }, [workspace, selectedPath, loadDirChildren, updateChildrenInTree])
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1110,6 +1185,8 @@ export function Sidebar({
                 onOpenFile={onOpenFile}
                 onCtxMenu={handleCtxMenu}
                 renamingPath={renamingPath}
+                selectedPath={selectedPath}
+                onSelectPath={onSelectPath}
                 onRenameSubmit={handleRenameSubmit}
                 onRenameCancel={() => setRenamingPath(null)}
               />
@@ -1145,6 +1222,8 @@ export function Sidebar({
                   onToggle={toggleExpanded}
                   onOpenFile={onOpenFile}
                   onCtxMenu={handleCtxMenu}
+                  selectedPath={selectedPath}
+                  onSelectPath={onSelectPath}
                   onSubmitCreate={submitCreate}
                   onCancelCreate={cancelCreate}
                   renamingPath={renamingPath}

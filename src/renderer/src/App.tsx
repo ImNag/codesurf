@@ -1,11 +1,11 @@
-import React, { useState, useRef, useCallback, useEffect, Suspense } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react'
 import { Ungroup, Grid2x2X, Scissors, ClipboardPaste } from 'lucide-react'
 import type { TileState, GroupState, CanvasState, Workspace, AppSettings } from '../../shared/types'
 import { withDefaultSettings, DEFAULT_SETTINGS } from '../../shared/types'
 import type { MenuItem } from './components/ContextMenu'
 import { FontProvider, FontTokenProvider, SANS_DEFAULT, MONO_DEFAULT } from './FontContext'
 import type { PanelNode } from './components/PanelLayout'
-import { createLeaf, removeTileFromTree, addTabToLeaf, getAllTileIds, splitLeaf, closeOthersInLeaf, closeToRightInLeaf } from './components/PanelLayout'
+import { createLeaf, removeTileFromTree, addTabToLeaf, getAllTileIds, splitLeaf, closeOthersInLeaf, closeToRightInLeaf, findLeafById } from './components/PanelLayout'
 
 const LazyPanelLayout = React.lazy(() => import('./components/PanelLayout').then(m => ({ default: m.PanelLayout })))
 
@@ -117,12 +117,51 @@ function App(): JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const [sidebarPillVisible, setSidebarPillVisible] = useState(true)
+  const [sidebarSelectedPath, setSidebarSelectedPath] = useState<string | null>(null)
   const [canvasArrangeMode, setCanvasArrangeMode] = useState<'grid' | 'column' | 'row' | null>(null)
   const [guides, setGuides] = useState<{ x?: number; y?: number }[]>([])
 
   useEffect(() => { panelLayoutRef.current = panelLayout }, [panelLayout])
   useEffect(() => { activePanelIdRef.current = activePanelId }, [activePanelId])
   useEffect(() => { expandedTileIdRef.current = expandedTileId }, [expandedTileId])
+
+  const selectedWorkspaceFilePath = useMemo(() => {
+    if (!workspace?.path) return null
+
+    const tileById = new Map(tiles.map(tile => [tile.id, tile]))
+    const toWorkspaceFilePath = (tileId: string | null | undefined): string | null => {
+      if (!tileId) return null
+      const filePath = tileById.get(tileId)?.filePath
+      return filePath && filePath.startsWith(workspace.path) ? filePath : null
+    }
+
+    if (panelLayout && activePanelId) {
+      const leaf = findLeafById(panelLayout, activePanelId)
+      const panelPath = toWorkspaceFilePath(leaf?.activeTab)
+      if (panelPath) return panelPath
+    }
+
+    const expandedPath = toWorkspaceFilePath(expandedTileId)
+    if (expandedPath) return expandedPath
+
+    const selectedPath = toWorkspaceFilePath(selectedTileId)
+    if (selectedPath) return selectedPath
+
+    for (const tileId of selectedTileIds) {
+      const multiSelectedPath = toWorkspaceFilePath(tileId)
+      if (multiSelectedPath) return multiSelectedPath
+    }
+
+    return null
+  }, [workspace?.path, tiles, panelLayout, activePanelId, expandedTileId, selectedTileId, selectedTileIds])
+
+  useEffect(() => {
+    setSidebarSelectedPath(null)
+  }, [workspace?.id])
+
+  useEffect(() => {
+    if (selectedWorkspaceFilePath) setSidebarSelectedPath(selectedWorkspaceFilePath)
+  }, [selectedWorkspaceFilePath])
 
   // Workspace pill tabs — open workspace ids within this window
   const [openWorkspaceIds, setOpenWorkspaceIds] = useState<string[]>([])
@@ -870,6 +909,7 @@ function App(): JSX.Element {
   }, [handleSwitchWorkspace])
 
   const handleOpenFile = useCallback((filePath: string) => {
+    setSidebarSelectedPath(filePath)
     addTile(extToType(filePath), filePath)
   }, [addTile])
 
@@ -1415,6 +1455,8 @@ function App(): JSX.Element {
                 onNewWorkspace={handleNewWorkspace}
                 onOpenFolder={handleOpenFolder}
                 onOpenFile={handleOpenFile}
+                selectedPath={sidebarSelectedPath}
+                onSelectPath={setSidebarSelectedPath}
                 onNewTerminal={() => addTile('terminal')}
                 onNewKanban={() => addTile('kanban')}
                 onNewBrowser={() => addTile('browser')}
@@ -1462,13 +1504,20 @@ function App(): JSX.Element {
                   style={{
                     height: 26, paddingLeft: 12, paddingRight: openWorkspaceIds.length > 1 ? 6 : 12,
                     borderRadius: 8,
-                    background: isActive ? 'rgba(255,255,255,0.09)' : 'transparent',
-                    border: `1px solid ${isActive ? 'rgba(255,255,255,0.12)' : 'transparent'}`,
-                    color: isActive ? '#ccc' : '#555',
+                    background: isActive
+                      ? 'linear-gradient(180deg, rgba(74,158,255,0.20) 0%, rgba(74,158,255,0.10) 100%)'
+                      : 'transparent',
+                    border: `1px solid ${isActive ? 'rgba(90,170,255,0.42)' : 'transparent'}`,
+                    color: isActive ? '#d7ebff' : '#555',
                     fontSize: 12, fontWeight: isActive ? 500 : 400,
                     cursor: isActive ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6,
                     whiteSpace: 'nowrap', transition: 'all 0.1s',
+                    boxShadow: isActive
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 24px rgba(24,84,160,0.28), 0 0 0 1px rgba(74,158,255,0.08)'
+                      : 'none',
+                    backdropFilter: isActive ? 'blur(14px)' : 'none',
+                    WebkitBackdropFilter: isActive ? 'blur(14px)' : 'none',
                   }}
                   onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#aaa' } }}
                   onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#555' } }}
@@ -1484,9 +1533,9 @@ function App(): JSX.Element {
                           return next
                         })
                       }}
-                      style={{ fontSize: 14, lineHeight: 1, color: '#444', cursor: 'pointer', padding: '0 2px' }}
+                      style={{ fontSize: 14, lineHeight: 1, color: isActive ? '#8fbfff' : '#444', cursor: 'pointer', padding: '0 2px' }}
                       onMouseEnter={e => { e.currentTarget.style.color = '#ccc' }}
-                      onMouseLeave={e => { e.currentTarget.style.color = '#444' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = isActive ? '#8fbfff' : '#444' }}
                     >×</span>
                   )}
                 </button>
