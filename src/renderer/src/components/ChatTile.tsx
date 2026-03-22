@@ -117,12 +117,6 @@ const FONT_SANS = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 const FONT_MONO = "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
 const FONT_SIZE_DEFAULT = 13
 const MONO_SIZE_DEFAULT = 13
-const DARK_COMPOSER_BACKGROUND = '#232327'
-const DARK_COMPOSER_BORDER = '#383840'
-const DARK_DROPDOWN_BACKGROUND = '#17171b'
-const DARK_DROPDOWN_BORDER = '#2f2f37'
-const DARK_DROPDOWN_ACTIVE_BACKGROUND = '#26262c'
-const DARK_DROPDOWN_HOVER_BACKGROUND = '#202026'
 const TOOLBAR_ICON_SIZE = 16
 const TOOLBAR_PILL_ICON_SIZE = 14
 const TOOLBAR_TEXT_SIZE = 13
@@ -290,12 +284,12 @@ function WorkingDots({ color, size = 5 }: { color?: string; size?: number }): JS
 
 export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, width: _width, height: _height, settings }: Props): JSX.Element {
   const theme = useTheme()
-  const composerBackground = theme.mode === 'light' ? theme.chat.input : DARK_COMPOSER_BACKGROUND
-  const composerBorder = theme.mode === 'light' ? theme.chat.inputBorder : DARK_COMPOSER_BORDER
-  const dropdownBackground = theme.mode === 'light' ? theme.surface.panel : DARK_DROPDOWN_BACKGROUND
-  const dropdownBorder = theme.mode === 'light' ? theme.border.default : DARK_DROPDOWN_BORDER
-  const dropdownActiveBackground = theme.mode === 'light' ? theme.surface.panelElevated : DARK_DROPDOWN_ACTIVE_BACKGROUND
-  const dropdownHoverBackground = theme.mode === 'light' ? theme.surface.hover : DARK_DROPDOWN_HOVER_BACKGROUND
+  const composerBackground = theme.chat.input
+  const composerBorder = theme.chat.inputBorder
+  const dropdownBackground = theme.chat.dropdownBackground
+  const dropdownBorder = theme.chat.dropdownBorder
+  const dropdownActiveBackground = theme.chat.dropdownActiveBackground
+  const dropdownHoverBackground = theme.chat.dropdownHoverBackground
   const fontSans = settings?.primaryFont?.family ?? FONT_SANS
   const fontMono = settings?.monoFont?.family ?? FONT_MONO
   const fontSize = settings?.primaryFont?.size ?? FONT_SIZE_DEFAULT
@@ -1653,8 +1647,8 @@ function ToolbarPill({ prefix, label, color, active, onClick }: {
 
 function Dropdown({ children }: { children: React.ReactNode }): JSX.Element {
   const theme = useTheme()
-  const dropdownBackground = theme.mode === 'light' ? theme.surface.panel : DARK_DROPDOWN_BACKGROUND
-  const dropdownBorder = theme.mode === 'light' ? theme.border.default : DARK_DROPDOWN_BORDER
+  const dropdownBackground = theme.chat.dropdownBackground
+  const dropdownBorder = theme.chat.dropdownBorder
   return (
     <div style={{
       position: 'absolute', bottom: '100%', left: 0,
@@ -1675,8 +1669,8 @@ function DropdownItem({ icon, label, sublabel, active, onClick }: {
   const fonts = useFonts()
   const theme = useTheme()
   const [h, setH] = useState(false)
-  const dropdownActiveBackground = theme.mode === 'light' ? theme.surface.panelElevated : DARK_DROPDOWN_ACTIVE_BACKGROUND
-  const dropdownHoverBackground = theme.mode === 'light' ? theme.surface.hover : DARK_DROPDOWN_HOVER_BACKGROUND
+  const dropdownActiveBackground = theme.chat.dropdownActiveBackground
+  const dropdownHoverBackground = theme.chat.dropdownHoverBackground
   return (
     <div
       onClick={onClick}

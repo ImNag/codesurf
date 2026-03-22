@@ -1567,6 +1567,9 @@ function App(): JSX.Element {
   const theme = React.useMemo(() => getThemeById(settings.themeId), [settings.themeId])
   const translucentBackgroundOpacity = Math.max(0.05, Math.min(1, settings.translucentBackgroundOpacity ?? 1))
   const canvasBackground = withAlpha(settings.canvasBackground, translucentBackgroundOpacity)
+  const canvasLayerBackground = theme.canvas.backgroundEffect
+    ? `${theme.canvas.backgroundEffect}, ${canvasBackground}`
+    : canvasBackground
   const sidebarPanelTop = 36
   const sidebarFooterBottom = 0
   const sidebarFooterLeft = 20
@@ -1819,7 +1822,7 @@ function App(): JSX.Element {
           ref={canvasRef}
           className="absolute inset-0 overflow-hidden"
           style={{
-            background: canvasBackground,
+            background: canvasLayerBackground,
             cursor: isDraggingCanvas ? 'grabbing' : (spaceHeld.current ? 'grab' : 'default'),
             userSelect: 'none',
             WebkitUserSelect: 'none',

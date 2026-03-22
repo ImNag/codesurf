@@ -237,15 +237,13 @@ function ResizeHandle({ direction, onResize, onInteractionChange }: { direction:
       onMouseDown={onMouseDown}
       style={{
         flexShrink: 0,
-        [isHorizontal ? 'width' : 'height']: 6,
+        [isHorizontal ? 'width' : 'height']: 8,
         cursor: isHorizontal ? 'col-resize' : 'row-resize',
         background: 'transparent',
         position: 'relative',
         zIndex: 5,
-        [isHorizontal ? 'marginLeft' : 'marginTop']: -3,
-        [isHorizontal ? 'marginRight' : 'marginBottom']: -3,
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = theme.accent.soft)}
+      onMouseEnter={e => (e.currentTarget.style.background = theme.surface.hover)}
       onMouseLeave={e => { if (!dragging.current) e.currentTarget.style.background = 'transparent' }}
     />
   )
@@ -475,6 +473,7 @@ interface LeafPanelProps {
 }
 
 function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, onCloseTab, onTabMouseDown, onPanelFocus, onAddTile, dragTarget, onExit, getTileType, onSplitNew, onCloseOthers, onCloseToRight }: LeafPanelProps): JSX.Element {
+  const theme = useTheme()
   const panelRef = useRef<HTMLDivElement>(null)
   const tabs = leaf.tabs.map(id => ({ id, label: getTileLabel(id) }))
   const isEmpty = tabs.length === 0
@@ -489,7 +488,18 @@ function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, 
   return (
     <div
       ref={panelRef}
-      style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        position: 'relative',
+        borderRadius: 12,
+        overflow: 'hidden',
+        background: theme.surface.panel,
+        border: `1px solid ${theme.border.default}`,
+      }}
       onClick={() => onPanelFocus(leaf.id)}
     >
       {!isEmpty && (
@@ -709,7 +719,7 @@ export function PanelLayout({ root, getTileLabel, renderTile, onLayoutChange, on
 
   return (
     <div
-      style={{ position: 'absolute', top: 0, right: 8, bottom: 8, left: 8, zIndex: 99990, background: theme.surface.panel, display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: `1px solid ${theme.border.default}` }}
+      style={{ position: 'absolute', top: 0, right: 8, bottom: 8, left: 8, zIndex: 99990, background: theme.surface.app, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: 'none' }}
       onMouseDown={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
     >
