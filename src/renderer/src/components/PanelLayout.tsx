@@ -174,6 +174,7 @@ export function splitLeaf(node: PanelNode, targetPanelId: string, tileId: string
 // ─── Dock Overlay ─────────────────────────────────────────────────────────────
 
 function DockOverlay({ zone }: { zone: DockZone | null }): JSX.Element | null {
+  const theme = useTheme()
   if (!zone) return null
   const styles: Record<DockZone, React.CSSProperties> = {
     left:   { position: 'absolute', left: 0, top: 0, width: '50%', height: '100%' },
@@ -185,8 +186,8 @@ function DockOverlay({ zone }: { zone: DockZone | null }): JSX.Element | null {
   return (
     <div style={{
       ...styles[zone],
-      background: 'rgba(74,158,255,0.15)',
-      border: '2px solid rgba(74,158,255,0.5)',
+      background: theme.surface.accentSoft,
+      border: `2px solid ${theme.border.accent}`,
       borderRadius: 4,
       pointerEvents: 'none',
       zIndex: 10,
@@ -197,6 +198,7 @@ function DockOverlay({ zone }: { zone: DockZone | null }): JSX.Element | null {
 // ─── Resize Handle ────────────────────────────────────────────────────────────
 
 function ResizeHandle({ direction, onResize }: { direction: 'horizontal' | 'vertical'; onResize: (delta: number) => void }): JSX.Element {
+  const theme = useTheme()
   const dragging = useRef(false)
   const lastPos = useRef(0)
   // Ref so the mousemove closure always calls the latest onResize,
@@ -231,7 +233,7 @@ function ResizeHandle({ direction, onResize }: { direction: 'horizontal' | 'vert
     <div
       onMouseDown={onMouseDown}
       style={{ flexShrink: 0, [direction === 'horizontal' ? 'width' : 'height']: 4, cursor: direction === 'horizontal' ? 'col-resize' : 'row-resize', background: 'transparent', position: 'relative', zIndex: 5 }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(74,158,255,0.3)')}
+      onMouseEnter={e => (e.currentTarget.style.background = theme.accent.soft)}
       onMouseLeave={e => { if (!dragging.current) e.currentTarget.style.background = 'transparent' }}
     />
   )
@@ -404,7 +406,8 @@ function CtxItem({ label, onClick, disabled }: { label: string; onClick: () => v
 }
 
 function CtxDivider(): JSX.Element {
-  return <div style={{ height: 1, background: '#2a2a2a', margin: '3px 0' }} />
+  const theme = useTheme()
+  return <div style={{ height: 1, background: theme.border.default, margin: '3px 0' }} />
 }
 
 // ─── Empty Panel ─────────────────────────────────────────────────────────────

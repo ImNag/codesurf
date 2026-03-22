@@ -146,55 +146,56 @@ function drawerTabTitle(tab: DrawerTab): string {
 // ─── Status icons ────────────────────────────────────────────────────────────
 
 function TaskStatusIcon({ status }: { status: TaskItem['status'] }): JSX.Element {
+  const theme = useTheme()
   if (status === 'done') return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#3fb950" strokeWidth="1.2" />
-      <path d="M3.5 6l2 2 3-3.5" stroke="#3fb950" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6" cy="6" r="5" stroke={theme.status.success} strokeWidth="1.2" />
+      <path d="M3.5 6l2 2 3-3.5" stroke={theme.status.success} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
   if (status === 'error') return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#e54d2e" strokeWidth="1.2" />
-      <path d="M4 4l4 4M8 4l-4 4" stroke="#e54d2e" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6" cy="6" r="5" stroke={theme.status.danger} strokeWidth="1.2" />
+      <path d="M4 4l4 4M8 4l-4 4" stroke={theme.status.danger} strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   )
   if (status === 'paused') return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#ffb432" strokeWidth="1.2" />
-      <path d="M4.5 4v4M7.5 4v4" stroke="#ffb432" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6" cy="6" r="5" stroke={theme.status.warning} strokeWidth="1.2" />
+      <path d="M4.5 4v4M7.5 4v4" stroke={theme.status.warning} strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   )
   if (status === 'in-progress') return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#4a9eff" strokeWidth="1.2" />
-      <path d="M6 3v3.5l2.5 1.5" stroke="#4a9eff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6" cy="6" r="5" stroke={theme.accent.base} strokeWidth="1.2" />
+      <path d="M6 3v3.5l2.5 1.5" stroke={theme.accent.base} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#555" strokeWidth="1.2" />
+      <circle cx="6" cy="6" r="5" stroke={theme.text.disabled} strokeWidth="1.2" />
     </svg>
   )
 }
 
 function ToolStatusIcon({ status }: { status: ToolItem['status'] }): JSX.Element {
+  const theme = useTheme()
   if (status === 'done') return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#3fb950" strokeWidth="1.2" />
-      <path d="M3.5 6l2 2 3-3.5" stroke="#3fb950" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6" cy="6" r="5" stroke={theme.status.success} strokeWidth="1.2" />
+      <path d="M3.5 6l2 2 3-3.5" stroke={theme.status.success} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
   if (status === 'error') return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#e54d2e" strokeWidth="1.2" />
-      <path d="M4 4l4 4M8 4l-4 4" stroke="#e54d2e" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6" cy="6" r="5" stroke={theme.status.danger} strokeWidth="1.2" />
+      <path d="M4 4l4 4M8 4l-4 4" stroke={theme.status.danger} strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   )
-  // running - pulsing dot
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="#4a9eff" strokeWidth="1.2" />
-      <circle cx="6" cy="6" r="2" fill="#4a9eff" opacity="0.6" />
+      <circle cx="6" cy="6" r="5" stroke={theme.accent.base} strokeWidth="1.2" />
+      <circle cx="6" cy="6" r="2" fill={theme.accent.base} opacity="0.6" />
     </svg>
   )
 }
@@ -206,6 +207,7 @@ function ToolStatusIcon({ status }: { status: ToolItem['status'] }): JSX.Element
 function ActionBtn({ title, color, onClick, children }: {
   title: string; color: string; onClick: () => void; children: React.ReactNode
 }): JSX.Element {
+  const theme = useTheme()
   return (
     <button
       title={title}
@@ -215,7 +217,7 @@ function ActionBtn({ title, color, onClick, children }: {
         background: 'transparent', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexShrink: 0, padding: 0,
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+      onMouseEnter={e => (e.currentTarget.style.background = theme.surface.hover)}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
       {children}
@@ -237,6 +239,7 @@ function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask }: {
   onDeleteTask: (id: string) => void
   onAddTask: (title: string) => void
 }): JSX.Element {
+  const theme = useTheme()
   const [newTitle, setNewTitle] = useState('')
   const [taskMenu, setTaskMenu] = useState<{ x: number; y: number; task: TaskItem } | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -310,30 +313,30 @@ function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask }: {
           alignItems: 'center',
           justifyContent: 'center',
         }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+        onMouseEnter={e => (e.currentTarget.style.background = theme.surface.hover)}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <TaskStatusIcon status={task.status} />
       </button>
-      <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: doneRow ? '#555' : '#bbb', textDecoration: doneRow ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: doneRow ? theme.text.disabled : theme.text.secondary, textDecoration: doneRow ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {task.title}
       </div>
       <div style={{ display: 'flex', gap: 1, flexShrink: 0 }}>
         {task.status === 'paused' ? (
-          <ActionBtn title="Resume" color="#4a9eff" onClick={() => onUpdateTask(task.id, 'in-progress')}>
+          <ActionBtn title="Resume" color={theme.accent.base} onClick={() => onUpdateTask(task.id, 'in-progress')}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2l5 3-5 3z" fill="currentColor"/></svg>
           </ActionBtn>
         ) : !doneRow ? (
-          <ActionBtn title="Pause" color="#ffb432" onClick={() => onUpdateTask(task.id, 'paused')}>
+          <ActionBtn title="Pause" color={theme.status.warning} onClick={() => onUpdateTask(task.id, 'paused')}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2v6M7 2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </ActionBtn>
         ) : null}
         {!doneRow && (
-          <ActionBtn title="Done" color="#666" onClick={() => onUpdateTask(task.id, 'done')}>
+          <ActionBtn title="Done" color={theme.text.muted} onClick={() => onUpdateTask(task.id, 'done')}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5.5l2.5 2.5 3.5-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </ActionBtn>
         )}
-        <ActionBtn title="Delete" color={doneRow ? '#444' : '#666'} onClick={() => onDeleteTask(task.id)}>
+        <ActionBtn title="Delete" color={doneRow ? theme.text.disabled : theme.text.muted} onClick={() => onDeleteTask(task.id)}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
         </ActionBtn>
       </div>
@@ -365,22 +368,22 @@ function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask }: {
           placeholder="Add a task..."
           rows={2}
           style={{
-            width: '100%', borderRadius: 6, border: '0.5px solid rgba(255,255,255,0.12)', background: 'rgba(26,26,26,0.88)',
-            color: '#ccc', fontSize: 11, padding: '4px 8px', resize: 'vertical', outline: 'none', minHeight: 36, maxHeight: 100, lineHeight: 1.4,
+            width: '100%', borderRadius: 6, border: `1px solid ${theme.border.default}`, background: theme.surface.input,
+            color: theme.text.secondary, fontSize: 11, padding: '4px 8px', resize: 'vertical', outline: 'none', minHeight: 36, maxHeight: 100, lineHeight: 1.4,
           }}
           onFocus={e => {
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'
-            e.currentTarget.style.boxShadow = '0 0 0 0.5px rgba(74,158,255,0.18)'
+            e.currentTarget.style.borderColor = theme.border.accent
+            e.currentTarget.style.boxShadow = `0 0 0 0.5px ${theme.accent.soft}`
           }}
           onBlur={e => {
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
+            e.currentTarget.style.borderColor = theme.border.default
             e.currentTarget.style.boxShadow = 'none'
           }}
         />
         {newTitle.trim() && (
           <button onClick={submit} style={{
-            marginTop: 3, height: 20, borderRadius: 4, border: 'none', background: '#4a9eff',
-            color: '#fff', fontSize: 10, fontWeight: 600, padding: '0 8px', cursor: 'pointer',
+            marginTop: 3, height: 20, borderRadius: 4, border: 'none', background: theme.accent.base,
+            color: theme.text.inverse, fontSize: 10, fontWeight: 600, padding: '0 8px', cursor: 'pointer',
           }}>Add task</button>
         )}
       </div>
@@ -407,6 +410,7 @@ function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask }: {
 }
 
 function ToolsPanel({ tools }: { tools: ToolItem[] }): JSX.Element {
+  const theme = useTheme()
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
       {tools.length === 0 ? (
@@ -416,10 +420,10 @@ function ToolsPanel({ tools }: { tools: ToolItem[] }): JSX.Element {
           <div key={t.id} style={{ padding: '5px 12px', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
             <div style={{ marginTop: 1, flexShrink: 0 }}><ToolStatusIcon status={t.status} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: '#bbb', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-              {t.input && <div style={{ fontSize: 10, color: '#555', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.input}</div>}
+              <div style={{ fontSize: 11, color: theme.text.secondary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+              {t.input && <div style={{ fontSize: 10, color: theme.text.muted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.input}</div>}
               {t.elapsed != null && t.status === 'done' && (
-                <div style={{ fontSize: 9, color: '#444', marginTop: 1 }}>{(t.elapsed / 1000).toFixed(1)}s</div>
+                <div style={{ fontSize: 9, color: theme.text.disabled, marginTop: 1 }}>{(t.elapsed / 1000).toFixed(1)}s</div>
               )}
             </div>
           </div>
@@ -433,6 +437,7 @@ function SkillsPanel({ skills, onToggle }: {
   skills: SkillConfig[]
   onToggle: (id: string) => void
 }): JSX.Element {
+  const theme = useTheme()
   const builtin = skills.filter(s => s.source === 'builtin')
   const mcpGroups = new Map<string, SkillConfig[]>()
   for (const s of skills.filter(s => s.source === 'mcp')) {
@@ -447,19 +452,19 @@ function SkillsPanel({ skills, onToggle }: {
         onClick={() => onToggle(s.id)}
         style={{
           width: 28, height: 14, borderRadius: 7, border: 'none', cursor: 'pointer',
-          background: s.enabled ? '#4a9eff' : '#333', position: 'relative',
+          background: s.enabled ? theme.accent.base : theme.surface.panelMuted, position: 'relative',
           transition: 'background 0.15s', flexShrink: 0, padding: 0,
         }}
       >
         <div style={{
-          width: 10, height: 10, borderRadius: 5, background: '#fff',
+          width: 10, height: 10, borderRadius: 5, background: theme.text.inverse,
           position: 'absolute', top: 2, left: s.enabled ? 16 : 2,
           transition: 'left 0.15s',
         }} />
       </button>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, color: s.enabled ? '#bbb' : '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-        {s.description && <div style={{ fontSize: 9, color: '#444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.description}</div>}
+        <div style={{ fontSize: 11, color: s.enabled ? theme.text.secondary : theme.text.disabled, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+        {s.description && <div style={{ fontSize: 9, color: theme.text.disabled, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.description}</div>}
       </div>
     </div>
   )
@@ -472,13 +477,13 @@ function SkillsPanel({ skills, onToggle }: {
         <>
           {builtin.length > 0 && (
             <>
-              <div style={{ padding: '6px 8px 2px', fontSize: 9, fontWeight: 700, color: '#555', letterSpacing: 1, textTransform: 'uppercase' }}>Built-in</div>
+              <div style={{ padding: '6px 8px 2px', fontSize: 9, fontWeight: 700, color: theme.text.disabled, letterSpacing: 1, textTransform: 'uppercase' }}>Built-in</div>
               {builtin.map(renderSkill)}
             </>
           )}
           {[...mcpGroups.entries()].map(([server, list]) => (
             <React.Fragment key={server}>
-              <div style={{ padding: '6px 8px 2px', fontSize: 9, fontWeight: 700, color: '#555', letterSpacing: 1, textTransform: 'uppercase' }}>{server}</div>
+              <div style={{ padding: '6px 8px 2px', fontSize: 9, fontWeight: 700, color: theme.text.disabled, letterSpacing: 1, textTransform: 'uppercase' }}>{server}</div>
               {list.map(renderSkill)}
             </React.Fragment>
           ))}
@@ -493,6 +498,7 @@ function ContextPanel({ items, onAddNote, onRemoveItem }: {
   onAddNote: (text: string) => void
   onRemoveItem: (id: string) => void
 }): JSX.Element {
+  const theme = useTheme()
   const [note, setNote] = useState('')
   const submitNote = () => {
     const t = note.trim()
@@ -510,17 +516,17 @@ function ContextPanel({ items, onAddNote, onRemoveItem }: {
           placeholder="Add a note..."
           rows={2}
           style={{
-            width: '100%', borderRadius: 4, border: '1px solid #333', background: '#1a1a1a',
-            color: '#ccc', fontSize: 11, padding: '4px 6px', resize: 'vertical', outline: 'none',
+            width: '100%', borderRadius: 4, border: `1px solid ${theme.border.default}`, background: theme.surface.input,
+            color: theme.text.secondary, fontSize: 11, padding: '4px 6px', resize: 'vertical', outline: 'none',
             minHeight: 36, maxHeight: 100, lineHeight: 1.4,
           }}
-          onFocus={e => (e.currentTarget.style.borderColor = '#4a9eff')}
-          onBlur={e => (e.currentTarget.style.borderColor = '#333')}
+          onFocus={e => (e.currentTarget.style.borderColor = theme.border.accent)}
+          onBlur={e => (e.currentTarget.style.borderColor = theme.border.default)}
         />
         {note.trim() && (
           <button onClick={submitNote} style={{
-            marginTop: 3, height: 20, borderRadius: 3, border: 'none', background: '#4a9eff',
-            color: '#fff', fontSize: 10, fontWeight: 600, padding: '0 8px', cursor: 'pointer',
+            marginTop: 3, height: 20, borderRadius: 3, border: 'none', background: theme.accent.base,
+            color: theme.text.inverse, fontSize: 10, fontWeight: 600, padding: '0 8px', cursor: 'pointer',
           }}>Save note</button>
         )}
       </div>
@@ -530,17 +536,17 @@ function ContextPanel({ items, onAddNote, onRemoveItem }: {
         <EmptyState text="No context items" />
       ) : (
         items.map(c => (
-          <div key={c.id} style={{ padding: '4px 8px', display: 'flex', alignItems: 'flex-start', gap: 6, borderBottom: '1px solid #1a1a1a' }}>
-            <span style={{ fontSize: 9, color: c.type === 'note' ? '#4a9eff' : '#e2c08d', fontWeight: 600, marginTop: 2, flexShrink: 0 }}>
+          <div key={c.id} style={{ padding: '4px 8px', display: 'flex', alignItems: 'flex-start', gap: 6, borderBottom: `1px solid ${theme.border.subtle}` }}>
+            <span style={{ fontSize: 9, color: c.type === 'note' ? theme.accent.base : '#e2c08d', fontWeight: 600, marginTop: 2, flexShrink: 0 }}>
               {c.type === 'note' ? 'N' : 'F'}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: '#bbb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+              <div style={{ fontSize: 11, color: theme.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
               {c.type === 'note' && c.content && (
-                <div style={{ fontSize: 10, color: '#555', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.content.slice(0, 80)}</div>
+                <div style={{ fontSize: 10, color: theme.text.muted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.content.slice(0, 80)}</div>
               )}
             </div>
-            <ActionBtn title="Remove" color="#555" onClick={() => onRemoveItem(c.id)}>
+            <ActionBtn title="Remove" color={theme.text.disabled} onClick={() => onRemoveItem(c.id)}>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
             </ActionBtn>
           </div>
@@ -551,11 +557,13 @@ function ContextPanel({ items, onAddNote, onRemoveItem }: {
 }
 
 function EmptyState({ text }: { text: string }): JSX.Element {
-  return <div style={{ padding: '24px 12px', textAlign: 'center', color: '#444', fontSize: 11 }}>{text}</div>
+  const theme = useTheme()
+  return <div style={{ padding: '24px 12px', textAlign: 'center', color: theme.text.disabled, fontSize: 11 }}>{text}</div>
 }
 
 function Divider(): JSX.Element {
-  return <div style={{ height: 1, background: '#1a1a1a', margin: '4px 12px' }} />
+  const theme = useTheme()
+  return <div style={{ height: 1, background: theme.border.subtle, margin: '4px 12px' }} />
 }
 
 // ─── Tabbed drawer container ─────────────────────────────────────────────────
@@ -571,6 +579,7 @@ function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask,
   onAddNote: (text: string) => void
   onRemoveContext: (id: string) => void
 }): JSX.Element {
+  const theme = useTheme()
   const counts: Record<DrawerTab, number> = {
     tasks: data.tasks.filter(t => t.status !== 'done').length,
     tools: data.tools.filter(t => t.status === 'running').length,
@@ -584,7 +593,7 @@ function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask,
       <div style={{
         minHeight: 38, flexShrink: 0,
         display: 'flex', alignItems: 'center',
-        borderBottom: '1px solid #222',
+        borderBottom: `1px solid ${theme.border.subtle}`,
         padding: '5px 8px',
         gap: 4,
         overflowX: 'auto',
@@ -605,8 +614,8 @@ function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask,
       </div>
 
       {/* Active panel */}
-      <div style={{ padding: '10px 14px 7px', borderBottom: '1px solid #1b1b1b', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#98a2ad', letterSpacing: 0.7, textTransform: 'uppercase', lineHeight: 1 }}>
+      <div style={{ padding: '10px 14px 7px', borderBottom: `1px solid ${theme.border.subtle}`, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: theme.text.secondary, letterSpacing: 0.7, textTransform: 'uppercase', lineHeight: 1 }}>
           {drawerTabTitle(activeTab)}
         </div>
       </div>
@@ -621,6 +630,7 @@ function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask,
 function TabButton({ tab, active, count, onClick }: {
   tab: DrawerTab; active: boolean; count: number; onClick: () => void
 }): JSX.Element {
+  const theme = useTheme()
   const [h, setH] = useState(false)
   return (
     <button
@@ -634,11 +644,11 @@ function TabButton({ tab, active, count, onClick }: {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: 28,
         minWidth: 32,
-        background: active ? '#21262d' : (h ? 'rgba(255,255,255,0.03)' : 'transparent'),
-        border: `1px solid ${active ? '#30363d' : h ? '#2a2f38' : 'transparent'}`,
+        background: active ? theme.surface.selection : (h ? theme.surface.hover : 'transparent'),
+        border: `1px solid ${active ? theme.border.default : h ? theme.border.default : 'transparent'}`,
         borderRadius: 7,
         cursor: 'pointer',
-        color: active ? '#58a6ff' : (h ? '#aeb8c4' : '#6f7782'),
+        color: active ? theme.accent.base : (h ? theme.text.secondary : theme.text.muted),
         padding: '0 9px',
         transition: 'color 0.15s, background 0.15s, border-color 0.15s',
         flex: 1,
@@ -652,7 +662,7 @@ function TabButton({ tab, active, count, onClick }: {
           right: 4,
           fontSize: 8,
           fontWeight: 700,
-          color: active ? '#58a6ff' : (h ? '#aeb8c4' : '#6f7782'),
+          color: active ? theme.accent.base : (h ? theme.text.secondary : theme.text.muted),
           minWidth: 10,
           textAlign: 'center',
           lineHeight: 1,

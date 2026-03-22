@@ -227,7 +227,7 @@ export function ExtensionTile({ tileId, extType, width, height, workspaceId, wor
         width,
         height: contentHeight,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#555', fontSize: 12,
+        color: theme.text.disabled, fontSize: 12,
       }}>
         Loading extension…
       </div>
@@ -240,7 +240,7 @@ export function ExtensionTile({ tileId, extType, width, height, workspaceId, wor
         width,
         height: contentHeight,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#e87070', fontSize: 12, padding: 20, textAlign: 'center',
+        color: theme.status.danger, fontSize: 12, padding: 20, textAlign: 'center',
       }}>
         {error}
       </div>
@@ -255,7 +255,7 @@ export function ExtensionTile({ tileId, extType, width, height, workspaceId, wor
       width,
       height: contentHeight,
       overflow: 'hidden',
-      background: '#1e1e1e',
+      background: theme.extension.background,
     }}>
       <iframe
         ref={iframeRef}
