@@ -243,7 +243,7 @@ contextBridge.exposeInMainWorld('electron', {
   extensions: {
     list: () => ipcRenderer.invoke('ext:list'),
     listTiles: () => ipcRenderer.invoke('ext:list-tiles'),
-    tileEntry: (extId: string, tileType: string) => ipcRenderer.invoke('ext:tile-entry', extId, tileType),
+    tileEntry: (extId: string, tileType: string, tileId?: string) => ipcRenderer.invoke('ext:tile-entry', extId, tileType, tileId),
     getBridgeScript: (tileId: string, extId: string) => ipcRenderer.invoke('ext:get-bridge-script', tileId, extId),
     enable: (extId: string) => ipcRenderer.invoke('ext:enable', extId),
     disable: (extId: string) => ipcRenderer.invoke('ext:disable', extId),

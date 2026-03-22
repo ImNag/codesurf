@@ -10,7 +10,7 @@
       {
         "type": "timer",
         "label": "Timer",
-        "icon": "⏱",
+        "icon": "",
         "entry": "dist/index.html",
         "defaultSize": { "w": 320, "h": 260 },
         "minSize": { "w": 220, "h": 200 }
@@ -18,7 +18,7 @@
     ],
     "contextMenu": [
       {
-        "label": "⏱ New Timer",
+        "label": "New Timer",
         "action": "createTile",
         "tileType": "ext:timer"
       }

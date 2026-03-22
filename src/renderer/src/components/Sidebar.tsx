@@ -1342,7 +1342,6 @@ export function Sidebar({
                       onMouseEnter={e => { e.currentTarget.style.background = '#2a2a2a'; e.currentTarget.style.color = '#fff' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#ccc' }}
                     >
-                      <span style={{ fontSize: 13, width: 18, textAlign: 'center', flexShrink: 0 }}>{ext.icon ?? '🧩'}</span>
                       <span>{ext.label}</span>
                     </button>
                   ))}

@@ -11,7 +11,7 @@
       {
         "type": "pomodoro",
         "label": "Pomodoro",
-        "icon": "🍅",
+        "icon": "",
         "entry": "dist/index.html",
         "defaultSize": { "w": 340, "h": 300 },
         "minSize": { "w": 260, "h": 240 }
@@ -19,7 +19,7 @@
     ],
     "contextMenu": [
       {
-        "label": "🍅 New Pomodoro",
+        "label": "New Pomodoro",
         "action": "createTile",
         "tileType": "ext:pomodoro"
       }

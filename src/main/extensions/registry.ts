@@ -198,12 +198,19 @@ export class ExtensionRegistry {
     return items
   }
 
-  getTileEntry(extId: string, tileType: string): string | null {
+  getTileEntry(extId: string, tileType: string, tileId?: string): string | null {
     const ext = this.extensions.get(extId)
     if (!ext?.manifest._path || !ext.manifest._enabled) return null
     const tile = ext.manifest.contributes?.tiles?.find(t => t.type === tileType)
     if (!tile) return null
-    return `file://${join(ext.manifest._path, tile.entry)}`
+
+    const entrySegments = tile.entry
+      .split(/[\\/]/)
+      .filter(Boolean)
+      .map(segment => encodeURIComponent(segment))
+    const query = tileId ? `?tileId=${encodeURIComponent(tileId)}` : ''
+
+    return `contex-ext://extension/${encodeURIComponent(extId)}/${entrySegments.join('/')}${query}`
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────

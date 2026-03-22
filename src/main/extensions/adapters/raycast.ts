@@ -68,7 +68,7 @@ export const raycastAdapter: ExtensionAdapter = {
       .map(cmd => ({
         type: `ext:raycast-${dirName}-${cmd.name}`,
         label: cmd.title,
-        icon: cmd.icon ?? '🔮',
+        icon: cmd.icon,
         entry: `dist/_raycast_shim_${cmd.name}.html`,
         defaultSize: { w: 500, h: 400 },
         minSize: { w: 300, h: 200 },

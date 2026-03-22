@@ -35,9 +35,9 @@ export function registerExtensionIPC(registry: ExtensionRegistry): void {
     }))
   })
 
-  // Get the file:// URL for a tile's entry HTML
-  ipcMain.handle('ext:tile-entry', (_, extId: string, tileType: string) => {
-    return registry.getTileEntry(extId, tileType)
+  // Get the custom protocol URL for a tile's entry HTML
+  ipcMain.handle('ext:tile-entry', (_, extId: string, tileType: string, tileId?: string) => {
+    return registry.getTileEntry(extId, tileType, tileId)
   })
 
   // Get the bridge script to inject into extension iframes

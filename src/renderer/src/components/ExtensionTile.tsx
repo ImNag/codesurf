@@ -1,11 +1,12 @@
 /**
- * ExtensionTile — renders extension tile content inside a sandboxed iframe (webview).
+ * ExtensionTile — renders extension tile content inside a sandboxed iframe.
  *
- * Safe tier: sandbox + CSP, no node integration.
- * Power tier: gets a bridge script injected for bus/state/MCP communication.
+ * Extension HTML is served through the custom contex-ext:// protocol so dev
+ * renderer pages can load it safely, and a postMessage RPC bridge lets the
+ * iframe talk back to the host renderer.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const el = (window as any).electron
 
@@ -15,18 +16,128 @@ interface ExtensionTileProps {
   width: number
   height: number
   workspaceId?: string
+  workspacePath?: string
 }
 
-export function ExtensionTile({ tileId: _tileId, extType, width, height }: ExtensionTileProps) {
+export function ExtensionTile({ tileId, extType, width, height, workspaceId, workspacePath }: ExtensionTileProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const busUnsubsRef = useRef<Map<string, () => void>>(new Map())
+  const bridgeReadyRef = useRef(false)
+
   const [entryUrl, setEntryUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [extId, setExtId] = useState<string | null>(null)
+
+  const contentHeight = Math.max(0, height - 36)
+
+  const themeColors = useMemo(() => ({
+    background: '#1e1e1e',
+    panel: '#252525',
+    border: '#333333',
+    text: '#e0e0e0',
+    muted: '#888888',
+    accent: '#4a9eff',
+  }), [])
+
+  const postToIframe = useCallback((message: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(message, '*')
+  }, [])
+
+  const cleanupBusSubscriptions = useCallback(() => {
+    for (const unsubscribe of busUnsubsRef.current.values()) unsubscribe()
+    busUnsubsRef.current.clear()
+  }, [])
+
+  const ensureBusSubscription = useCallback((channel: string) => {
+    if (!channel || busUnsubsRef.current.has(channel)) return
+
+    const subscriberId = `exttile:${tileId}:${channel}`
+    const unsubscribe = el.bus?.subscribe?.(channel, subscriberId, (event: any) => {
+      postToIframe({
+        type: 'contex-event',
+        event: `bus.event.${channel}`,
+        data: event,
+      })
+    })
+
+    if (typeof unsubscribe === 'function') {
+      busUnsubsRef.current.set(channel, unsubscribe)
+    }
+  }, [postToIframe, tileId])
+
+  const handleRpc = useCallback(async (method: string, params: any) => {
+    switch (method) {
+      case 'tile.getState':
+        if (!workspaceId) return null
+        return el.canvas?.loadTileState?.(workspaceId, tileId) ?? null
+
+      case 'tile.setState':
+        if (!workspaceId) return false
+        await el.canvas?.saveTileState?.(workspaceId, tileId, params ?? {})
+        return true
+
+      case 'tile.getSize':
+        return { width, height: contentHeight }
+
+      case 'tile.getMeta':
+        return {
+          tileId,
+          extId,
+          extType,
+          width,
+          height: contentHeight,
+          workspaceId: workspaceId ?? '',
+          workspacePath: workspacePath ?? '',
+        }
+
+      case 'bus.publish': {
+        const channel = String(params?.channel ?? '')
+        const type = String(params?.type ?? 'data')
+        const payload = params?.payload ?? {}
+        if (!channel) throw new Error('Missing bus channel')
+        return el.bus?.publish?.(channel, type, `exttile:${tileId}`, payload)
+      }
+
+      case 'bus.subscribe': {
+        const channel = String(params?.channel ?? '')
+        if (!channel) throw new Error('Missing bus channel')
+        ensureBusSubscription(channel)
+        return true
+      }
+
+      case 'canvas.listTiles': {
+        if (!workspaceId) return []
+        const canvasState = await el.canvas?.load?.(workspaceId)
+        return canvasState?.tiles ?? []
+      }
+
+      case 'canvas.createTile':
+        throw new Error('canvas.createTile is not implemented yet')
+
+      case 'settings.get': {
+        if (!extId) return undefined
+        const settings = await el.extensions?.getSettings?.(extId)
+        const key = String(params?.key ?? '')
+        return key ? settings?.[key] : settings
+      }
+
+      case 'workspace.getPath':
+        return workspacePath ?? ''
+
+      case 'theme.getColors':
+        return themeColors
+
+      default:
+        throw new Error(`Unsupported extension RPC method: ${method}`)
+    }
+  }, [contentHeight, ensureBusSubscription, extId, extType, themeColors, tileId, width, workspaceId, workspacePath])
 
   useEffect(() => {
+    bridgeReadyRef.current = false
+
     async function resolve() {
       try {
-        // Get all extension tiles to find the one matching our type
         const tiles = await el.extensions?.listTiles?.() ?? []
         const match = tiles.find((t: any) => t.type === extType)
         if (!match) {
@@ -35,7 +146,9 @@ export function ExtensionTile({ tileId: _tileId, extType, width, height }: Exten
           return
         }
 
-        const url = await el.extensions?.tileEntry?.(match.extId, extType)
+        setExtId(match.extId)
+
+        const url = await el.extensions?.tileEntry?.(match.extId, extType, tileId)
         if (!url) {
           setError(`No entry URL for extension "${match.extId}".`)
           setLoading(false)
@@ -43,19 +156,74 @@ export function ExtensionTile({ tileId: _tileId, extType, width, height }: Exten
         }
 
         setEntryUrl(url)
+        setError(null)
       } catch (err) {
         setError(String(err))
       } finally {
         setLoading(false)
       }
     }
+
     resolve()
-  }, [extType])
+  }, [extType, tileId])
+
+  useEffect(() => {
+    const onMessage = async (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return
+
+      const message = event.data
+      if (!message || typeof message !== 'object') return
+
+      if (message.type === 'contex-bridge-ready' && message.tileId === tileId) {
+        bridgeReadyRef.current = true
+        postToIframe({
+          type: 'contex-event',
+          event: 'tile.resize',
+          data: { width, height: contentHeight },
+        })
+        return
+      }
+
+      if (message.type !== 'contex-rpc' || message.tileId !== tileId) return
+
+      try {
+        const result = await handleRpc(String(message.method ?? ''), message.params)
+        postToIframe({ type: 'contex-rpc-response', id: message.id, result })
+      } catch (err) {
+        postToIframe({
+          type: 'contex-rpc-response',
+          id: message.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [contentHeight, handleRpc, postToIframe, tileId, width])
+
+  useEffect(() => {
+    if (!bridgeReadyRef.current) return
+
+    postToIframe({
+      type: 'contex-event',
+      event: 'tile.resize',
+      data: { width, height: contentHeight },
+    })
+  }, [contentHeight, postToIframe, width])
+
+  useEffect(() => {
+    return () => {
+      bridgeReadyRef.current = false
+      cleanupBusSubscriptions()
+    }
+  }, [cleanupBusSubscriptions])
 
   if (loading) {
     return (
       <div style={{
-        width, height: height - 36,
+        width,
+        height: contentHeight,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: '#555', fontSize: 12,
       }}>
@@ -67,7 +235,8 @@ export function ExtensionTile({ tileId: _tileId, extType, width, height }: Exten
   if (error) {
     return (
       <div style={{
-        width, height: height - 36,
+        width,
+        height: contentHeight,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: '#e87070', fontSize: 12, padding: 20, textAlign: 'center',
       }}>
@@ -82,7 +251,7 @@ export function ExtensionTile({ tileId: _tileId, extType, width, height }: Exten
     <div style={{
       position: 'relative',
       width,
-      height: height - 36,
+      height: contentHeight,
       overflow: 'hidden',
       background: '#1e1e1e',
     }}>

@@ -476,11 +476,21 @@ function App(): JSX.Element {
     return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
   }, [screenToWorld])
 
+  const getInitialTileSize = useCallback((type: TileState['type']) => {
+    const configured = settings.defaultTileSizes[type]
+    if (configured) return configured
+    if (type.startsWith('ext:')) {
+      const extDefault = extensionTiles.find(ext => ext.type === type)?.defaultSize
+      if (extDefault) return extDefault
+      return { w: 360, h: 280 }
+    }
+    return { w: 600, h: 400 }
+  }, [settings.defaultTileSizes, extensionTiles])
+
   // ─── Tile creation ────────────────────────────────────────────────────────
   const addTile = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }) => {
     const center = pos ?? viewportCenter()
-    const defaultSizes = settings.defaultTileSizes
-    const { w, h } = defaultSizes[type]
+    const { w, h } = getInitialTileSize(type)
     const minW = getMinTileWidth(type)
     const minH = getMinTileHeight(type)
     const width = Math.max(w, minW)
@@ -508,7 +518,7 @@ function App(): JSX.Element {
     if (panelLayout && activePanelId) {
       setPanelLayout(prev => prev ? addTabToLeaf(prev, activePanelId, newTile.id) : prev)
     }
-  }, [nextZIndex, viewport, viewportCenter, saveCanvas, panelLayout, activePanelId, settings.defaultTileSizes])
+  }, [nextZIndex, viewport, viewportCenter, saveCanvas, panelLayout, activePanelId, getInitialTileSize])
 
   useEffect(() => {
     if (!tiles.some(tile => tile.width < getMinTileWidth(tile) || tile.height < getMinTileHeight(tile))) return
@@ -655,7 +665,7 @@ function App(): JSX.Element {
       items.push({ label: '', action: () => {}, divider: true })
       for (const ext of extensionTiles) {
         items.push({
-          label: `${ext.icon ?? '🧩'} ${ext.label}`,
+          label: ext.label,
           action: () => addTile(ext.type as TileType, undefined, world),
         })
       }
@@ -672,7 +682,7 @@ function App(): JSX.Element {
       items.push({ label: `Group ${selectedTileIds.size} tiles`, action: () => groupSelectedTilesRef.current() })
     }
     setCtxMenu({ x: e.clientX, y: e.clientY, items })
-  }, [screenToWorld, addTile, selectedTileIds, groups, panelLayout])
+  }, [screenToWorld, addTile, selectedTileIds, groups, panelLayout, extensionTiles])
 
   // Right-click on a tile titlebar
   const handleTileContextMenu = useCallback((e: React.MouseEvent, tile: TileState) => {
@@ -1516,6 +1526,7 @@ function App(): JSX.Element {
               width={tile.width}
               height={tile.height}
               workspaceId={workspace?.id ?? ''}
+              workspacePath={workspace?.path ?? ''}
             />
           )
         }
@@ -2251,7 +2262,7 @@ function App(): JSX.Element {
                 getTileType={(tileId) => tiles.find(t => t.id === tileId)?.type ?? 'note'}
                 onSplitNew={(panelId, tileType, zone) => {
                   const center = viewportCenter()
-                  const { w, h } = settings.defaultTileSizes[tileType as TileState['type']]
+                  const { w, h } = getInitialTileSize(tileType as TileState['type'])
                   const newTile: TileState = {
                     id: `tile-${Date.now()}`,
                     type: tileType as TileState['type'],

@@ -79,7 +79,7 @@
   </div>
 </div>
 
-<div id="cycles" class="cycles">🍅 <span>0</span> completed</div>
+<div id="cycles" class="cycles">Cycles <span>0</span> completed</div>
 
 <div class="controls">
   <button id="mainBtn" class="primary" onclick="mainAction()">Start</button>
@@ -136,7 +136,7 @@
     phaseEl.textContent = phase === 'longBreak' ? 'long break' : phase
     phaseEl.className = 'phase ' + phase
     displayEl.textContent = fmt(remaining)
-    cyclesEl.innerHTML = `🍅 <span>${total}</span> completed`
+    cyclesEl.innerHTML = `Cycles <span>${total}</span> completed`
     mainBtn.textContent = running ? 'Pause' : 'Start'
     mainBtn.className = running ? 'primary' : 'primary'
     if (phase === 'break' || phase === 'longBreak') mainBtn.classList.add('break')

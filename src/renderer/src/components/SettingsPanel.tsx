@@ -208,7 +208,7 @@ function FontSelect({ value, onChange, fonts }: { value: string; onChange: (v: s
       value={value}
       onChange={e => onChange(e.target.value)}
       style={{
-        width: 200, padding: '5px 10px', fontSize: 12,
+        width: '100%', maxWidth: 280, padding: '5px 10px', fontSize: 12,
         background: '#222', color: '#ccc',
         border: '1px solid #333', borderRadius: 8, outline: 'none',
         fontFamily: value
@@ -995,7 +995,7 @@ function SliderField({ value, min, max, step, onChange, format }: {
   format?: (value: number) => string
 }): React.JSX.Element {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
       <input
         type="range"
         min={min}
@@ -1003,9 +1003,9 @@ function SliderField({ value, min, max, step, onChange, format }: {
         step={step}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        style={{ width: 92 }}
+        style={{ width: '100%', minWidth: 0 }}
       />
-      <span style={{ width: 38, textAlign: 'right', fontSize: 11, color: '#888', fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ width: 32, textAlign: 'right', fontSize: 10, color: '#888', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
         {format ? format(value) : value}
       </span>
     </div>
@@ -1022,9 +1022,9 @@ function CompactFontRow({ label, description, token, fontOptions, onChange }: {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'minmax(150px, 180px) minmax(210px, 1fr) 140px 140px 140px',
+      gridTemplateColumns: 'minmax(120px, 130px) 1fr',
       gap: 12,
-      alignItems: 'center',
+      alignItems: 'start',
       padding: '10px 12px',
       background: '#141414',
       border: '1px solid #1f1f1f',
@@ -1034,10 +1034,14 @@ function CompactFontRow({ label, description, token, fontOptions, onChange }: {
         <div style={{ fontSize: 12, color: '#e6e6e6', fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 11, color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{description}</div>
       </div>
-      <FontSelect value={token.family} onChange={family => onChange({ ...token, family })} fonts={fontOptions} />
-      <SliderField value={token.size} min={8} max={32} step={1} onChange={size => onChange({ ...token, size })} format={value => `${value}px`} />
-      <SliderField value={token.weight ?? 400} min={100} max={900} step={100} onChange={weight => onChange({ ...token, weight })} />
-      <SliderField value={token.lineHeight} min={1} max={2.2} step={0.05} onChange={lineHeight => onChange({ ...token, lineHeight })} format={value => value.toFixed(2)} />
+      <div style={{ display: 'grid', gap: 8 }}>
+        <FontSelect value={token.family} onChange={family => onChange({ ...token, family })} fonts={fontOptions} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+          <SliderField value={token.size} min={8} max={32} step={1} onChange={size => onChange({ ...token, size })} format={value => `${value}px`} />
+          <SliderField value={token.weight ?? 400} min={100} max={900} step={100} onChange={weight => onChange({ ...token, weight })} />
+          <SliderField value={token.lineHeight} min={1} max={2.2} step={0.05} onChange={lineHeight => onChange({ ...token, lineHeight })} format={value => value.toFixed(2)} />
+        </div>
+      </div>
     </div>
   )
 }

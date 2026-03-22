@@ -17,6 +17,7 @@ import { registerCollabIPC, stopAllCollabWatchers } from './ipc/collab'
 import { flushAll as flushActivityStore } from './activity-store'
 import { detectAllAgents, registerAgentPathsIPC } from './agent-paths'
 import { ExtensionRegistry } from './extensions/registry'
+import { registerExtensionProtocol } from './extensions/protocol'
 import { registerExtensionIPC } from './ipc/extensions'
 import { applyWindowAppearance, getWindowAppearanceOptions } from './windowAppearance'
 import { migrateLegacyStorage } from './migration'
@@ -126,6 +127,7 @@ app.whenReady().then(async () => {
   // Load extensions (global + workspace)
   extensionRegistry = new ExtensionRegistry()
   await extensionRegistry.scan()
+  registerExtensionProtocol(extensionRegistry)
   registerExtensionIPC(extensionRegistry)
 
   // Detect agent binaries (claude, codex, opencode) — uses real shell PATH
