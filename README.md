@@ -74,4 +74,4 @@ Project-backed workspaces can point at any folder you open.
 
 ## License
 
-MIT
+SEE LICENSE FILE
