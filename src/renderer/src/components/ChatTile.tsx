@@ -191,10 +191,19 @@ const FONT_MONO = '"JetBrains Mono", "Menlo", "Monaco", "SF Mono", "Fira Code", 
 const FONT_SIZE_DEFAULT = 13
 const MONO_SIZE_DEFAULT = 13
 const CHAT_MESSAGE_MAX_WIDTH = 800
-const CHAT_RENDER_WINDOW = 120
-const CHAT_MEMORY_MESSAGE_LIMIT = 160
-const CHAT_MEMORY_CHAR_LIMIT = 300_000
-const CHAT_MEMORY_SINGLE_MESSAGE_LIMIT = 120_000
+const CHAT_RENDER_WINDOW = 80
+const CHAT_MEMORY_MESSAGE_LIMIT = 120
+const CHAT_MEMORY_CHAR_LIMIT = 180_000
+const CHAT_MEMORY_SINGLE_MESSAGE_LIMIT = 80_000
+const CHAT_MEMORY_PRESERVE_RICH_MESSAGE_COUNT = 12
+const CHAT_MEMORY_TOOL_INPUT_LIMIT = 2_000
+const CHAT_MEMORY_TOOL_INPUT_LIMIT_AGGRESSIVE = 500
+const CHAT_MEMORY_TOOL_SUMMARY_LIMIT = 2_000
+const CHAT_MEMORY_TOOL_SUMMARY_LIMIT_AGGRESSIVE = 600
+const CHAT_MEMORY_THINKING_LIMIT = 8_000
+const CHAT_MEMORY_THINKING_LIMIT_AGGRESSIVE = 1_200
+const CHAT_MEMORY_CONTENT_BLOCK_LIMIT = 8_000
+const CHAT_MEMORY_CONTENT_BLOCK_LIMIT_AGGRESSIVE = 1_500
 const CHAT_TRIM_NOTICE_PREFIX = '[CodeSurf memory guard]'
 const CHAT_COMPOSER_MAX_WIDTH = 800
 const CHAT_COMPOSER_MIN_WIDTH = 400
@@ -209,25 +218,92 @@ const TOOLBAR_CHEVRON_SIZE = 12
 const FontCtx = React.createContext({ sans: FONT_SANS, secondary: FONT_SANS, mono: FONT_MONO, size: FONT_SIZE_DEFAULT, monoSize: MONO_SIZE_DEFAULT })
 function useFonts() { return React.useContext(FontCtx) }
 
+function truncateTextForMemory(text: string | undefined, limit: number, label: string): string {
+  if (!text) return ''
+  if (text.length <= limit) return text
+  const keptTail = text.slice(-limit)
+  return `${CHAT_TRIM_NOTICE_PREFIX} Older ${label} was truncated to keep the renderer alive.\n\n${keptTail}`
+}
+
+function trimToolBlockForMemory(block: ToolBlock, aggressive: boolean): ToolBlock {
+  return {
+    ...block,
+    input: truncateTextForMemory(
+      block.input,
+      aggressive ? CHAT_MEMORY_TOOL_INPUT_LIMIT_AGGRESSIVE : CHAT_MEMORY_TOOL_INPUT_LIMIT,
+      `tool input for ${block.name}`,
+    ),
+    summary: block.summary
+      ? truncateTextForMemory(
+        block.summary,
+        aggressive ? CHAT_MEMORY_TOOL_SUMMARY_LIMIT_AGGRESSIVE : CHAT_MEMORY_TOOL_SUMMARY_LIMIT,
+        `tool summary for ${block.name}`,
+      )
+      : block.summary,
+  }
+}
+
+function compactMessageForMemory(message: ChatMessage, options: { aggressive: boolean; preserveRichLayout: boolean }): ChatMessage {
+  const aggressive = options.aggressive && !message.isStreaming
+  const next: ChatMessage = {
+    ...message,
+    content: truncateTextForMemory(message.content, CHAT_MEMORY_SINGLE_MESSAGE_LIMIT, 'message content'),
+  }
+
+  if (message.thinking?.content) {
+    next.thinking = {
+      ...message.thinking,
+      content: truncateTextForMemory(
+        message.thinking.content,
+        aggressive ? CHAT_MEMORY_THINKING_LIMIT_AGGRESSIVE : CHAT_MEMORY_THINKING_LIMIT,
+        'thinking text',
+      ),
+    }
+  }
+
+  if (message.toolBlocks?.length) {
+    const trimmedBlocks = (aggressive ? message.toolBlocks.slice(-3) : message.toolBlocks)
+      .map(block => trimToolBlockForMemory(block, aggressive))
+    next.toolBlocks = trimmedBlocks.length > 0 ? trimmedBlocks : undefined
+  }
+
+  if (message.contentBlocks?.length) {
+    if (message.isStreaming || options.preserveRichLayout) {
+      next.contentBlocks = message.contentBlocks.map(block => {
+        if (block.type !== 'text') return block
+        return {
+          ...block,
+          text: truncateTextForMemory(
+            block.text,
+            aggressive ? CHAT_MEMORY_CONTENT_BLOCK_LIMIT_AGGRESSIVE : CHAT_MEMORY_CONTENT_BLOCK_LIMIT,
+            'interleaved message content',
+          ),
+        }
+      })
+    } else {
+      next.contentBlocks = undefined
+    }
+  }
+
+  return next
+}
+
 function estimateMessageChars(message: ChatMessage): number {
   const toolChars = (message.toolBlocks ?? []).reduce((sum, block) => {
     return sum + (block.name?.length ?? 0) + (block.input?.length ?? 0) + (block.summary?.length ?? 0)
   }, 0)
-  return (message.content?.length ?? 0) + (message.thinking?.content?.length ?? 0) + toolChars
-}
-
-function trimMessageForMemory(message: ChatMessage): ChatMessage {
-  if ((message.content?.length ?? 0) <= CHAT_MEMORY_SINGLE_MESSAGE_LIMIT) return message
-  const keptTail = message.content.slice(-CHAT_MEMORY_SINGLE_MESSAGE_LIMIT)
-  return {
-    ...message,
-    content: `${CHAT_TRIM_NOTICE_PREFIX} Older content for this message was truncated to keep the renderer alive.\n\n${keptTail}`,
-  }
+  const contentBlockChars = (message.contentBlocks ?? []).reduce((sum, block) => {
+    return sum + (block.type === 'text' ? (block.text?.length ?? 0) : 24)
+  }, 0)
+  return (message.content?.length ?? 0) + (message.thinking?.content?.length ?? 0) + toolChars + contentBlockChars
 }
 
 function normalizeMessagesForMemory(messages: ChatMessage[]): ChatMessage[] {
   const withoutNotice = messages.filter(message => !(message.role === 'system' && message.content.startsWith(CHAT_TRIM_NOTICE_PREFIX)))
-  const normalized = withoutNotice.map(trimMessageForMemory)
+  const normalized = withoutNotice.map((message, index, arr) => compactMessageForMemory(message, {
+    aggressive: index < arr.length - CHAT_MEMORY_PRESERVE_RICH_MESSAGE_COUNT,
+    preserveRichLayout: index >= arr.length - CHAT_MEMORY_PRESERVE_RICH_MESSAGE_COUNT,
+  }))
 
   let start = 0
   let totalChars = normalized.reduce((sum, message) => sum + estimateMessageChars(message), 0)
@@ -238,11 +314,10 @@ function normalizeMessagesForMemory(messages: ChatMessage[]): ChatMessage[] {
 
   if (start === 0) return messages === normalized ? messages : normalized
 
-  const trimmedCount = normalized.length - start
   const notice: ChatMessage = {
     id: `msg-memory-guard-${normalized[start]?.timestamp ?? Date.now()}`,
     role: 'system',
-    content: `${CHAT_TRIM_NOTICE_PREFIX} Dropped ${start} older message${start === 1 ? '' : 's'} from live renderer state to avoid an out-of-memory crash.`,
+    content: `${CHAT_TRIM_NOTICE_PREFIX} Dropped ${start} older message${start === 1 ? '' : 's'} from live renderer state to avoid an out-of-memory crash. Remaining history may also be compacted.`,
     timestamp: normalized[start]?.timestamp ?? Date.now(),
   }
   return [notice, ...normalized.slice(start)]
@@ -1534,7 +1609,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               fontSize: 11,
               textAlign: 'center',
             }}>
-              Showing the most recent {renderedMessages.length} messages to keep this block responsive. {hiddenMessageCount} older message{hiddenMessageCount === 1 ? '' : 's'} are still preserved in session state.
+              Showing the most recent {renderedMessages.length} messages to keep this block responsive. {hiddenMessageCount} older message{hiddenMessageCount === 1 ? '' : 's'} are still preserved in compacted session state.
             </div>
           )}
  

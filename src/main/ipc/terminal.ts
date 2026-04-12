@@ -232,7 +232,28 @@ interface TerminalSession {
 
 const terminals = new Map<string, TerminalSession>()
 const terminalBuffers = new Map<string, { data: string; timer: ReturnType<typeof setTimeout> | undefined }>()
+const senderTerminalTiles = new WeakMap<WebContents, Set<string>>()
+const terminalSenderCleanupAttached = new WeakSet<WebContents>()
 const TERMINAL_BUS_DEBOUNCE = 800 // ms
+
+function trackTerminalSender(sender: WebContents, tileId: string): void {
+  const existing = senderTerminalTiles.get(sender)
+  if (existing) existing.add(tileId)
+  else senderTerminalTiles.set(sender, new Set([tileId]))
+
+  if (terminalSenderCleanupAttached.has(sender)) return
+  terminalSenderCleanupAttached.add(sender)
+  sender.once('destroyed', () => {
+    const tileIds = senderTerminalTiles.get(sender)
+    if (tileIds) {
+      for (const id of tileIds) {
+        terminals.get(id)?.listeners.delete(sender)
+      }
+    }
+    senderTerminalTiles.delete(sender)
+    terminalSenderCleanupAttached.delete(sender)
+  })
+}
 
 function flushTerminalToBus(tileId: string): void {
   const buf = terminalBuffers.get(tileId)
@@ -263,9 +284,7 @@ export function registerTerminalIPC(): void {
     const existing = terminals.get(tileId)
     if (existing) {
       existing.listeners.add(event.sender)
-      event.sender.once('destroyed', () => {
-        existing.listeners.delete(event.sender)
-      })
+      trackTerminalSender(event.sender, tileId)
       return { cols: 80, rows: 24, buffer: existing.buffer }
     }
 
@@ -456,9 +475,7 @@ export function registerTerminalIPC(): void {
       tmuxSession: useTmux ? sessName : undefined,
     }
     terminals.set(tileId, session)
-    event.sender.once('destroyed', () => {
-      session.listeners.delete(event.sender)
-    })
+    trackTerminalSender(event.sender, tileId)
 
     bus.publish({
       channel: `tile:${tileId}`,

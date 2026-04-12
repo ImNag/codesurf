@@ -1,6 +1,26 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type WebContents } from 'electron'
 import { bus } from '../event-bus'
 import type { BusEvent, BusEventType } from '../../shared/types'
+
+const senderSubscriberIds = new WeakMap<WebContents, Set<string>>()
+const senderCleanupAttached = new WeakSet<WebContents>()
+
+function trackSenderSubscription(sender: WebContents, subscriberId: string): void {
+  const existing = senderSubscriberIds.get(sender)
+  if (existing) existing.add(subscriberId)
+  else senderSubscriberIds.set(sender, new Set([subscriberId]))
+
+  if (senderCleanupAttached.has(sender)) return
+  senderCleanupAttached.add(sender)
+  sender.once('destroyed', () => {
+    const subscriberIds = senderSubscriberIds.get(sender)
+    if (subscriberIds) {
+      for (const id of subscriberIds) bus.unsubscribeAll(id)
+    }
+    senderSubscriberIds.delete(sender)
+    senderCleanupAttached.delete(sender)
+  })
+}
 
 export function registerBusIPC(): void {
   ipcMain.handle('bus:publish', (_, channel: string, type: BusEventType, source: string, payload: Record<string, unknown>) => {
@@ -16,9 +36,7 @@ export function registerBusIPC(): void {
       }
     })
 
-    event.sender.once('destroyed', () => {
-      bus.unsubscribeAll(subscriberId)
-    })
+    trackSenderSubscription(event.sender, subscriberId)
 
     return sub.id
   })

@@ -173,6 +173,8 @@ interface DisplaySessionEntry extends SessionEntry {
   displayIndent: number
 }
 
+const SESSION_PAGE_SIZE = 10
+
 function sessionMetaText(session: SessionEntry): string {
   return `${session.title} ${session.sourceLabel} ${session.sourceDetail ?? ''}`.toLowerCase()
 }
@@ -423,6 +425,7 @@ export function Sidebar({
   const [showSubagentSessions, setShowSubagentSessions] = useState(true)
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null)
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+  const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_PAGE_SIZE)
   const deleteConfirmTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -544,12 +547,26 @@ export function Sidebar({
 
   const visibleSessions = useMemo(() => {
     const filtered = sessions.filter(session => {
+      const normalizedTitle = session.title?.trim().toLowerCase() ?? ''
+      const hasContent = Boolean(session.title?.trim()) || Boolean(session.lastMessage?.trim()) || session.messageCount > 0
+      if (!hasContent) return false
+      if (normalizedTitle === 'new agent') return false
       if (!showCronSessions && isCronSession(session)) return false
       if (!showSubagentSessions && isSubagentSession(session)) return false
       return true
     })
     return buildNestedSessionList(filtered)
   }, [sessions, showCronSessions, showSubagentSessions])
+
+  useEffect(() => {
+    setVisibleSessionCount(SESSION_PAGE_SIZE)
+  }, [workspace?.id, showCronSessions, showSubagentSessions, sessions.length])
+
+  const displayedSessions = useMemo(() => {
+    return visibleSessions.slice(0, visibleSessionCount)
+  }, [visibleSessions, visibleSessionCount])
+
+  const hasMoreSessions = displayedSessions.length < visibleSessions.length
 
   const armDeleteSession = useCallback((sessionId: string) => {
     if (deleteConfirmTimerRef.current) window.clearTimeout(deleteConfirmTimerRef.current)
@@ -842,70 +859,94 @@ export function Sidebar({
           <div style={{ paddingBottom: 6 }}>
             {visibleSessions.length === 0 ? (
               <div style={{ padding: '4px 12px', fontSize: fonts.secondarySize, color: theme.text.disabled }}>No sessions yet</div>
-            ) : visibleSessions.map(session => (
-              <SidebarItem
-                key={session.id}
-                label={session.title.length > 44 ? `${session.title.slice(0, 44)}...` : session.title}
-                icon={SESSION_SOURCE_ICONS[session.source]}
-                indent={session.displayIndent}
-                onClick={() => {
-                  if (session.tileId) {
-                    onFocusTile(session.tileId)
-                    return
-                  }
-                  onOpenSessionInChat(session)
-                }}
-                onContextMenu={e => {
-                  e.preventDefault()
-                  setSessionCtx({ x: e.clientX, y: e.clientY, session })
-                }}
-                extra={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <span style={{
-                      fontSize: fonts.secondarySize - 1, color: theme.text.disabled,
-                      whiteSpace: 'nowrap', flexShrink: 0,
-                    }}>
-                      {session.sourceLabel}{session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}
-                    </span>
-                    <button
-                      title={pendingDeleteSessionId === session.id ? 'Click again to confirm delete' : 'Delete session'}
-                      onClick={e => {
-                        e.stopPropagation()
-                        if (pendingDeleteSessionId === session.id) {
-                          void deleteSession(session)
-                          return
-                        }
-                        armDeleteSession(session.id)
-                      }}
-                      disabled={deletingSessionId === session.id}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 4,
-                        border: 'none',
-                        background: pendingDeleteSessionId === session.id ? theme.status.danger : 'transparent',
-                        color: pendingDeleteSessionId === session.id ? '#fff' : theme.text.disabled,
-                        cursor: deletingSessionId === session.id ? 'default' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        opacity: deletingSessionId === session.id ? 0.5 : 1,
-                      }}
-                    >
-                      {pendingDeleteSessionId === session.id ? (
-                        <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
-                          <path d="M3 7.2 5.6 9.8 11 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      ) : (
-                        <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
-                          <path d="M3.5 4.5h7M5 4.5V3.4c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9v1.1M4.3 4.5l.4 6.1c0 .5.4.9.9.9h2.8c.5 0 .9-.4.9-.9l.4-6.1M6 6.2v3.2M8 6.2v3.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                }
-              />
-            ))}
+            ) : (
+              <>
+                {displayedSessions.map(session => (
+                  <SidebarItem
+                    key={session.id}
+                    label={session.title.length > 44 ? `${session.title.slice(0, 44)}...` : session.title}
+                    icon={SESSION_SOURCE_ICONS[session.source]}
+                    indent={session.displayIndent}
+                    onClick={() => {
+                      if (session.tileId) {
+                        onFocusTile(session.tileId)
+                        return
+                      }
+                      onOpenSessionInChat(session)
+                    }}
+                    onContextMenu={e => {
+                      e.preventDefault()
+                      setSessionCtx({ x: e.clientX, y: e.clientY, session })
+                    }}
+                    extra={
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: fonts.secondarySize - 1, color: theme.text.disabled,
+                          whiteSpace: 'nowrap', flexShrink: 0,
+                        }}>
+                          {session.sourceLabel}{session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}
+                        </span>
+                        <button
+                          title={pendingDeleteSessionId === session.id ? 'Click again to confirm delete' : 'Delete session'}
+                          onClick={e => {
+                            e.stopPropagation()
+                            if (pendingDeleteSessionId === session.id) {
+                              void deleteSession(session)
+                              return
+                            }
+                            armDeleteSession(session.id)
+                          }}
+                          disabled={deletingSessionId === session.id}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 4,
+                            border: 'none',
+                            background: pendingDeleteSessionId === session.id ? theme.status.danger : 'transparent',
+                            color: pendingDeleteSessionId === session.id ? '#fff' : theme.text.disabled,
+                            cursor: deletingSessionId === session.id ? 'default' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: deletingSessionId === session.id ? 0.5 : 1,
+                          }}
+                        >
+                          {pendingDeleteSessionId === session.id ? (
+                            <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
+                              <path d="M3 7.2 5.6 9.8 11 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
+                              <path d="M3.5 4.5h7M5 4.5V3.4c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9v1.1M4.3 4.5l.4 6.1c0 .5.4.9.9.9h2.8c.5 0 .9-.4.9-.9l.4-6.1M6 6.2v3.2M8 6.2v3.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    }
+                  />
+                ))}
+                {hasMoreSessions && (
+                  <button
+                    onClick={() => setVisibleSessionCount(count => count + SESSION_PAGE_SIZE)}
+                    style={{
+                      margin: '6px 12px 0',
+                      width: 'calc(100% - 24px)',
+                      padding: '7px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${theme.border.default}`,
+                      background: theme.surface.panelMuted,
+                      color: theme.text.secondary,
+                      cursor: 'pointer',
+                      fontSize: fonts.secondarySize,
+                      fontFamily: 'inherit',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Load more sessions ({visibleSessions.length - displayedSessions.length} remaining)
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 

@@ -40,6 +40,8 @@ or this file is empty, add one observation from the codebase. Then stop.
 
 ## Done
 
+- [x] FIX: Chat memory guard is now much more aggressive, and repeated WebContents destroyed listeners no longer stack up — DONE 2026-04-12. `src/renderer/src/components/ChatTile.tsx` now compacts older finished chat messages by dropping rich interleaved layout data, trimming tool/thinking payloads, lowering render/live caps, and flattening old blocks back to simpler text for memory safety. `src/main/ipc/bus.ts`, `src/main/ipc/terminal.ts`, and `src/main/ipc/fs.ts` now attach only one destroyed cleanup listener per renderer `WebContents`, fixing the earlier `MaxListenersExceededWarning` pattern.
+
 - [x] FIX: Discovery edges no longer stack directly on top of each other, and locked edges suppress same-pair proximity edges — DONE 2026-04-11. `src/renderer/src/App.tsx` now assigns lane offsets to identical ambient routes and gives locked connections precedence so only the locked route remains for that pair.
 
 - [x] FIX: Dragging images, videos, PDFs, and docs onto the canvas now creates sensible blocks — DONE 2026-04-11. `src/renderer/src/App.tsx` now classifies local media/docs into `image`, `browser`, or `file` instead of dropping unknown files into terminals, and the missing `file` render path is now wired up.

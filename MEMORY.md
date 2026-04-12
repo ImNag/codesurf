@@ -7,6 +7,10 @@ The agent reads this each heartbeat for context, and writes to it after doing wo
 
 <!-- Agent writes entries here. Format: ## YYYY-MM-DD HH:MM — one paragraph or bullet list -->
 
+## 2026-04-12 11:08 — Tightened chat memory compaction and removed obvious WebContents destroyed-listener buildup
+
+Investigated the current Electron V8 OOM path instead of hand-waving. The biggest concrete renderer-side issue was that `src/renderer/src/components/ChatTile.tsx` still kept rich interleaved chat structures (`contentBlocks`, full tool inputs/summaries, thinking text) around for too much history, so assistant output could be duplicated in memory long after it was needed. I made the guard more aggressive: fewer rendered/live messages, lower char caps, truncation for tool/thinking/content-block payloads, and automatic flattening of older finished messages back to simpler `content` + trimmed tool blocks. I also fixed a separate main-process retention issue that matched the earlier `MaxListenersExceededWarning`: `src/main/ipc/bus.ts`, `src/main/ipc/terminal.ts`, and `src/main/ipc/fs.ts` were attaching a fresh `event.sender.once('destroyed', ...)` listener on the same `WebContents` for repeated subscribes/creates/watches. Those now use one tracked cleanup listener per sender instead of stacking destroyed handlers forever. `npm run build:main` and `npm run build:renderer` both pass.
+
 ## 2026-04-11 12:46 — Overlapping discovery edges now get lane offsets, and locked edges win over proximity edges for the same pair
 
 Updated `src/renderer/src/App.tsx` so visually identical ambient discovery routes are grouped by normalized route signature and assigned small symmetric lane offsets instead of stacking directly on top of each other. I also changed the route-merging logic so a locked connection always claims the render slot for its tile pair and proximity discovery no longer re-adds a second ambient edge for the same key; when a pair is locked, only the locked edge survives in the ambient route list. Renderer build passes.

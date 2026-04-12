@@ -1,4 +1,4 @@
-import { app, ipcMain, shell, BrowserWindow } from 'electron'
+import { app, ipcMain, shell, BrowserWindow, type WebContents } from 'electron'
 import { promises as fs, watch as fsWatch, FSWatcher } from 'fs'
 import path from 'node:path'
 import { basename, extname, join, parse } from 'path'
@@ -6,6 +6,31 @@ import { homedir } from 'os'
 import { CONTEX_HOME, CONTEX_HOME_DIRNAME } from '../paths'
 
 const watchers = new Map<string, FSWatcher>()
+const senderWatchPaths = new WeakMap<WebContents, Set<string>>()
+const senderWatchCleanupAttached = new WeakSet<WebContents>()
+
+function trackWatchSender(sender: WebContents, resolvedPath: string): void {
+  const existing = senderWatchPaths.get(sender)
+  if (existing) existing.add(resolvedPath)
+  else senderWatchPaths.set(sender, new Set([resolvedPath]))
+
+  if (senderWatchCleanupAttached.has(sender)) return
+  senderWatchCleanupAttached.add(sender)
+  sender.once('destroyed', () => {
+    const watchedPaths = senderWatchPaths.get(sender)
+    if (watchedPaths) {
+      for (const watchedPath of watchedPaths) {
+        const watcher = watchers.get(watchedPath)
+        if (watcher) {
+          watcher.close()
+          watchers.delete(watchedPath)
+        }
+      }
+    }
+    senderWatchPaths.delete(sender)
+    senderWatchCleanupAttached.delete(sender)
+  })
+}
 
 // --- Security: path validation (SEC-03) ---
 const SENSITIVE_DIRS = ['.ssh', '.gnupg', '.aws', '.config']
@@ -229,13 +254,7 @@ export function registerFsIPC(): void {
         }, 200)
       })
       watchers.set(resolved, watcher)
-
-      // Clean up watcher if the renderer process crashes or is destroyed
-      event.sender.once('destroyed', () => {
-        if (debounce) clearTimeout(debounce)
-        watcher.close()
-        watchers.delete(resolved)
-      })
+      trackWatchSender(event.sender, resolved)
     } catch { /* ignore */ }
   })
 
