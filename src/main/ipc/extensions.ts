@@ -75,6 +75,36 @@ export function registerExtensionIPC(registry: ExtensionRegistry): void {
     }))
   })
 
+  ipcMain.handle('ext:list-sidebar', async (_, workspacePath?: string | null) => {
+    const settings = readSettingsSync()
+    if (settings.extensionsDisabled) {
+      return { entries: [], tiles: [] }
+    }
+
+    const manifests = await registry.scanLightweight(workspacePath ?? registry.getActiveWorkspacePath())
+    const extActions = registry.getExtensionActions()
+
+    return {
+      entries: manifests.map(m => ({
+        id: m.id,
+        name: m.name,
+      })),
+      tiles: manifests
+        .filter(m => m._enabled !== false)
+        .flatMap(m => (m.contributes?.tiles ?? []).map(tile => ({
+          extId: m.id,
+          type: tile.type,
+          label: tile.label,
+          icon: tile.icon,
+          entry: tile.entry,
+          defaultSize: tile.defaultSize ?? { w: 400, h: 300 },
+          minSize: tile.minSize ?? { w: 200, h: 150 },
+          uiMode: m.ui?.mode,
+          actions: extActions.get(m.id),
+        }))),
+    }
+  })
+
   // List contributed tile types (for renderer to add to context menu / addTile)
   ipcMain.handle('ext:list-tiles', async () => {
     await ensureLoaded()

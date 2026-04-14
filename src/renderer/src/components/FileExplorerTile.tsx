@@ -990,7 +990,7 @@ export default function FileExplorerTile({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      fontFamily: fonts.primary, lineHeight: fonts.lineHeight, fontWeight: fonts.weight,
+      fontFamily: fonts.primary,
     }}>
       {/* Toolbar: [ Search ] [Sort] [Menu] */}
       <div style={{ padding: '8px 10px 6px', borderBottom: `1px solid ${theme.border.subtle}`, display: 'flex', gap: 4, alignItems: 'center' }}>

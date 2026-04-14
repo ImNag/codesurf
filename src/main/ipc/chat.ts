@@ -119,6 +119,29 @@ interface CodexFileSnapshot {
   content: string | null
 }
 
+function sanitizeToolOutputText(text: string | null | undefined): string {
+  if (!text) return ''
+
+  return text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim()
+      return !(
+        /^Chunk ID:/i.test(trimmed)
+        || /^Wall time:/i.test(trimmed)
+        || /^Process exited with code /i.test(trimmed)
+        || /^Process running with session ID /i.test(trimmed)
+        || /^Original token count:/i.test(trimmed)
+        || /^Output:$/i.test(trimmed)
+        || /^\[CodeSurf memory guard\] Older tool (output|summary) /i.test(trimmed)
+      )
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function bufferHttpResponse(res: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -982,7 +1005,7 @@ function chatCodex(req: ChatRequest): void {
         exploreEntries.push({
           label: command,
           command,
-          output: typeof item.aggregated_output === 'string' ? item.aggregated_output : '',
+          output: sanitizeToolOutputText(typeof item.aggregated_output === 'string' ? item.aggregated_output : ''),
           kind,
         })
         sendStream(req.cardId, {

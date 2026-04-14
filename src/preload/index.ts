@@ -399,6 +399,7 @@ contextBridge.exposeInMainWorld('electron', {
   // Extensions
   extensions: {
     list: () => ipcRenderer.invoke('ext:list'),
+    listSidebar: (workspacePath?: string | null) => ipcRenderer.invoke('ext:list-sidebar', workspacePath),
     listTiles: () => ipcRenderer.invoke('ext:list-tiles'),
     tileEntry: (extId: string, tileType: string, tileId?: string) => ipcRenderer.invoke('ext:tile-entry', extId, tileType, tileId),
     getBridgeScript: (tileId: string, extId: string) => ipcRenderer.invoke('ext:get-bridge-script', tileId, extId),

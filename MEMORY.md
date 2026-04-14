@@ -1,10 +1,6 @@
 # Memory
-
 Running notes from the autonomous development loop. Most recent entries at top.
 The agent reads this each heartbeat for context, and writes to it after doing work.
-
----
-
 <!-- Agent writes entries here. Format: ## YYYY-MM-DD HH:MM — one paragraph or bullet list -->
 
 ## 2026-04-12 11:08 — Tightened chat memory compaction and removed obvious WebContents destroyed-listener buildup

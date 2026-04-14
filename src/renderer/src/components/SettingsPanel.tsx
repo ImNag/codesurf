@@ -880,7 +880,7 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
             {section === 'tools' && (
               <div style={{ marginBottom: 20 }}>
                 <React.Suspense fallback={<div style={{ color: theme.text.muted, fontSize: fonts.secondarySize }}>Loading...</div>}>
-                  <LazyToolsSection />
+                  <LazyToolsSection hideHeaderText />
                 </React.Suspense>
               </div>
             )}
@@ -1387,21 +1387,21 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
       case 'prompts':
         return workspacePath ? (
           <React.Suspense fallback={<div style={{ color: theme.text.muted, fontSize: fonts.secondarySize }}>Loading...</div>}>
-            <LazyPromptsSection workspacePath={workspacePath} />
+            <LazyPromptsSection workspacePath={workspacePath} hideHeaderText />
           </React.Suspense>
         ) : <div style={{ color: theme.text.disabled, fontSize: fonts.secondarySize }}>Open a workspace first</div>
 
       case 'skills':
         return workspacePath ? (
           <React.Suspense fallback={<div style={{ color: theme.text.muted, fontSize: fonts.secondarySize }}>Loading...</div>}>
-            <LazySkillsSection workspacePath={workspacePath} />
+            <LazySkillsSection workspacePath={workspacePath} hideHeaderText />
           </React.Suspense>
         ) : <div style={{ color: theme.text.disabled, fontSize: fonts.secondarySize }}>Open a workspace first</div>
 
       case 'agents':
         return workspacePath ? (
           <React.Suspense fallback={<div style={{ color: theme.text.muted, fontSize: fonts.secondarySize }}>Loading...</div>}>
-            <LazyAgentsSection workspacePath={workspacePath} />
+            <LazyAgentsSection workspacePath={workspacePath} hideHeaderText />
           </React.Suspense>
         ) : <div style={{ color: theme.text.disabled, fontSize: fonts.secondarySize }}>Open a workspace first</div>
 
@@ -1435,7 +1435,7 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
         border: `1px solid ${theme.border.default}`,
         boxShadow: theme.shadow.modal,
         display: 'flex', overflow: 'hidden',
-        fontFamily: fonts.primary, fontSize: fonts.size, lineHeight: fonts.lineHeight, fontWeight: fonts.weight,
+        fontFamily: fonts.primary, fontSize: fonts.size,
       }}>
 
         {/* Left nav */}
@@ -1667,6 +1667,109 @@ function SliderField({ value, min, max, step, onChange, format }: {
   )
 }
 
+function StepperNumberField({ value, min, max, step, onChange, format }: {
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (value: number) => void
+  format?: (value: number) => string
+}): React.JSX.Element {
+  const theme = useTheme()
+  const fonts = useAppFonts()
+  const decimals = `${step}`.includes('.') ? `${step}`.split('.')[1]!.length : 0
+  const [draft, setDraft] = useState(() => String(format ? format(value) : value))
+
+  useEffect(() => {
+    setDraft(format ? format(value) : String(value))
+  }, [format, value])
+
+  const clamp = useCallback((next: number) => {
+    const bounded = Math.max(min, Math.min(max, next))
+    if (decimals === 0) return Math.round(bounded)
+    return Number(bounded.toFixed(decimals))
+  }, [decimals, max, min])
+
+  const commit = useCallback((raw: string) => {
+    const parsed = Number(raw)
+    if (Number.isNaN(parsed)) {
+      setDraft(format ? format(value) : String(value))
+      return
+    }
+    const next = clamp(parsed)
+    onChange(next)
+    setDraft(format ? format(next) : String(next))
+  }, [clamp, format, onChange, value])
+
+  const nudge = useCallback((delta: number) => {
+    const next = clamp(value + delta)
+    onChange(next)
+    setDraft(format ? format(next) : String(next))
+  }, [clamp, format, onChange, value])
+
+  const buttonStyle: React.CSSProperties = {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    border: `1px solid ${theme.border.default}`,
+    background: theme.surface.panelElevated,
+    color: theme.text.secondary,
+    cursor: 'pointer',
+    padding: 0,
+    flexShrink: 0,
+    fontSize: fonts.secondarySize,
+    lineHeight: 1,
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr) 24px', gap: 6, alignItems: 'center', minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={() => nudge(-step)}
+        style={buttonStyle}
+      >
+        {'<'}
+      </button>
+      <input
+        type="number"
+        value={draft}
+        min={min}
+        max={max}
+        step={step}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={e => commit(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            commit((e.target as HTMLInputElement).value)
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+        style={{
+          width: '100%',
+          minWidth: 0,
+          height: 24,
+          padding: '0 8px',
+          borderRadius: 6,
+          border: `1px solid ${theme.border.default}`,
+          background: theme.surface.input,
+          color: theme.text.primary,
+          outline: 'none',
+          fontSize: fonts.secondarySize,
+          textAlign: 'center',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => nudge(step)}
+        style={buttonStyle}
+      >
+        {'>'}
+      </button>
+    </div>
+  )
+}
+
 function CompactFontRow({ label, description, token, fontOptions, onChange }: {
   label: string
   description: string
@@ -1694,9 +1797,9 @@ function CompactFontRow({ label, description, token, fontOptions, onChange }: {
       <div style={{ display: 'grid', gap: 8 }}>
         <FontSelect value={token.family} onChange={family => onChange({ ...token, family })} fonts={fontOptions} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-          <SliderField value={token.size} min={8} max={32} step={1} onChange={size => onChange({ ...token, size })} format={value => `${value}px`} />
-          <SliderField value={token.weight ?? 400} min={100} max={900} step={100} onChange={weight => onChange({ ...token, weight })} />
-          <SliderField value={token.lineHeight} min={1} max={2.2} step={0.05} onChange={lineHeight => onChange({ ...token, lineHeight })} format={value => value.toFixed(2)} />
+          <StepperNumberField value={token.size} min={8} max={32} step={1} onChange={size => onChange({ ...token, size })} />
+          <StepperNumberField value={token.weight ?? 400} min={100} max={900} step={100} onChange={weight => onChange({ ...token, weight })} />
+          <StepperNumberField value={token.lineHeight} min={1} max={2.2} step={0.05} onChange={lineHeight => onChange({ ...token, lineHeight })} format={value => value.toFixed(2)} />
         </div>
       </div>
     </div>

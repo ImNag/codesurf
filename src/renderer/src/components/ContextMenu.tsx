@@ -53,8 +53,6 @@ export function ContextMenu({ x, y, items, onClose }: Props): JSX.Element {
     userSelect: 'none',
     fontFamily: fonts.primary,
     fontSize: fonts.size,
-    lineHeight: fonts.lineHeight,
-    fontWeight: fonts.weight,
   }
 
   return createPortal(

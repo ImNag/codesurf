@@ -10,7 +10,7 @@ interface ElectronAPI {
   }
   workspace: {
     list(): Promise<Workspace[]>
-    listProjects(): Promise<ProjectRecord[]>
+    listProjects?(): Promise<ProjectRecord[]>
     create(name: string): Promise<Workspace>
     createWithPath(name: string, projectPath: string): Promise<Workspace>
     createFromFolder(folderPath: string): Promise<Workspace>
@@ -228,6 +228,10 @@ interface ElectronAPI {
   }
   extensions: {
     list(): Promise<Array<{ id: string; name: string; version: string; description?: string; author?: string; tier: 'safe' | 'power'; ui?: import('../../shared/types').ExtensionManifest['ui']; enabled: boolean; contributes?: import('../../shared/types').ExtensionManifest['contributes'] }>>
+    listSidebar(workspacePath?: string | null): Promise<{
+      entries: Array<{ id: string; name: string }>
+      tiles: import('../../shared/types').ExtensionTileContrib[]
+    }>
     listTiles(): Promise<import('../../shared/types').ExtensionTileContrib[]>
     tileEntry(extId: string, tileType: string, tileId?: string): Promise<string | null>
     getBridgeScript(tileId: string, extId: string): Promise<string>

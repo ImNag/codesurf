@@ -14,7 +14,7 @@ import { CONTEX_HOME } from '../paths'
 import { ExtensionContext } from './context'
 import { loadPowerExtension } from './loader'
 import { bus } from '../event-bus'
-import { tryAdaptExtension } from './adapters'
+import { adapters, tryAdaptExtension } from './adapters'
 import type { ExtensionManifest, ExtensionTileContrib, ExtensionMCPToolContrib, ExtensionContextMenuContrib } from '../../shared/types'
 
 // ── Persisted disabled-extension set ──────────────────────────────────────────
@@ -78,6 +78,19 @@ export class ExtensionRegistry {
     }
   }
 
+  async scanLightweight(workspacePath?: string | null): Promise<ExtensionManifest[]> {
+    const disabledIds = await loadDisabledSet()
+    const manifests = new Map<string, ExtensionManifest>()
+    const targetWorkspacePath = workspacePath ?? this.activeWorkspacePath
+
+    await this.scanDirLight(join(CONTEX_HOME, EXTENSIONS_DIRNAME), manifests, disabledIds)
+    if (targetWorkspacePath) {
+      await this.scanDirLight(join(targetWorkspacePath, '.contex', EXTENSIONS_DIRNAME), manifests, disabledIds)
+    }
+
+    return [...manifests.values()]
+  }
+
   getActiveWorkspacePath(): string | null {
     return this.activeWorkspacePath
   }
@@ -108,6 +121,76 @@ export class ExtensionRegistry {
         } catch (err) {
           console.error(`[Extensions] Failed to load ${extDir}:`, err)
         }
+      }
+    }
+  }
+
+  private async scanDirLight(
+    dir: string,
+    manifests: Map<string, ExtensionManifest>,
+    disabledIds: Set<string>,
+  ): Promise<void> {
+    let entries: string[]
+    try {
+      entries = await fs.readdir(dir)
+    } catch {
+      return
+    }
+
+    for (const name of entries) {
+      if (name.startsWith('.')) continue
+      const extDir = join(dir, name)
+      const stat = await fs.stat(extDir).catch(() => null)
+      if (!stat?.isDirectory()) continue
+
+      const manifest = await this.readManifestLight(extDir, disabledIds)
+      if (!manifest) continue
+      manifests.set(manifest.id, manifest)
+    }
+  }
+
+  private async readManifestLight(extDir: string, disabledIds: Set<string>): Promise<ExtensionManifest | null> {
+    try {
+      const raw = await fs.readFile(join(extDir, 'extension.json'), 'utf8')
+      const manifest: ExtensionManifest = JSON.parse(raw)
+      if (!manifest.id || !manifest.name || !manifest.version) {
+        return null
+      }
+      if (!manifest.tier) manifest.tier = 'safe'
+      normalizeManifestUi(manifest)
+      manifest._path = resolve(extDir)
+      manifest._enabled = disabledIds.has(manifest.id) ? false : manifest._enabled !== false
+      if (manifest.contributes?.tiles) {
+        for (const tile of manifest.contributes.tiles) {
+          if (!tile.type.startsWith('ext:')) {
+            tile.type = `ext:${tile.type}`
+          }
+        }
+      }
+      return manifest
+    } catch {
+      try {
+        let adapted: ExtensionManifest | null = null
+        for (const adapter of adapters) {
+          if (await adapter.canLoad(extDir)) {
+            adapted = await adapter.toManifest(extDir)
+            break
+          }
+        }
+        if (!adapted) return null
+        normalizeManifestUi(adapted)
+        adapted._path = resolve(extDir)
+        adapted._enabled = disabledIds.has(adapted.id) ? false : adapted._enabled !== false
+        if (adapted.contributes?.tiles) {
+          for (const tile of adapted.contributes.tiles) {
+            if (!tile.type.startsWith('ext:')) {
+              tile.type = `ext:${tile.type}`
+            }
+          }
+        }
+        return adapted
+      } catch {
+        return null
       }
     }
   }

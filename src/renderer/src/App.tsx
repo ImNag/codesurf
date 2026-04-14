@@ -712,10 +712,9 @@ function App(): JSX.Element {
   const [guides, setGuides] = useState<{ x?: number; y?: number }[]>([])
   const [discoveryPulses, setDiscoveryPulses] = useState<DiscoveryPulse[]>([])
   const [showAgentSetup, setShowAgentSetup] = useState(false)
-  const hasCanvasExtensionTiles = useMemo(() => tiles.some(tile => tile.type.startsWith('ext:')), [tiles])
   const { extensionTiles, extensionEntries } = useExtensions(
     workspace?.path ?? null,
-    !settings.extensionsDisabled && hasCanvasExtensionTiles,
+    !settings.extensionsDisabled,
   )
   const extensionNameById = useMemo(
     () => new Map((extensionEntries ?? []).map(entry => [entry.id, entry.name] as const)),
@@ -3521,7 +3520,7 @@ function App(): JSX.Element {
     <ThemeProvider value={theme}>
     <FontTokenProvider value={fontTokens}>
     <FontProvider value={appFonts}>
-    <div className="w-full h-full" style={{ position: 'relative', color: theme.text.primary, fontFamily: appFonts.primary, fontSize: appFonts.size, lineHeight: appFonts.lineHeight, fontWeight: appFonts.weight, background: theme.surface.app }}>
+    <div className="w-full h-full" style={{ position: 'relative', color: theme.text.primary, fontFamily: appFonts.primary, fontSize: appFonts.size, background: theme.surface.app }}>
       {/* Sidebar inset panel — floats over the canvas */}
       <div style={{
         position: 'absolute',

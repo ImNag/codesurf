@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Pin, Settings } from 'lucide-react'
-import type { Workspace, TileState, ProjectRecord } from '../../../shared/types'
+import type { Workspace, TileState } from '../../../shared/types'
 import { useAppFonts } from '../FontContext'
 import { useTheme } from '../ThemeContext'
 import { basename } from '../utils/dnd'
@@ -46,14 +46,37 @@ interface Props {
   showFooter?: boolean
 }
 
-interface ProjectListEntry extends ProjectRecord {
+interface ProjectListEntry {
+  id: string
+  name: string
+  path: string
   workspaceIds: string[]
   representativeWorkspaceId: string | null
 }
 
+function deriveProjectsFromWorkspaces(workspaces: Workspace[]): ProjectListEntry[] {
+  const byPath = new Map<string, ProjectListEntry>()
+
+  for (const workspaceEntry of workspaces) {
+    const candidatePaths = getWorkspaceProjectPaths(workspaceEntry)
+    for (const path of candidatePaths) {
+      if (byPath.has(path)) continue
+      byPath.set(path, {
+        id: `derived:${path}`,
+        name: basename(path) || workspaceEntry.name || 'Project',
+        path,
+        workspaceIds: [],
+        representativeWorkspaceId: null,
+      })
+    }
+  }
+
+  return [...byPath.values()].sort((a, b) => getProjectDisplayLabel(a).localeCompare(getProjectDisplayLabel(b), undefined, { sensitivity: 'base' }))
+}
+
 // ─── Section header ──────────────────────────────────────────────────────────
 
-function SectionHeader({ label, collapsed, onToggle, extra }: { label: string; collapsed: boolean; onToggle: () => void; extra?: React.ReactNode }): JSX.Element {
+function SectionHeader({ label, collapsed, onToggle, extra }: { label: string; collapsed: boolean; onToggle: () => void; extra?: React.ReactNode }): React.JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   return (
@@ -84,7 +107,7 @@ function SectionHeader({ label, collapsed, onToggle, extra }: { label: string; c
   )
 }
 
-function ThreadMenuSectionLabel({ children }: { children: React.ReactNode }): JSX.Element {
+function ThreadMenuSectionLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   return (
@@ -111,7 +134,7 @@ function ThreadMenuItem({
   label: string
   active?: boolean
   onClick: () => void
-}): JSX.Element {
+}): React.JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [hovered, setHovered] = useState(false)
@@ -158,8 +181,8 @@ function SidebarMenuPortal({
 }: {
   anchorRef: React.RefObject<HTMLElement | null>
   children: React.ReactNode
-}): JSX.Element | null {
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+}): React.JSX.Element | null {
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
 
   useLayoutEffect(() => {
     const updatePosition = () => {
@@ -169,9 +192,13 @@ function SidebarMenuPortal({
         return
       }
       const rect = anchor.getBoundingClientRect()
+      const estimatedMenuWidth = 292
       setPosition({
         top: rect.bottom + 6,
-        right: Math.max(8, window.innerWidth - rect.right),
+        left: Math.min(
+          Math.max(8, rect.right - estimatedMenuWidth),
+          Math.max(8, window.innerWidth - estimatedMenuWidth - 8),
+        ),
       })
     }
 
@@ -192,7 +219,7 @@ function SidebarMenuPortal({
       style={{
         position: 'fixed',
         top: position.top,
-        right: position.right,
+        left: position.left,
         zIndex: 4000,
       }}
     >
@@ -215,7 +242,7 @@ function SidebarItem({ label, icon, active, muted, onClick, onContextMenu, inden
   extra?: React.ReactNode
   extraAlwaysVisible?: boolean
   extraWidth?: number
-}): JSX.Element {
+}): React.JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [hovered, setHovered] = useState(false)
@@ -275,7 +302,7 @@ function SidebarItem({ label, icon, active, muted, onClick, onContextMenu, inden
 
 // ─── Tile type icons (16px) ──────────────────────────────────────────────────
 
-const TILE_ICONS: Record<string, JSX.Element> = {
+const TILE_ICONS: Record<string, React.JSX.Element> = {
   terminal: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><path d="M2 3l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M7 11h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>,
   code: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><path d="M5 3L1 7l4 4M9 3l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   note: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><rect x="2" y="1.5" width="10" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><path d="M4.5 4.5h5M4.5 7h5M4.5 9.5h3" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" /></svg>,
@@ -293,7 +320,7 @@ const RESOURCE_ITEMS = [
   { id: 'agents', label: 'Agents', icon: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.5" stroke="currentColor" strokeWidth="1.2" /><path d="M2.5 12.5c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg> },
 ]
 
-const SESSION_SOURCE_ICONS: Record<string, JSX.Element> = {
+const SESSION_SOURCE_ICONS: Record<string, React.JSX.Element> = {
   codesurf: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="1.5" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.2" /><path d="M4 4.5h6M4 7h6M4 9.5h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" /></svg>,
   claude: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><path d="M3 7c0-2.2 1.8-4 4-4 1.5 0 2.8.8 3.5 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><path d="M11 7c0 2.2-1.8 4-4 4-1.5 0-2.8-.8-3.5-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="7" cy="7" r="1" fill="currentColor" /></svg>,
   codex: <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><path d="M5 2.5 1.8 7 5 11.5M9 2.5 12.2 7 9 11.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /><path d="M6.3 12 7.7 2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" /></svg>,
@@ -355,7 +382,7 @@ function normalizeSidebarPath(path: string | null | undefined): string {
   return String(path ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
-function getProjectDisplayLabel(project: Pick<ProjectRecord, 'name' | 'path'>): string {
+function getProjectDisplayLabel(project: { name: string; path: string }): string {
   const normalizedPath = normalizeSidebarPath(project.path)
   const pathLabel = basename(normalizedPath)
   const nameLabel = project.name?.trim() || ''
@@ -489,7 +516,7 @@ export function SidebarFooter({
   onNewTerminal, onNewKanban, onNewBrowser, onNewChat, onNewFiles,
   onOpenSettings,
   extensionTiles, onAddExtensionTile,
-}: SidebarFooterProps): JSX.Element {
+}: SidebarFooterProps): React.JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [showExtMenu, setShowExtMenu] = useState(false)
@@ -591,7 +618,7 @@ export function Sidebar({
   onOpenSessionInChat, onOpenSessionInApp,
   extensionTiles, extensionEntries, onAddExtensionTile, pinnedExtensionIds, onTogglePinnedExtension,
   collapsed, width, onWidthChange, minWidth = 270, maxWidth = 520, onResizeStateChange, onToggleCollapse: _onToggleCollapse, onScrollMetricsChange, showFooter = true
-}: Props): JSX.Element {
+}: Props): React.JSX.Element {
   const fonts = useAppFonts()
   const theme = useTheme()
   const widthRef = useRef(width)
@@ -601,7 +628,6 @@ export function Sidebar({
   const [sectionsCollapsed, setSectionsCollapsed] = useState<Record<string, boolean>>({})
   const [sessionCtx, setSessionCtx] = useState<{ x: number; y: number; session: SessionEntry } | null>(null)
   const [sessions, setSessions] = useState<SessionEntry[]>([])
-  const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const [threadOrganizeMode, setThreadOrganizeMode] = useState<ThreadOrganizeMode>('project')
   const [threadSortMode, setThreadSortMode] = useState<ThreadSortMode>('updated')
@@ -615,20 +641,6 @@ export function Sidebar({
   const deleteConfirmTimerRef = useRef<number | null>(null)
   const threadMenuRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    void window.electron.workspace.listProjects()
-      .then(items => {
-        if (!cancelled) setProjects(items)
-      })
-      .catch(() => {
-        if (!cancelled) setProjects([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspaces])
-
   const projectEntries = useMemo<ProjectListEntry[]>(() => {
     const workspaceIdsByPath = new Map<string, string[]>()
     for (const workspaceEntry of workspaces) {
@@ -639,7 +651,7 @@ export function Sidebar({
       }
     }
 
-    return projects
+    return deriveProjectsFromWorkspaces(workspaces)
       .map(project => {
         const normalizedPath = normalizeSidebarPath(project.path)
         const workspaceIds = workspaceIdsByPath.get(normalizedPath) ?? []
@@ -653,7 +665,7 @@ export function Sidebar({
       })
       .filter(project => project.workspaceIds.length > 0)
       .sort((a, b) => getProjectDisplayLabel(a).localeCompare(getProjectDisplayLabel(b), undefined, { sensitivity: 'base' }))
-  }, [projects, workspaces, workspace?.id])
+  }, [workspaces, workspace?.id])
 
   const workspaceById = useMemo(() => new Map(workspaces.map(workspaceEntry => [workspaceEntry.id, workspaceEntry] as const)), [workspaces])
 

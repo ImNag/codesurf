@@ -27,6 +27,17 @@ export function useExtensions(workspacePath?: string | null, enabled = true) {
       return
     }
     try {
+      if (typeof el.extensions?.listSidebar === 'function') {
+        const sidebarData = await el.extensions.listSidebar(workspacePath ?? null)
+        if (!cancelledRef?.current && sidebarData?.tiles) {
+          setExtensionTiles(sidebarData.tiles)
+        }
+        if (!cancelledRef?.current && sidebarData?.entries) {
+          setExtensionEntries(sidebarData.entries.map((entry: ExtensionEntrySummary) => ({ id: entry.id, name: entry.name })))
+        }
+        return
+      }
+
       await el.extensions?.refresh?.(workspacePath ?? null)
       const [tiles, entries] = await Promise.all([
         el.extensions?.listTiles?.(),

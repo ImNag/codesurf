@@ -69,17 +69,19 @@ function TabBtn({ label, icon, active, onClick }: { label: string; icon: React.R
 
 // ─── Shared section header ───────────────────────────────────────────────────
 
-function PageHeader({ title, description, onNew, newLabel, onLocations }: {
-  title: string; description?: string; onNew: () => void; newLabel: string; onLocations?: () => void
+function PageHeader({ title, description, onNew, newLabel, onLocations, hideText = false }: {
+  title: string; description?: string; onNew: () => void; newLabel: string; onLocations?: () => void; hideText?: boolean
 }): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-      <div>
-        <div style={{ fontSize: fonts.size + 1, fontWeight: 700, color: theme.text.primary }}>{title}</div>
-        {description && <div style={{ fontSize: fonts.secondarySize, color: theme.text.muted, marginTop: 2 }}>{description}</div>}
-      </div>
+      {hideText ? <div /> : (
+        <div>
+          <div style={{ fontSize: fonts.size + 1, fontWeight: 700, color: theme.text.primary }}>{title}</div>
+          {description && <div style={{ fontSize: fonts.secondarySize, color: theme.text.muted, marginTop: 2 }}>{description}</div>}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6 }}>
         {onLocations && (
           <button onClick={onLocations} title="Configure scan locations"
@@ -273,7 +275,7 @@ function resolveLocations(raw: string, homePath: string, workspacePath: string):
 
 // ─── Prompts section ─────────────────────────────────────────────────────────
 
-export function PromptsSection({ workspacePath }: { workspacePath: string }): JSX.Element {
+export function PromptsSection({ workspacePath, hideHeaderText = false }: { workspacePath: string; hideHeaderText?: boolean }): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [items, setItems] = useState<PromptTemplate[]>([])
@@ -356,6 +358,7 @@ export function PromptsSection({ workspacePath }: { workspacePath: string }): JS
         newLabel="New Template"
         onNew={() => setEditing({ id: `prompt-${Date.now()}`, name: '', description: '', template: '', fields: [], tags: [] })}
         onLocations={() => setLocationsOpen(true)}
+        hideText={hideHeaderText}
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
         {items.map(p => (
@@ -427,7 +430,7 @@ function PromptEditor({ item, onSave, onCancel }: { item: PromptTemplate; onSave
 
 // ─── Skills section ──────────────────────────────────────────────────────────
 
-export function SkillsSection({ workspacePath }: { workspacePath: string }): JSX.Element {
+export function SkillsSection({ workspacePath, hideHeaderText = false }: { workspacePath: string; hideHeaderText?: boolean }): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [items, setItems] = useState<SkillDefinition[]>([])
@@ -506,6 +509,7 @@ export function SkillsSection({ workspacePath }: { workspacePath: string }): JSX
         newLabel="New Skill"
         onNew={() => setEditing({ id: `skill-${Date.now()}`, name: '', description: '', content: '' })}
         onLocations={() => setLocationsOpen(true)}
+        hideText={hideHeaderText}
       />
       <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0 }}>
       {/* Left list */}
@@ -616,7 +620,7 @@ interface RegistryServer {
 
 // ─── Tools section ───────────────────────────────────────────────────────────
 
-export function ToolsSection(): JSX.Element {
+export function ToolsSection({ hideHeaderText = false }: { hideHeaderText?: boolean } = {}): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [permissions, setPermissions] = useState<Record<string, PermLevel>>({})
@@ -676,6 +680,7 @@ export function ToolsSection(): JSX.Element {
         description="Builtin tools, MCP servers, and integrations"
         newLabel="Browse Registry"
         onNew={() => setShowRegistry(true)}
+        hideText={hideHeaderText}
       />
 
       {/* ── Builtin Tools ── */}
@@ -880,7 +885,7 @@ const AGENT_ICONS: Record<string, JSX.Element> = {
   bolt: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7.5 1L3 8h4l-.5 5L11 6H7l.5-5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>,
 }
 
-export function AgentsSection({ workspacePath }: { workspacePath: string }): JSX.Element {
+export function AgentsSection({ workspacePath, hideHeaderText = false }: { workspacePath: string; hideHeaderText?: boolean }): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [items, setItems] = useState<AgentMode[]>([])
@@ -995,6 +1000,7 @@ export function AgentsSection({ workspacePath }: { workspacePath: string }): JSX
         newLabel="New Mode"
         onNew={() => setEditing({ id: `mode-${Date.now()}`, name: '', description: '', systemPrompt: '', tools: null, icon: 'robot', color: '#3568ff', isBuiltin: false })}
         onLocations={() => setLocationsOpen(true)}
+        hideText={hideHeaderText}
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
         {items.map(m => (

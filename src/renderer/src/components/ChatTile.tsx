@@ -14,7 +14,7 @@ import {
   ShieldCheck, ChevronDown,
   Check, ArrowUp, ArrowDown, Square, MessageSquare, Bot,
   Brain, ChevronRight, Clock, DollarSign,
-  FileText, Paperclip, Plus, Trash2, Wrench
+  FileText, Folder, Paperclip, Plus, Trash2, Wrench
 } from 'lucide-react'
 import { useMCPServers, type MCPServerEntry } from '../hooks/useMCPServers'
 import { useAppFonts } from '../FontContext'
@@ -186,10 +186,19 @@ interface PendingAttachment {
   kind: 'image' | 'file'
 }
 
+interface QueuedChatTurn {
+  id: string
+  content: string
+  preview: string
+  attachmentCount: number
+  createdAt: number
+}
+
 interface ChatTilePersistedState {
   messages: ChatMessage[]
   input: string
   attachments: PendingAttachment[]
+  queuedTurns?: QueuedChatTurn[]
   provider: string
   model: string
   mcpEnabled: boolean
@@ -277,6 +286,7 @@ const CHAT_MEMORY_CONTENT_BLOCK_LIMIT_AGGRESSIVE = 1_500
 const CHAT_TRIM_NOTICE_PREFIX = '[CodeSurf memory guard]'
 const CHAT_COMPOSER_MAX_WIDTH = CHAT_MESSAGE_MAX_WIDTH
 const CHAT_COMPOSER_MIN_WIDTH = 400
+const CHAT_COMPOSER_SIDE_INSET = 24
 const CHAT_COMPOSER_MIN_HEIGHT = 105
 const CHAT_COMPOSER_TEXTAREA_MIN_HEIGHT = 56
 const CHAT_AUTO_SCROLL_THRESHOLD = 48
@@ -291,6 +301,15 @@ const NON_SELECTABLE_UI_STYLE = {
   userSelect: 'none' as const,
   WebkitUserSelect: 'none' as const,
 }
+const TOOL_OUTPUT_METADATA_PATTERNS = [
+  /^Chunk ID:/i,
+  /^Wall time:/i,
+  /^Process exited with code /i,
+  /^Process running with session ID /i,
+  /^Original token count:/i,
+  /^Output:$/i,
+  /^\[CodeSurf memory guard\] Older tool (output|summary) /i,
+]
 
 const gitStateCache = new Map<string, CachedGitState>()
 const gitStateInflight = new Map<string, Promise<CachedGitState>>()
@@ -366,6 +385,39 @@ async function loadGitState(workspaceDir: string, force = false): Promise<Cached
 const FontCtx = React.createContext({ sans: FONT_SANS, secondary: FONT_SANS, mono: FONT_MONO, size: FONT_SIZE_DEFAULT, monoSize: MONO_SIZE_DEFAULT })
 function useFonts() { return React.useContext(FontCtx) }
 
+function sanitizeToolOutputText(text: string | undefined): string | undefined {
+  if (!text) return text
+
+  const cleaned = text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter(line => !TOOL_OUTPUT_METADATA_PATTERNS.some(pattern => pattern.test(line.trim())))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return cleaned || undefined
+}
+
+function buildOutgoingMessageContent(draftInput: string, draftAttachments: PendingAttachment[]): string {
+  const trimmedInput = draftInput.trim()
+  const attachmentBlock = draftAttachments.length > 0
+    ? `Attached file paths:\n${draftAttachments.map(item => item.path).join('\n')}`
+    : ''
+  return [trimmedInput, attachmentBlock].filter(Boolean).join('\n\n').trim()
+}
+
+function buildQueuedTurnPreview(content: string, attachmentCount: number): string {
+  const trimmed = content.trim()
+  const attachmentMarkerIndex = trimmed.indexOf('Attached file paths:')
+  const visibleText = attachmentMarkerIndex >= 0 ? trimmed.slice(0, attachmentMarkerIndex).trim() : trimmed
+  const firstLine = visibleText.split(/\r?\n/, 1)[0]?.trim() ?? ''
+  const truncated = firstLine.length > 140 ? `${firstLine.slice(0, 139)}…` : firstLine
+  if (truncated) return truncated
+  if (attachmentCount > 0) return `Queued attachment${attachmentCount === 1 ? '' : 's'}`
+  return 'Queued follow-up'
+}
+
 function truncateTextForMemory(text: string | undefined, limit: number, label: string): string {
   if (!text) return ''
   if (text.length <= limit) return text
@@ -379,13 +431,14 @@ function trimToolBlockForMemory(block: ToolBlock, aggressive: boolean): ToolBloc
     aggressive ? CHAT_MEMORY_TOOL_INPUT_LIMIT_AGGRESSIVE : CHAT_MEMORY_TOOL_INPUT_LIMIT,
     `tool input for ${block.name}`,
   )
-  const summary = block.summary
+  const sanitizedSummary = sanitizeToolOutputText(block.summary)
+  const summary = sanitizedSummary
     ? truncateTextForMemory(
-      block.summary,
+      sanitizedSummary,
       aggressive ? CHAT_MEMORY_TOOL_SUMMARY_LIMIT_AGGRESSIVE : CHAT_MEMORY_TOOL_SUMMARY_LIMIT,
       `tool summary for ${block.name}`,
     )
-    : block.summary
+    : sanitizedSummary
   const fileChanges = block.fileChanges?.map(change => {
     const diff = truncateTextForMemory(
       change.diff,
@@ -396,9 +449,13 @@ function trimToolBlockForMemory(block: ToolBlock, aggressive: boolean): ToolBloc
     return { ...change, diff }
   })
   const commandEntries = block.commandEntries?.map(entry => {
-    if (!entry.output) return entry
+    const sanitizedOutput = sanitizeToolOutputText(entry.output)
+    if (!sanitizedOutput) {
+      if (!entry.output) return entry
+      return { ...entry, output: undefined }
+    }
     const output = truncateTextForMemory(
-      entry.output,
+      sanitizedOutput,
       aggressive ? CHAT_MEMORY_TOOL_SUMMARY_LIMIT_AGGRESSIVE : CHAT_MEMORY_TOOL_SUMMARY_LIMIT,
       `tool output for ${entry.label}`,
     )
@@ -650,7 +707,7 @@ const ChatMarkdown = React.memo(({ text, isStreaming, className }: {
   }, [])
 
   return (
-    <div ref={ref}>
+    <div ref={ref} style={{ minWidth: 0, maxWidth: '100%', width: '100%', overflow: 'hidden' }}>
       <Streamdown
         className={`chat-md ${className ?? ''}`}
         plugins={streamdownPlugins}
@@ -923,9 +980,11 @@ function ensureShimmerStyle(): void {
 
     /* Chat markdown styles (Streamdown overrides for dark theme) */
     .chat-md { line-height: 1.55; color: inherit; max-width: 100%; overflow: hidden; }
+    .chat-md, .chat-md * { min-width: 0; }
+    .chat-md > * { max-width: 100%; }
     .chat-md > *:first-child { margin-top: 0 !important; }
     .chat-md > *:last-child { margin-bottom: 0 !important; }
-    .chat-md pre { max-width: 100%; overflow-x: auto; }
+    .chat-md pre { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
     .chat-md p { margin: 0 0 8px; }
     .chat-md p:last-child { margin-bottom: 0; }
     .chat-md h1 { font-size: 1.3em; font-weight: 700; margin: 12px 0 6px; color: inherit; }
@@ -940,6 +999,9 @@ function ensureShimmerStyle(): void {
     .chat-md pre { margin: 8px 0; border-radius: 6px; overflow: hidden; }
     .chat-md pre:first-child { margin-top: 0; }
     .chat-md pre:last-child { margin-bottom: 0; }
+    .chat-md [data-streamdown="code-block"] { max-width: 100%; }
+    .chat-md [data-streamdown="code-block-body"] { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+    .chat-md code { max-width: 100%; }
     .chat-md ul, .chat-md ol { padding-left: 18px; margin: 6px 0; }
     .chat-md ul:first-child, .chat-md ol:first-child { margin-top: 0; }
     .chat-md ul:last-child, .chat-md ol:last-child { margin-bottom: 0; }
@@ -952,7 +1014,7 @@ function ensureShimmerStyle(): void {
       margin: 6px 0; opacity: 0.85;
     }
     .chat-md hr { border: none; border-top: 1px solid rgba(128,128,128,0.3); margin: 10px 0; }
-    .chat-md table { border-collapse: collapse; margin: 8px 0; width: 100%; font-size: 0.9em; }
+    .chat-md table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 8px 0; width: 100%; font-size: 0.9em; }
     .chat-md th, .chat-md td { border: 1px solid rgba(128,128,128,0.3); padding: 4px 8px; text-align: left; }
     .chat-md th { font-weight: 600; background: rgba(128,128,128,0.1); }
   `
@@ -1148,6 +1210,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [openclawAgents, setOpenclawAgents] = useState<ModelOption[]>(DEFAULT_MODELS.openclaw)
   const [modelFilter, setModelFilter] = useState('')
   const [attachments, setAttachments] = useState<PendingAttachment[]>(() => initialRuntimeStateRef.current?.attachments ?? [])
+  const [queuedTurns, setQueuedTurns] = useState<QueuedChatTurn[]>(() => initialRuntimeStateRef.current?.queuedTurns ?? [])
   const [isDropTarget, setIsDropTarget] = useState(false)
   const [showScrollToLatest, setShowScrollToLatest] = useState(false)
   const [branchFilter, setBranchFilter] = useState('')
@@ -1162,6 +1225,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const latestStateRef = useRef<ChatTilePersistedState | null>(null)
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestedProviderOptionsRef = useRef<{ opencode: boolean; openclaw: boolean }>({ opencode: false, openclaw: false })
+  const isFlushingQueuedTurnRef = useRef(false)
 
   // Voice dictation state
   const [isDictating, setIsDictating] = useState(false)
@@ -1262,6 +1326,19 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   }, [messages])
 
   const hiddenMessageCount = Math.max(0, messages.length - renderedMessages.length)
+  const latestChangeSummary = useMemo(() => {
+    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+      const message = messages[messageIndex]
+      const fileChanges = message.toolBlocks?.flatMap(block => block.fileChanges ?? []) ?? []
+      if (fileChanges.length === 0) continue
+      return {
+        fileCount: fileChanges.length,
+        additions: fileChanges.reduce((sum, change) => sum + change.additions, 0),
+        deletions: fileChanges.reduce((sum, change) => sum + change.deletions, 0),
+      }
+    }
+    return null
+  }, [messages])
 
   // Clamp index when filtered items change
   useEffect(() => {
@@ -1315,6 +1392,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       messages,
       input,
       attachments,
+      queuedTurns,
       executionTarget,
       provider,
       model,
@@ -1330,7 +1408,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       if (isChatTileRuntimeStateDisposed(tileId)) return
       setChatTileRuntimeState(tileId, latestStateRef.current)
     }
-  }, [tileId, messages, input, attachments, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, isStreaming])
+  }, [tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, isStreaming])
 
   const persistLatestState = useCallback((stateOverride?: ChatTilePersistedState | null) => {
     if (persistTimerRef.current) {
@@ -1354,6 +1432,15 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         setAttachments(saved.attachments.filter((item: any) => typeof item?.path === 'string').map((item: any) => ({
           path: item.path,
           kind: item.kind === 'image' || isImagePath(item.path) ? 'image' : 'file',
+        })))
+      }
+      if (Array.isArray(saved.queuedTurns)) {
+        setQueuedTurns(saved.queuedTurns.filter((item: any) => typeof item?.id === 'string' && typeof item?.content === 'string').map((item: any) => ({
+          id: item.id,
+          content: item.content,
+          preview: typeof item.preview === 'string' ? item.preview : buildQueuedTurnPreview(item.content, Number(item.attachmentCount) || 0),
+          attachmentCount: Number(item.attachmentCount) || 0,
+          createdAt: Number(item.createdAt) || Date.now(),
         })))
       }
       if (saved.provider) setProvider(saved.provider)
@@ -1402,7 +1489,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         persistTimerRef.current = null
       }
     }
-  }, [workspaceId, tileId, messages, input, attachments, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, isStreaming, persistLatestState])
+  }, [workspaceId, tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, isStreaming, persistLatestState])
 
   useEffect(() => {
     return () => {
@@ -1621,9 +1708,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       ? gitStatus.root
       : _workspaceDir
   const normalizedRepoRoot = activeRepoRoot.replace(/\/+$/, '')
-  const activeRepoName = basename(normalizedRepoRoot) || 'Local'
+  const projectFolderName = basename(normalizedRepoRoot) || 'No project'
   const currentBranchLabel = gitBranches.current ?? 'No branch'
-  const locationLabel = executionTarget === 'cloud' ? 'Cloud' : activeRepoName
+  const locationLabel = executionTarget === 'cloud' ? 'Cloud' : 'Local'
+  const activeProjectPathLabel = executionTarget === 'cloud'
+    ? 'Cloud workspace'
+    : (normalizedRepoRoot || 'No project')
 
   const filteredBranches = useMemo(() => {
     const query = branchFilter.trim().toLowerCase()
@@ -1747,6 +1837,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     syncScrollToLatestVisibility(false)
     el.scrollTo({ top: el.scrollHeight, behavior })
   }, [syncScrollToLatestVisibility])
+
+  const reviewLatestChanges = useCallback(() => {
+    const scroller = messagesRef.current
+    if (!scroller) return
+    const blocks = scroller.querySelectorAll<HTMLElement>('[data-tool-block-kind="file-changes"]')
+    const latestBlock = blocks.item(blocks.length - 1)
+    if (!latestBlock) {
+      scrollToLatest()
+      return
+    }
+
+    stickToBottomRef.current = false
+    syncScrollToLatestVisibility(true)
+    latestBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+  }, [scrollToLatest, syncScrollToLatestVisibility])
 
   const handleMessagesScroll = useCallback(() => {
     const el = messagesRef.current
@@ -2036,45 +2141,43 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     addAttachments(droppedPaths)
   }, [addAttachments])
 
-  const sendMessage = useCallback(async () => {
-    if (isStreaming) return
+  const dispatchMessageContent = useCallback(async (messageContent: string): Promise<boolean> => {
+    const trimmedContent = messageContent.trim()
+    if (!trimmedContent) return false
 
-    const trimmedInput = input.trim()
-    const attachmentBlock = attachments.length > 0
-      ? `Attached file paths:\n${attachments.map(item => item.path).join('\n')}`
-      : ''
-    const messageContent = [trimmedInput, attachmentBlock].filter(Boolean).join('\n\n').trim()
-    if (!messageContent) return
+    const state = latestStateRef.current
+    const activeProvider = state?.provider ?? provider
+    const activeModel = state?.model ?? model
+    const activeMode = state?.mode ?? mode
+    const activeThinking = state?.thinking ?? thinking
+    const activeSessionId = state?.sessionId ?? sessionId
+    const activeMcpEnabled = state?.mcpEnabled ?? mcpEnabled
+    const activeMessages = state?.messages ?? messages
+    const activeProviderEntry = providerEntryById.get(activeProvider) ?? currentProviderEntry
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: messageContent,
-      timestamp: Date.now()
+      content: trimmedContent,
+      timestamp: Date.now(),
     }
 
     setMessagesSafe(prev => [...prev, userMsg])
-    setInput('')
-    setAcType(null)
-    setAcQuery('')
-    setAttachments([])
     setIsStreaming(true)
     stickToBottomRef.current = true
-
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     focusComposer()
 
     window.electron?.bus?.publish(`tile:${tileId}`, 'activity', `chat:${tileId}`, {
-      message: `User: ${userMsg.content.slice(0, 100)}`, role: 'user'
+      message: `User: ${userMsg.content.slice(0, 100)}`, role: 'user',
     })
 
     const assistantId = `msg-${Date.now() + 1}`
     setMessagesSafe(prev => [...prev, {
-      id: assistantId, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true
+      id: assistantId, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true,
     }])
 
     try {
-      const peers = mcpEnabled ? connectedPeers.map(p => ({
+      const peers = activeMcpEnabled ? connectedPeers.map(p => ({
         peerId: p.peerId,
         peerType: p.peerType,
         tools: p.capabilities.filter(c => c.startsWith('tool:')).map(c => stripCapabilityPrefix(c)),
@@ -2084,25 +2187,67 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
       await window.electron?.chat?.send({
         cardId: tileId,
-        provider,
-        model,
-        providerTransport: currentProviderEntry?.transport ?? null,
-        mode,
-        thinking,
+        provider: activeProvider,
+        model: activeModel,
+        providerTransport: activeProviderEntry?.transport ?? null,
+        mode: activeMode,
+        thinking: activeThinking,
         workspaceDir: _workspaceDir,
-        messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
-        negotiatedTools: mcpEnabled ? peerToolNames : undefined,
+        messages: [...activeMessages, userMsg].map(m => ({ role: m.role, content: m.content })),
+        negotiatedTools: activeMcpEnabled ? peerToolNames : undefined,
         peers: peers.length > 0 ? peers : undefined,
-        sessionId,
+        sessionId: activeSessionId,
       })
+      return true
     } catch (err) {
       setMessagesSafe(prev => prev.map(m =>
         m.id === assistantId ? { ...m, content: `Error: ${err}`, isStreaming: false } : m
       ))
       setIsStreaming(false)
       focusComposer()
+      return false
     }
-  }, [input, attachments, isStreaming, messages, tileId, provider, model, currentProviderEntry, mode, thinking, mcpEnabled, peerToolNames, peerContextVersion, focusComposer])
+  }, [provider, model, mode, thinking, sessionId, mcpEnabled, messages, providerEntryById, currentProviderEntry, tileId, connectedPeers, _workspaceDir, peerToolNames, focusComposer, setMessagesSafe])
+
+  const queueCurrentDraft = useCallback(() => {
+    const messageContent = buildOutgoingMessageContent(input, attachments)
+    if (!messageContent) return false
+
+    const queuedTurn: QueuedChatTurn = {
+      id: `queued-${Date.now()}`,
+      content: messageContent,
+      preview: buildQueuedTurnPreview(messageContent, attachments.length),
+      attachmentCount: attachments.length,
+      createdAt: Date.now(),
+    }
+
+    setQueuedTurns(prev => [...prev, queuedTurn])
+    setInput('')
+    setAttachments([])
+    setAcType(null)
+    setAcQuery('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    focusComposer()
+    return true
+  }, [input, attachments, focusComposer])
+
+  const sendMessage = useCallback(async () => {
+    if (isStreaming) {
+      queueCurrentDraft()
+      return
+    }
+
+    const messageContent = buildOutgoingMessageContent(input, attachments)
+    if (!messageContent) return
+
+    setInput('')
+    setAcType(null)
+    setAcQuery('')
+    setAttachments([])
+
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    await dispatchMessageContent(messageContent)
+  }, [isStreaming, input, attachments, queueCurrentDraft, dispatchMessageContent])
 
   const stopStreaming = useCallback(() => {
     window.electron?.chat?.stop?.(tileId)
@@ -2115,9 +2260,29 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     if (isStreaming) return
     setMessagesSafe([])
     setAttachments([])
+    setQueuedTurns([])
     setSessionId(null)
     window.electron?.chat?.clearSession?.(tileId)
   }, [isStreaming, tileId])
+
+  useEffect(() => {
+    if (isStreaming || queuedTurns.length === 0 || isFlushingQueuedTurnRef.current) return
+
+    const nextTurn = queuedTurns[0]
+    isFlushingQueuedTurnRef.current = true
+
+    void (async () => {
+      const sent = await dispatchMessageContent(nextTurn.content)
+      if (sent) {
+        setQueuedTurns(prev => prev.filter(turn => turn.id !== nextTurn.id))
+      } else {
+        setQueuedTurns(prev => prev.filter(turn => turn.id !== nextTurn.id))
+        setInput(current => current.trim() ? current : nextTurn.content)
+      }
+    })().finally(() => {
+      isFlushingQueuedTurnRef.current = false
+    })
+  }, [isStreaming, queuedTurns, dispatchMessageContent])
 
   const selectAcItem = useCallback((item: AutocompleteItem) => {
     const ta = textareaRef.current
@@ -2275,6 +2440,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         onScroll={handleMessagesScroll}
         style={{
           flex: 1, overflowY: 'auto', padding: '12px 14px',
+          overflowX: 'hidden',
           minHeight: 0,
         }}
       >
@@ -2472,11 +2638,175 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         </button>
       )}
 
+      {latestChangeSummary && (
+        <div style={{
+          flexShrink: 0,
+          width: `min(calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px), ${CHAT_COMPOSER_MAX_WIDTH}px)`,
+          minWidth: `min(${CHAT_COMPOSER_MIN_WIDTH}px, calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px))`,
+          margin: '0 auto 0 auto',
+          border: `1px solid ${theme.chat.divider}`,
+          borderRadius: queuedTurns.length > 0 ? '18px 18px 0 0' : 18,
+          background: theme.surface.panelElevated,
+          boxShadow: theme.shadow.panel,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '10px 14px',
+            ...NON_SELECTABLE_UI_STYLE,
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 8,
+              minWidth: 0,
+              color: theme.chat.textSecondary,
+              fontFamily: fontSans,
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>
+                {latestChangeSummary.fileCount} file{latestChangeSummary.fileCount === 1 ? '' : 's'} changed
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: theme.status.success }}>
+                +{latestChangeSummary.additions}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: theme.status.danger }}>
+                -{latestChangeSummary.deletions}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={reviewLatestChanges}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: theme.chat.text,
+                fontSize: 13,
+                fontFamily: fontSans,
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: 0,
+                flexShrink: 0,
+                ...NON_SELECTABLE_UI_STYLE,
+              }}
+            >
+              <span>Review changes</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {queuedTurns.length > 0 && (
+        <div style={{
+          flexShrink: 0,
+          width: `min(calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px), ${CHAT_COMPOSER_MAX_WIDTH}px)`,
+          minWidth: `min(${CHAT_COMPOSER_MIN_WIDTH}px, calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px))`,
+          margin: latestChangeSummary ? '0 auto 0 auto' : '0 auto 0 auto',
+          border: `1px solid ${theme.chat.divider}`,
+          borderTop: latestChangeSummary ? 'none' : `1px solid ${theme.chat.divider}`,
+          borderRadius: latestChangeSummary ? '0 0 18px 18px' : 18,
+          background: theme.surface.panelElevated,
+          boxShadow: theme.shadow.panel,
+          overflow: 'hidden',
+        }}>
+          {queuedTurns.map((turn, index) => (
+            <div
+              key={turn.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '16px 18px',
+                borderTop: index > 0 ? `1px solid ${theme.chat.divider}` : undefined,
+              }}
+            >
+              <div style={{
+                width: 18,
+                height: 18,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: theme.chat.muted,
+                flexShrink: 0,
+                ...NON_SELECTABLE_UI_STYLE,
+              }}>
+                <MessageSquare size={14} />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{
+                  color: theme.chat.textSecondary,
+                  fontSize: Math.max(13, fontSize + 1),
+                  fontFamily: fontSans,
+                  lineHeight: 1.35,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {turn.preview}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isStreaming) return
+                  setQueuedTurns(prev => prev.filter(item => item.id !== turn.id))
+                  void dispatchMessageContent(turn.content)
+                }}
+                disabled={isStreaming}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: isStreaming ? theme.chat.muted : theme.chat.textSecondary,
+                  fontSize: 13,
+                  fontFamily: fontSans,
+                  cursor: isStreaming ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: 0,
+                  opacity: isStreaming ? 0.45 : 1,
+                  flexShrink: 0,
+                  ...NON_SELECTABLE_UI_STYLE,
+                }}
+              >
+                <span>Steer</span>
+                <ChevronRight size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueuedTurns(prev => prev.filter(item => item.id !== turn.id))}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme.chat.muted,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  flexShrink: 0,
+                  ...NON_SELECTABLE_UI_STYLE,
+                }}
+                title="Remove queued message"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input bar */}
       <div style={{
         flexShrink: 0,
-        width: `min(calc(100% - 8px), ${CHAT_COMPOSER_MAX_WIDTH}px)`,
-        minWidth: `min(${CHAT_COMPOSER_MIN_WIDTH}px, calc(100% - 8px))`,
+        width: `min(calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px), ${CHAT_COMPOSER_MAX_WIDTH}px)`,
+        minWidth: `min(${CHAT_COMPOSER_MIN_WIDTH}px, calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px))`,
         margin: '0 auto 6px auto',
         display: 'flex',
         flexDirection: 'column',
@@ -2621,38 +2951,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           </div>
         )}
 
-        {effectiveAgentMode && (
-          <div style={{
-            position: 'absolute',
-            top: -17,
-            right: 14,
-            textAlign: 'right',
-            color: theme.chat.muted,
-            fontSize: 10,
-            fontFamily: fontMono,
-            letterSpacing: 0.8,
-            textTransform: 'uppercase',
-            opacity: 0.95,
-            pointerEvents: 'none',
-            zIndex: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 5,
-          }}>
-            <span style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: theme.chat.muted,
-              opacity: 0.95,
-            }} />
-            <span>
-              CONNECTED
-            </span>
-          </div>
-        )}
-
         <textarea
           ref={textareaRef}
           value={input}
@@ -2689,7 +2987,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 minWidth: 28,
                 borderRadius: '50%',
                 border: 'none',
-                background: showInsertMenu ? theme.surface.hover : theme.surface.panelMuted,
+                background: 'transparent',
                 color: showInsertMenu ? theme.chat.text : theme.chat.muted,
                 cursor: 'pointer',
                 display: 'flex',
@@ -2700,11 +2998,10 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 flexShrink: 0,
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = theme.surface.hover
                 e.currentTarget.style.color = theme.chat.text
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.background = showInsertMenu ? theme.surface.hover : theme.surface.panelMuted
+                e.currentTarget.style.background = 'transparent'
                 e.currentTarget.style.color = showInsertMenu ? theme.chat.text : theme.chat.muted
               }}
             >
@@ -2890,7 +3187,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
             <div ref={branchMenuRef} style={{ position: 'relative' }}>
               <FooterPill
                 prefix={<BranchIcon />}
-                label={isGitRepo ? currentBranchLabel : activeRepoName}
+                label={isGitRepo ? currentBranchLabel : projectFolderName}
                 active={showBranchMenu}
                 onClick={() => toggleMenu('branch')}
               />
@@ -2945,7 +3242,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                     </div>
                     <div style={{ padding: '2px 10px 6px' }}>
                       <div style={{ fontSize: 11, color: theme.chat.text, fontFamily: fontSans, fontWeight: 600 }}>
-                        {activeRepoName}
+                        {projectFolderName}
                       </div>
                       <div style={{ fontSize: 10, color: theme.chat.muted, fontFamily: fontSans, lineHeight: 1.4 }}>
                         {normalizedRepoRoot}
@@ -3007,6 +3304,31 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 </MenuPortal>
               )}
             </div>
+
+            <div
+              title={activeProjectPathLabel}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                minWidth: 0,
+                color: theme.chat.muted,
+                fontSize: 11,
+                fontFamily: fontSans,
+                lineHeight: 1.2,
+                paddingLeft: 2,
+              }}
+            >
+              <Folder size={12} strokeWidth={1.9} style={{ flexShrink: 0 }} />
+              <span style={{
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {activeProjectPathLabel}
+              </span>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -3042,9 +3364,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 title="Context window"
                 onClick={() => toggleMenu('context')}
                 style={{
-                  width: 22,
-                  height: 22,
-                  minWidth: 22,
+                  width: 18,
+                  height: 18,
+                  minWidth: 18,
                   borderRadius: '50%',
                   border: 'none',
                   background: `conic-gradient(${theme.chat.text} ${contextUsageRatio * 360}deg, ${theme.border.strong} 0deg)`,
@@ -3057,11 +3379,11 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 }}
               >
                 <span style={{
-                  width: 14,
-                  height: 14,
+                  width: 13,
+                  height: 13,
                   borderRadius: '50%',
                   background: composerBackground,
-                  border: `1px solid ${theme.border.default}`,
+                  border: `0.5px solid ${theme.border.default}`,
                   display: 'block',
                 }} />
               </button>
@@ -3193,7 +3515,16 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const codePanelFontSize = Math.max(11, fonts.size - 1)
-  const [expanded, setExpanded] = useState(false)
+  const isFileChangeBlock = (block.fileChanges?.length ?? 0) > 0
+  const fileChangeSummary = useMemo(() => {
+    const fileChanges = block.fileChanges ?? []
+    return {
+      fileCount: fileChanges.length,
+      additions: fileChanges.reduce((sum, change) => sum + change.additions, 0),
+      deletions: fileChanges.reduce((sum, change) => sum + change.deletions, 0),
+    }
+  }, [block.fileChanges])
+  const [expanded, setExpanded] = useState(isFileChangeBlock)
   const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({})
   const isRunning = block.status === 'running'
   const hasNestedData = (block.fileChanges?.length ?? 0) > 0 || (block.commandEntries?.length ?? 0) > 0
@@ -3206,15 +3537,26 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
   }, [])
 
   return (
-    <div style={{
-      background: theme.chat.assistantBubble, border: `1px solid ${theme.chat.assistantBubbleBorder}`,
-      borderRadius: 10, overflow: 'hidden', maxWidth: `min(100%, ${TOOL_BLOCK_MAX_WIDTH}px)`, width: 'fit-content', alignSelf: 'flex-start',
-    }}>
+    <div
+      data-tool-block-kind={isFileChangeBlock ? 'file-changes' : 'tool'}
+      style={{
+        background: theme.chat.assistantBubble, border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+        borderRadius: 10,
+        overflow: 'hidden',
+        maxWidth: expanded || isFileChangeBlock ? '100%' : `min(100%, ${TOOL_BLOCK_MAX_WIDTH}px)`,
+        width: expanded || isFileChangeBlock ? '100%' : 'fit-content',
+        alignSelf: 'stretch',
+      }}
+    >
       <button
         onClick={() => setExpanded(e => !e)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, width: '100%', maxWidth: `min(100%, ${TOOL_BLOCK_MAX_WIDTH}px)`,
-          padding: '5px 10px', background: 'none', border: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          width: '100%',
+          maxWidth: expanded || isFileChangeBlock ? '100%' : `min(100%, ${TOOL_BLOCK_MAX_WIDTH}px)`,
+          padding: isFileChangeBlock ? '12px 16px' : '5px 10px', background: 'none', border: 'none',
           cursor: 'pointer', color: isRunning ? theme.chat.textSecondary : theme.chat.muted,
           fontSize: 12, fontFamily: fonts.sans, lineHeight: 1, minWidth: 0,
         }}
@@ -3251,19 +3593,45 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
             flex: 1,
             overflow: 'hidden',
           }}>
-            <span style={{
-              display: 'block',
-              fontWeight: 500,
-              fontSize: 13,
-              flex: '1 1 auto',
-              flexShrink: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {block.name}
-            </span>
+            {isFileChangeBlock ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 8,
+                minWidth: 0,
+                flexWrap: 'wrap',
+              }}>
+                <span style={{
+                  display: 'block',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: theme.chat.text,
+                  flexShrink: 0,
+                }}>
+                  {fileChangeSummary.fileCount} file{fileChangeSummary.fileCount === 1 ? '' : 's'} changed
+                </span>
+                <span style={{ color: theme.status.success, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+                  +{fileChangeSummary.additions}
+                </span>
+                <span style={{ color: theme.status.danger, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+                  -{fileChangeSummary.deletions}
+                </span>
+              </div>
+            ) : (
+              <span style={{
+                display: 'block',
+                fontWeight: 500,
+                fontSize: 13,
+                flex: '1 1 auto',
+                flexShrink: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {block.name}
+              </span>
+            )}
           </div>
         )}
 
@@ -3290,20 +3658,23 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
       {/* Expanded: show imported file-change structure first when available */}
       {expanded && hasNestedData && (
         <div style={{
-          padding: '4px 10px 8px 10px',
+          padding: isFileChangeBlock ? 0 : '4px 10px 8px 10px',
           borderTop: `1px solid ${theme.chat.assistantBubbleBorder}`,
         }}>
           {(block.fileChanges?.length ?? 0) > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: isFileChangeBlock ? 0 : 6 }}>
               {block.fileChanges?.map((change, index) => {
                 const fileKey = `${change.path}:${index}`
                 const isExpanded = expandedFiles[fileKey] ?? false
                 return (
                   <div key={fileKey} style={{
-                    borderRadius: 8,
-                    border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+                    borderRadius: isFileChangeBlock ? 0 : 8,
+                    border: isFileChangeBlock
+                      ? 'none'
+                      : `1px solid ${theme.chat.assistantBubbleBorder}`,
                     overflow: 'hidden',
-                    background: theme.surface.panelMuted,
+                    background: isFileChangeBlock ? 'transparent' : theme.surface.panelMuted,
+                    borderTop: isFileChangeBlock && index > 0 ? `1px solid ${theme.chat.assistantBubbleBorder}` : undefined,
                   }}>
                     <button
                       type="button"
@@ -3315,11 +3686,12 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                         gap: 8,
                         background: 'transparent',
                         border: 'none',
-                        padding: '8px 10px',
+                        padding: isFileChangeBlock ? '14px 16px' : '8px 10px',
                         cursor: 'pointer',
                         color: theme.chat.text,
-                        fontFamily: fonts.mono,
-                        fontSize: 11,
+                        fontFamily: isFileChangeBlock ? fonts.sans : fonts.mono,
+                        fontSize: isFileChangeBlock ? fonts.size : 11,
+                        fontWeight: isFileChangeBlock ? 500 : 400,
                         textAlign: 'left',
                       }}
                     >
@@ -3338,7 +3710,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                     {isExpanded && (
                       <div style={{
                         borderTop: `1px solid ${theme.chat.assistantBubbleBorder}`,
-                        maxHeight: 280,
+                        maxHeight: isFileChangeBlock ? 360 : 280,
                         overflowY: 'auto',
                         background: theme.chat.background,
                       }}>

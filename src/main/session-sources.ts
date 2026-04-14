@@ -288,6 +288,29 @@ function truncateToolPreview(text: string | null | undefined, length = 800): str
   return text.length > length ? `${text.slice(0, length)}\n…` : text
 }
 
+function sanitizeToolOutputText(text: string | null | undefined): string {
+  if (!text) return ''
+
+  return text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim()
+      return !(
+        /^Chunk ID:/i.test(trimmed)
+        || /^Wall time:/i.test(trimmed)
+        || /^Process exited with code /i.test(trimmed)
+        || /^Process running with session ID /i.test(trimmed)
+        || /^Original token count:/i.test(trimmed)
+        || /^Output:$/i.test(trimmed)
+        || /^\[CodeSurf memory guard\] Older tool (output|summary) /i.test(trimmed)
+      )
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function extractReasoningSummary(payload: any): string {
   if (!Array.isArray(payload?.summary)) return ''
   return payload.summary
@@ -481,7 +504,7 @@ function buildImportedToolBlocks(calls: PendingImportedToolCall[]): ImportedTool
       id: call.id,
       name: call.name,
       input: call.input,
-      summary: truncateToolPreview(call.output, 240) || undefined,
+      summary: truncateToolPreview(sanitizeToolOutputText(call.output), 240) || undefined,
       status: call.status,
       commandEntries: call.commandEntry ? [call.commandEntry] : undefined,
     })
@@ -1116,7 +1139,7 @@ async function parseCodexChatState(filePath: string, entry: AggregatedSessionEnt
         if (!callId) return
         const existing = pendingToolCalls.get(callId)
         if (!existing) return
-        existing.output = typeof payload?.output === 'string' ? payload.output : ''
+        existing.output = sanitizeToolOutputText(typeof payload?.output === 'string' ? payload.output : '')
         if (existing.commandEntry) existing.commandEntry.output = existing.output
         return
       }
