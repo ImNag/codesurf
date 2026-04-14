@@ -257,21 +257,26 @@ test('daemon settings routes round-trip settings and raw json', async t => {
   response = await daemon.request('/settings', {
     body: {
       settings: {
-        themeMode: 'light',
-        openLinksIn: 'browser-block',
-        fontPrimarySize: 18,
+        appearance: 'light',
+        linkOpenMode: 'browser-block',
+        execution: {
+          mode: 'specific-host',
+          hostId: 'macmini',
+        },
       },
     },
   })
   assert.equal(response.status, 200)
-  assert.equal(response.payload.themeMode, 'light')
-  assert.equal(response.payload.openLinksIn, 'browser-block')
-  assert.equal(response.payload.fontPrimarySize, 18)
+  assert.equal(response.payload.appearance, 'light')
+  assert.equal(response.payload.linkOpenMode, 'browser-block')
+  assert.equal(response.payload.execution.mode, 'specific-host')
+  assert.equal(response.payload.execution.hostId, 'macmini')
 
   response = await daemon.request('/settings/raw')
   assert.equal(response.status, 200)
   assert.match(response.payload.path, /settings\.json$/)
-  assert.match(response.payload.content, /"themeMode": "light"/)
+  assert.match(response.payload.content, /"appearance": "light"/)
+  assert.match(response.payload.content, /"mode": "specific-host"/)
 
   response = await daemon.request('/settings/raw', {
     body: {
@@ -289,6 +294,66 @@ test('daemon settings routes round-trip settings and raw json', async t => {
   assert.equal(response.status, 200)
   assert.equal(response.payload.ok, false)
   assert.match(response.payload.error, /Root must be a JSON object/)
+})
+
+test('daemon persists execution hosts separately from settings and preserves built-in hosts', async t => {
+  const daemon = await startDaemon()
+  t.after(async () => {
+    await daemon.stop()
+  })
+
+  let response = await daemon.request('/host/list')
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.payload.map(host => host.id), ['local-runtime', 'local-daemon'])
+
+  response = await daemon.request('/host/upsert', {
+    body: {
+      host: {
+        id: 'macmini',
+        type: 'remote-daemon',
+        label: 'Mac Mini',
+        url: 'https://daemon.example.com',
+        authToken: 'secret-token',
+        enabled: true,
+      },
+    },
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.payload.map(host => host.id), ['local-runtime', 'local-daemon', 'macmini'])
+
+  let hostsDoc = await readJson(join(daemon.homeDir, 'hosts', 'hosts.json'))
+  assert.equal(hostsDoc.hosts.length, 3)
+  assert.equal(hostsDoc.hosts[2].label, 'Mac Mini')
+  assert.equal(hostsDoc.hosts[2].url, 'https://daemon.example.com')
+
+  response = await daemon.request('/host/upsert', {
+    body: {
+      host: {
+        id: 'macmini',
+        type: 'remote-daemon',
+        label: 'Mac Mini Updated',
+        url: 'https://daemon-2.example.com',
+        enabled: false,
+      },
+    },
+  })
+  assert.equal(response.status, 200)
+  const updated = response.payload.find(host => host.id === 'macmini')
+  assert.equal(updated.label, 'Mac Mini Updated')
+  assert.equal(updated.enabled, false)
+  assert.equal(updated.url, 'https://daemon-2.example.com')
+
+  response = await daemon.request('/host/local-runtime', { method: 'DELETE' })
+  assert.equal(response.status, 400)
+  assert.match(response.payload.error, /cannot be deleted/i)
+
+  response = await daemon.request('/host/macmini', { method: 'DELETE' })
+  assert.equal(response.status, 200)
+  assert.equal(response.payload.ok, true)
+  assert.deepEqual(response.payload.hosts.map(host => host.id), ['local-runtime', 'local-daemon'])
+
+  hostsDoc = await readJson(join(daemon.homeDir, 'hosts', 'hosts.json'))
+  assert.deepEqual(hostsDoc.hosts.map(host => host.id), ['local-runtime', 'local-daemon'])
 })
 
 test('daemon migrates legacy config.json into split workspace, project, and settings files', async t => {
@@ -356,11 +421,13 @@ test('daemon migrates legacy config.json into split workspace, project, and sett
   const workspacesDoc = await readJson(join(homeDir, 'workspaces', 'workspaces.json'))
   const projectsDoc = await readJson(join(homeDir, 'projects', 'projects.json'))
   const settingsDoc = await readJson(join(homeDir, 'settings.json'))
+  const hostsDoc = await readJson(join(homeDir, 'hosts', 'hosts.json'))
   assert.equal(workspacesDoc.activeWorkspaceId, 'legacy-ws-1')
   assert.equal(workspacesDoc.workspaces.length, 1)
   assert.equal(projectsDoc.projects.length, 2)
   assert.equal(settingsDoc.settings.themeMode, 'dark')
   assert.equal(settingsDoc.settings.openLinksIn, 'external')
+  assert.deepEqual(hostsDoc.hosts.map(host => host.id), ['local-runtime', 'local-daemon'])
 })
 
 test('daemon lists external CodeSurf sessions and invalidates the external-session cache route', async t => {
@@ -455,4 +522,96 @@ test('daemon validates local session route inputs', async t => {
   assert.equal(response.status, 200)
   assert.equal(response.payload.ok, false)
   assert.match(response.payload.error, /Session file missing/)
+})
+
+test('daemon validates chat job route inputs', async t => {
+  const daemon = await startDaemon()
+  t.after(async () => {
+    await daemon.stop()
+  })
+
+  let response = await daemon.request('/chat/job/start', {
+    body: {},
+  })
+  assert.equal(response.status, 400)
+  assert.match(response.payload.error, /request is required/)
+
+  response = await daemon.request('/chat/job/state')
+  assert.equal(response.status, 400)
+  assert.match(response.payload.error, /jobId is required/)
+
+  response = await daemon.request('/chat/job/cancel', {
+    body: {},
+  })
+  assert.equal(response.status, 400)
+  assert.match(response.payload.error, /jobId is required/)
+
+  response = await daemon.request('/chat/job/state?jobId=missing-job')
+  assert.equal(response.status, 404)
+  assert.match(response.payload.error, /Job not found/)
+})
+
+test('daemon runs a persisted chat job timeline and replays events for completed jobs', async t => {
+  const daemon = await startDaemon()
+  t.after(async () => {
+    await daemon.stop()
+  })
+
+  const start = await daemon.request('/chat/job/start', {
+    body: {
+      request: {
+        provider: 'unsupported-provider',
+        model: 'test-model',
+        workspaceDir: daemon.homeDir,
+        messages: [
+          { role: 'user', content: 'test daemon execution' },
+        ],
+      },
+    },
+  })
+  assert.equal(start.status, 200)
+  assert.equal(typeof start.payload.id, 'string')
+  const jobId = start.payload.id
+
+  const state = await waitFor(async () => {
+    const next = await daemon.request(`/chat/job/state?jobId=${encodeURIComponent(jobId)}`)
+    return next.payload?.status === 'running' ? null : next
+  })
+
+  assert.equal(state.status, 200)
+  assert.equal(state.payload.id, jobId)
+  assert.equal(state.payload.status, 'failed')
+  assert.equal(state.payload.lastSequence, 2)
+  assert.match(state.payload.error, /only implemented for Claude and Codex/i)
+
+  const timelineResponse = await fetch(`http://127.0.0.1:${daemon.pidInfo.port}/chat/job/events?jobId=${encodeURIComponent(jobId)}&since=0`, {
+    headers: {
+      Authorization: `Bearer ${daemon.pidInfo.token}`,
+    },
+  })
+  assert.equal(timelineResponse.status, 200)
+  const rawTimeline = await timelineResponse.text()
+  const replayedEvents = rawTimeline
+    .split(/\n\n+/)
+    .map(chunk => chunk
+      .split('\n')
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trim())
+      .join('\n'))
+    .filter(Boolean)
+    .map(line => JSON.parse(line))
+
+  assert.equal(replayedEvents.length, 2)
+  assert.equal(replayedEvents[0].jobId, jobId)
+  assert.equal(replayedEvents[0].sequence, 1)
+  assert.equal(replayedEvents[0].type, 'error')
+  assert.match(replayedEvents[0].error, /only implemented for Claude and Codex/i)
+  assert.equal(replayedEvents[1].jobId, jobId)
+  assert.equal(replayedEvents[1].sequence, 2)
+  assert.equal(replayedEvents[1].type, 'done')
+
+  const timelineFile = join(daemon.homeDir, 'timelines', `${jobId}.jsonl`)
+  const metadataFile = join(daemon.homeDir, 'jobs', `${jobId}.json`)
+  assert.equal(existsSync(timelineFile), true)
+  assert.equal(existsSync(metadataFile), true)
 })

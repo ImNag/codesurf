@@ -208,6 +208,9 @@ interface ChatTilePersistedState {
   agentMode: boolean
   autoAgentMode: boolean
   sessionId: string | null
+  jobId?: string | null
+  jobSequence?: number
+  cloudHostId?: string | null
   isStreaming: boolean
   executionTarget?: 'local' | 'cloud'
 }
@@ -1089,11 +1092,15 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       : EXTENSION_PROVIDER_MODE.id)
     ?? EXTENSION_PROVIDER_MODE.id
   const initialExecutionTarget = initialRuntimeStateRef.current?.executionTarget ?? 'local'
+  const initialCloudHostId = initialRuntimeStateRef.current?.cloudHostId ?? null
+  const initialJobId = initialRuntimeStateRef.current?.jobId ?? null
+  const initialJobSequence = initialRuntimeStateRef.current?.jobSequence ?? 0
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => initialRuntimeStateRef.current?.messages ?? [])
   const [input, setInput] = useState(() => initialRuntimeStateRef.current?.input ?? '')
   const [isStreaming, setIsStreaming] = useState(() => initialRuntimeStateRef.current?.isStreaming ?? false)
   const [executionTarget, setExecutionTarget] = useState<'local' | 'cloud'>(() => initialExecutionTarget)
+  const [cloudHostId, setCloudHostId] = useState<string | null>(() => initialCloudHostId)
   const [provider, setProvider] = useState<string>(() => initialProvider)
   const [model, setModel] = useState(() => initialModel)
   const [mcpEnabled, setMcpEnabled] = useState(() => initialRuntimeStateRef.current?.mcpEnabled ?? true)
@@ -1197,6 +1204,10 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [showBranchMenu, setShowBranchMenu] = useState(false)
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(() => initialRuntimeStateRef.current?.sessionId ?? null)
+  const [jobId, setJobId] = useState<string | null>(() => initialJobId)
+  const [jobSequence, setJobSequence] = useState<number>(() => initialJobSequence)
+  const [executionHosts, setExecutionHosts] = useState<import('../../../shared/types').ExecutionHostRecord[]>([])
+  const [localExecutionLabel, setLocalExecutionLabel] = useState('Local')
   const [opencodeModels, setOpencodeModels] = useState<ModelOption[]>(DEFAULT_MODELS.opencode)
   const [openclawAgents, setOpenclawAgents] = useState<ModelOption[]>(DEFAULT_MODELS.openclaw)
   const [modelFilter, setModelFilter] = useState('')
@@ -1213,6 +1224,18 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       : updater))
   }, [])
   const stateLoadedRef = useRef(false)
+  const lastJobSequenceRef = useRef<number>(initialJobSequence)
+  const resumedJobKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    lastJobSequenceRef.current = jobSequence
+  }, [jobSequence])
+
+  useEffect(() => {
+    if (!jobId) {
+      resumedJobKeyRef.current = null
+    }
+  }, [jobId])
   const latestStateRef = useRef<ChatTilePersistedState | null>(null)
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestedProviderOptionsRef = useRef<{ opencode: boolean; openclaw: boolean }>({ opencode: false, openclaw: false })
@@ -1371,6 +1394,38 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   }, [provider])
 
   useEffect(() => {
+    const listHosts = window.electron?.execution?.listHosts
+    if (typeof listHosts !== 'function') {
+      setExecutionHosts([])
+      return
+    }
+
+    listHosts()
+      .then((hosts) => setExecutionHosts(Array.isArray(hosts) ? hosts : []))
+      .catch(() => setExecutionHosts([]))
+  }, [])
+
+  useEffect(() => {
+    if (!settings?.execution) {
+      setLocalExecutionLabel('Local')
+      return
+    }
+    const resolveTarget = window.electron?.execution?.resolveTarget
+    if (typeof resolveTarget !== 'function') {
+      setLocalExecutionLabel('Local')
+      return
+    }
+
+    resolveTarget(settings.execution)
+      .then((resolution) => {
+        setLocalExecutionLabel(resolution.host.label || 'Local')
+      })
+      .catch(() => {
+        setLocalExecutionLabel('Local')
+      })
+  }, [settings?.execution])
+
+  useEffect(() => {
     const normalized = normalizeMessagesForMemory(messages)
     if (normalized !== messages) {
       setMessages(normalized)
@@ -1393,13 +1448,16 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       agentMode: effectiveAgentMode,
       autoAgentMode,
       sessionId,
+      jobId,
+      jobSequence,
+      cloudHostId,
       isStreaming,
     }
     if (stateLoadedRef.current) {
       if (isChatTileRuntimeStateDisposed(tileId)) return
       setChatTileRuntimeState(tileId, latestStateRef.current)
     }
-  }, [tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, isStreaming])
+  }, [tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, jobId, jobSequence, cloudHostId, isStreaming])
 
   const persistLatestState = useCallback((stateOverride?: ChatTilePersistedState | null) => {
     if (persistTimerRef.current) {
@@ -1442,6 +1500,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       if (typeof saved.thinking === 'string') setThinking(saved.thinking)
       if (typeof saved.autoAgentMode === 'boolean') setAutoAgentMode(saved.autoAgentMode)
       if (typeof saved.sessionId === 'string' || saved.sessionId === null) setSessionId(saved.sessionId)
+      if (typeof saved.jobId === 'string' || saved.jobId === null) setJobId(saved.jobId ?? null)
+      if (typeof saved.jobSequence === 'number') {
+        setJobSequence(saved.jobSequence)
+        lastJobSequenceRef.current = saved.jobSequence
+      }
+      if (typeof saved.cloudHostId === 'string' || saved.cloudHostId === null) setCloudHostId(saved.cloudHostId ?? null)
       if (typeof saved.isStreaming === 'boolean') setIsStreaming(saved.isStreaming)
     }
 
@@ -1480,7 +1544,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         persistTimerRef.current = null
       }
     }
-  }, [workspaceId, tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, isStreaming, persistLatestState])
+  }, [workspaceId, tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, jobId, jobSequence, cloudHostId, isStreaming, persistLatestState])
 
   useEffect(() => {
     return () => {
@@ -1495,6 +1559,32 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       persistLatestState(latest)
     }
   }, [tileId, persistLatestState])
+
+  useEffect(() => {
+    if (!stateLoadedRef.current) return
+    if (!jobId) return
+    const resumeKey = [
+      jobId,
+      executionTarget,
+      cloudHostId ?? '',
+      provider,
+      model,
+    ].join('::')
+    if (resumedJobKeyRef.current === resumeKey) return
+    resumedJobKeyRef.current = resumeKey
+
+    void window.electron.chat?.resumeJob?.({
+      cardId: tileId,
+      provider,
+      model,
+      workspaceDir: _workspaceDir,
+      executionTarget,
+      cloudHostId,
+      executionPreference: settings?.execution ?? null,
+      jobId,
+      jobSequence,
+    })
+  }, [tileId, provider, model, _workspaceDir, executionTarget, cloudHostId, settings?.execution, jobId, jobSequence])
 
   const builtinProviderEntries = useMemo<Record<BuiltinProvider, ProviderEntry>>(() => ({
     claude: {
@@ -1701,9 +1791,26 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const normalizedRepoRoot = activeRepoRoot.replace(/\/+$/, '')
   const projectFolderName = basename(normalizedRepoRoot) || 'No project'
   const currentBranchLabel = gitBranches.current ?? 'No branch'
-  const locationLabel = executionTarget === 'cloud' ? 'Cloud' : 'Local'
+  const remoteHosts = useMemo(
+    () => executionHosts.filter(host => host.type === 'remote-daemon' && host.enabled !== false),
+    [executionHosts],
+  )
+  useEffect(() => {
+    if (executionTarget !== 'cloud') return
+    if (remoteHosts.length === 0) {
+      if (cloudHostId !== null) setCloudHostId(null)
+      return
+    }
+    if (!cloudHostId || !remoteHosts.some(host => host.id === cloudHostId)) {
+      setCloudHostId(remoteHosts[0].id)
+    }
+  }, [executionTarget, remoteHosts, cloudHostId])
+  const activeCloudHost = remoteHosts.find(host => host.id === cloudHostId) ?? remoteHosts[0] ?? null
+  const locationLabel = executionTarget === 'cloud'
+    ? (activeCloudHost?.label ?? (remoteHosts.length > 0 ? 'Cloud' : 'No remote daemon'))
+    : localExecutionLabel
   const activeProjectPathLabel = executionTarget === 'cloud'
-    ? 'Cloud workspace'
+    ? (activeCloudHost?.url ?? (remoteHosts.length > 0 ? 'Cloud workspace' : 'No remote daemon configured'))
     : (normalizedRepoRoot || 'No project')
 
   const filteredBranches = useMemo(() => {
@@ -1869,6 +1976,15 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     const cleanup = window.electron?.stream?.onChunk((event: any) => {
       if (event.cardId !== tileId) return
 
+      if (typeof event.sequence === 'number') {
+        if (event.sequence <= lastJobSequenceRef.current) return
+        lastJobSequenceRef.current = event.sequence
+        setJobSequence(event.sequence)
+      }
+      if (typeof event.jobId === 'string') {
+        setJobId(event.jobId)
+      }
+
       const updateLast = (fn: (m: ChatMessage) => ChatMessage) =>
         setMessagesSafe(prev => {
           const last = prev[prev.length - 1]
@@ -2000,6 +2116,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
         case 'done':
           if (event.sessionId) setSessionId(event.sessionId)
+          if (typeof event.jobId === 'string') {
+            setJobId(null)
+          }
           updateLast(m => ({
             ...m,
             isStreaming: false,
@@ -2014,6 +2133,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           break
 
         case 'error':
+          if (typeof event.jobId === 'string') {
+            setJobId(null)
+          }
           updateLast(m => ({
             ...m, content: m.content || `Error: ${event.error}`, isStreaming: false,
           }))
@@ -2145,6 +2267,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     const activeMcpEnabled = state?.mcpEnabled ?? mcpEnabled
     const activeMessages = state?.messages ?? messages
     const activeProviderEntry = providerEntryById.get(activeProvider) ?? currentProviderEntry
+    const nextCloudHostId = executionTarget === 'cloud'
+      ? (cloudHostId ?? activeCloudHost?.id ?? null)
+      : null
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -2155,6 +2280,10 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
     setMessagesSafe(prev => [...prev, userMsg])
     setIsStreaming(true)
+    setJobId(null)
+    setJobSequence(0)
+    lastJobSequenceRef.current = 0
+    resumedJobKeyRef.current = null
     stickToBottomRef.current = true
     focusComposer()
 
@@ -2176,7 +2305,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         context: peerContextRef.current.get(p.peerId),
       })) : []
 
-      await window.electron?.chat?.send({
+      const result = await window.electron?.chat?.send({
         cardId: tileId,
         provider: activeProvider,
         model: activeModel,
@@ -2184,11 +2313,23 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         mode: activeMode,
         thinking: activeThinking,
         workspaceDir: _workspaceDir,
+        executionTarget,
+        cloudHostId: nextCloudHostId,
+        executionPreference: settings?.execution ?? null,
         messages: [...activeMessages, userMsg].map(m => ({ role: m.role, content: m.content })),
         negotiatedTools: activeMcpEnabled ? peerToolNames : undefined,
         peers: peers.length > 0 ? peers : undefined,
         sessionId: activeSessionId,
       })
+      if (result && typeof result === 'object' && 'jobId' in result && typeof (result as { jobId?: unknown }).jobId === 'string') {
+        setJobId((result as { jobId: string }).jobId)
+        setJobSequence(0)
+        lastJobSequenceRef.current = 0
+      } else {
+        setJobId(null)
+        setJobSequence(0)
+        lastJobSequenceRef.current = 0
+      }
       return true
     } catch (err) {
       setMessagesSafe(prev => prev.map(m =>
@@ -2198,7 +2339,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       focusComposer()
       return false
     }
-  }, [provider, model, mode, thinking, sessionId, mcpEnabled, messages, providerEntryById, currentProviderEntry, tileId, connectedPeers, _workspaceDir, peerToolNames, focusComposer, setMessagesSafe])
+  }, [provider, model, mode, thinking, sessionId, mcpEnabled, messages, providerEntryById, currentProviderEntry, tileId, connectedPeers, _workspaceDir, executionTarget, cloudHostId, activeCloudHost, settings?.execution, peerToolNames, focusComposer, setMessagesSafe])
 
   const queueCurrentDraft = useCallback(() => {
     const messageContent = buildOutgoingMessageContent(input, attachments)
@@ -2243,6 +2384,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const stopStreaming = useCallback(() => {
     window.electron?.chat?.stop?.(tileId)
     setIsStreaming(false)
+    setJobId(null)
     setMessagesSafe(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m))
     focusComposer()
   }, [tileId, focusComposer])
@@ -2253,6 +2395,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setAttachments([])
     setQueuedTurns([])
     setSessionId(null)
+    setJobId(null)
+    setJobSequence(0)
+    lastJobSequenceRef.current = 0
     window.electron?.chat?.clearSession?.(tileId)
   }, [isStreaming, tileId])
 
@@ -2603,36 +2748,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         </div>
       </div>
 
-      {showScrollToLatest && (
-        <button
-          onClick={() => scrollToLatest()}
-          title="Jump to latest"
-          style={{
-            position: 'absolute',
-            right: 20,
-            bottom: 124,
-            zIndex: 5,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 40,
-            height: 40,
-            minWidth: 40,
-            padding: 0,
-            borderRadius: '50%',
-            border: `1px solid ${theme.chat.divider}`,
-            background: theme.surface.panelElevated,
-            color: theme.text.secondary,
-            cursor: 'pointer',
-            boxShadow: theme.shadow.panel,
-            backdropFilter: 'blur(10px)',
-            ...NON_SELECTABLE_UI_STYLE,
-          }}
-        >
-          <ArrowDown size={20} strokeWidth={1.8} />
-        </button>
-      )}
-
       {latestChangeSummary && (
         <div style={{
           flexShrink: 0,
@@ -2797,6 +2912,41 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {showScrollToLatest && (
+        <div style={{
+          flexShrink: 0,
+          width: `min(calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px), ${CHAT_COMPOSER_MAX_WIDTH}px)`,
+          minWidth: `min(${CHAT_COMPOSER_MIN_WIDTH}px, calc(100% - ${CHAT_COMPOSER_SIDE_INSET * 2}px))`,
+          margin: '0 auto 6px auto',
+          display: 'flex',
+          justifyContent: 'center',
+        }}>
+          <button
+            onClick={() => scrollToLatest()}
+            title="Jump to latest"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 30,
+              height: 30,
+              minWidth: 30,
+              padding: 0,
+              borderRadius: '50%',
+              border: `1px solid ${theme.chat.divider}`,
+              background: theme.surface.panelElevated,
+              color: theme.text.secondary,
+              cursor: 'pointer',
+              boxShadow: theme.shadow.panel,
+              backdropFilter: 'blur(10px)',
+              ...NON_SELECTABLE_UI_STYLE,
+            }}
+          >
+            <ArrowDown size={15} strokeWidth={1.8} />
+          </button>
         </div>
       )}
 
@@ -3171,8 +3321,37 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                       icon={<CloudProjectIcon size={11} />}
                       label="Cloud"
                       active={executionTarget === 'cloud'}
-                      onClick={() => { setExecutionTarget('cloud'); setShowLocationMenu(false) }}
+                      sublabel={activeCloudHost?.label ?? (remoteHosts.length > 0 ? undefined : 'No remote daemon configured')}
+                      onClick={() => {
+                        if (remoteHosts.length > 0) {
+                          setExecutionTarget('cloud')
+                          setCloudHostId(activeCloudHost?.id ?? remoteHosts[0].id)
+                        }
+                        setShowLocationMenu(false)
+                      }}
                     />
+                    {remoteHosts.length > 0 && (
+                      <>
+                        <div style={{ height: 1, background: theme.chat.dropdownBorder, margin: '4px 0' }} />
+                        <div style={{ padding: '8px 10px 6px', fontSize: 11, color: theme.chat.muted, fontFamily: fontSans }}>
+                          Remote daemons
+                        </div>
+                        {remoteHosts.map(host => (
+                          <DropdownItem
+                            key={host.id}
+                            icon={<CloudProjectIcon size={11} />}
+                            label={host.label}
+                            sublabel={host.url ?? undefined}
+                            active={executionTarget === 'cloud' && activeCloudHost?.id === host.id}
+                            onClick={() => {
+                              setExecutionTarget('cloud')
+                              setCloudHostId(host.id)
+                              setShowLocationMenu(false)
+                            }}
+                          />
+                        ))}
+                      </>
+                    )}
                     <div style={{ height: 1, background: theme.chat.dropdownBorder, margin: '4px 0' }} />
                     <div style={{ padding: '8px 10px', fontSize: 11, color: theme.chat.muted, fontFamily: fontSans }}>
                       Rate limits remaining

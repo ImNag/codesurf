@@ -179,6 +179,17 @@ contextBridge.exposeInMainWorld('electron', {
       providerTransport?: import('../shared/types').ExtensionChatTransportConfig | null
     }) =>
       ipcRenderer.invoke('chat:send', req),
+    resumeJob: (req: {
+      cardId: string
+      provider: string
+      model: string
+      workspaceDir?: string
+      executionTarget?: 'local' | 'cloud'
+      cloudHostId?: string | null
+      executionPreference?: import('../shared/types').ExecutionPreference | null
+      jobId?: string | null
+      jobSequence?: number
+    }) => ipcRenderer.invoke('chat:resumeJob', req),
     stop: (cardId: string) => ipcRenderer.invoke('chat:stop', cardId),
     clearSession: (cardId: string) => ipcRenderer.invoke('chat:clearSession', cardId),
     opencodeModels: () => ipcRenderer.invoke('chat:opencodeModels'),
@@ -236,6 +247,13 @@ contextBridge.exposeInMainWorld('electron', {
 
   app: {
     relaunch: () => ipcRenderer.invoke('app:relaunch')
+  },
+
+  execution: {
+    listHosts: () => ipcRenderer.invoke('execution:listHosts'),
+    upsertHost: (host: import('../shared/types').ExecutionHostRecord) => ipcRenderer.invoke('execution:upsertHost', host),
+    deleteHost: (id: string) => ipcRenderer.invoke('execution:deleteHost', id),
+    resolveTarget: (preference: import('../shared/types').ExecutionPreference) => ipcRenderer.invoke('execution:resolveTarget', preference),
   },
 
   shell: {
@@ -449,6 +467,7 @@ contextBridge.exposeInMainWorld('electron', {
     gc: () => ipcRenderer.invoke('system:gc'),
     memStats: () => ipcRenderer.invoke('system:memStats'),
     daemonStatus: () => ipcRenderer.invoke('system:daemonStatus'),
+    daemonSummary: () => ipcRenderer.invoke('system:daemonSummary'),
     restartDaemon: () => ipcRenderer.invoke('system:restartDaemon'),
     onGcRequested: (callback: () => void) => {
       const handler = () => {

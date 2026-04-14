@@ -1,4 +1,4 @@
-import type { AppSettings, ProjectRecord, Workspace } from '../../shared/types'
+import type { AppSettings, ExecutionHostRecord, ProjectRecord, Workspace } from '../../shared/types'
 import type { AggregatedSessionEntry } from '../session-sources'
 import { ensureDaemonRunning, invalidateDaemonCache, restartDaemon } from './manager'
 
@@ -52,6 +52,15 @@ async function daemonRequest<T>(path: string, options?: RequestOptions): Promise
 }
 
 export const daemonClient = {
+  listHosts(): Promise<ExecutionHostRecord[]> {
+    return daemonRequest('/host/list')
+  },
+  upsertHost(host: ExecutionHostRecord): Promise<ExecutionHostRecord[]> {
+    return daemonRequest('/host/upsert', { body: { host } })
+  },
+  deleteHost(id: string): Promise<{ ok: true; hosts: ExecutionHostRecord[] }> {
+    return daemonRequest(`/host/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
   listWorkspaces(): Promise<Workspace[]> {
     return daemonRequest('/workspace/list')
   },

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
- import type { Workspace, ProjectRecord } from '../../shared/types'
+ import type { ExecutionHostRecord, ExecutionPreference, Workspace, ProjectRecord } from '../../shared/types'
 
 interface ElectronAPI {
   appearance: {
@@ -63,6 +63,7 @@ interface ElectronAPI {
   }
   chat?: {
     send(req: unknown): Promise<{ ok: boolean }>
+    resumeJob?(req: unknown): Promise<{ ok: boolean; resumed?: boolean; jobId?: string | null }>
     stop(cardId: string): Promise<void>
     clearSession(cardId: string): Promise<{ ok: boolean }>
     opencodeModels(): Promise<{ models: Array<{ id: string; label: string; description?: string }>; source?: string; loading?: boolean }>
@@ -75,6 +76,16 @@ interface ElectronAPI {
   }
   app?: {
     relaunch(): Promise<void>
+  }
+  execution: {
+    listHosts(): Promise<ExecutionHostRecord[]>
+    upsertHost(host: ExecutionHostRecord): Promise<ExecutionHostRecord[]>
+    deleteHost(id: string): Promise<{ ok: true; hosts: ExecutionHostRecord[] }>
+    resolveTarget(preference: ExecutionPreference): Promise<{
+      host: ExecutionHostRecord
+      fallback: boolean
+      reason: string
+    }>
   }
   window: {
     new(): Promise<void>
@@ -283,6 +294,35 @@ interface ElectronAPI {
         protocolVersion: number
         appVersion: string | null
       } | null
+    }>
+    daemonSummary(): Promise<{
+      running: boolean
+      info: {
+        pid: number
+        port: number
+        startedAt: string
+        protocolVersion: number
+        appVersion: string | null
+      } | null
+      jobs: {
+        total: number
+        active: number
+        completed: number
+        failed: number
+        cancelled: number
+        other: number
+        recent: Array<{
+          id: string
+          status: string
+          provider: string | null
+          model: string | null
+          workspaceDir: string | null
+          updatedAt: string | null
+          requestedAt: string | null
+          lastSequence: number
+          error: string | null
+        }>
+      }
     }>
     restartDaemon(): Promise<{
       running: boolean

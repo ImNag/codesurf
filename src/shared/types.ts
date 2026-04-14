@@ -20,6 +20,23 @@ export interface WorkspaceRecord {
   primaryProjectId?: string | null
 }
 
+export type ExecutionHostType = 'runtime' | 'local-daemon' | 'remote-daemon'
+export type ExecutionMode = 'auto' | 'runtime-only' | 'prefer-local-daemon' | 'daemon-only' | 'specific-host'
+
+export interface ExecutionHostRecord {
+  id: string
+  type: ExecutionHostType
+  label: string
+  enabled: boolean
+  url?: string | null
+  authToken?: string | null
+}
+
+export interface ExecutionPreference {
+  mode: ExecutionMode
+  hostId: string | null
+}
+
 export type BuiltinTileType = 'terminal' | 'note' | 'code' | 'image' | 'media' | 'kanban' | 'browser' | 'chat' | 'file' | 'files' | 'customisation'
 
 // ─── Customisation Data Types ──────────────────────────────────────────────
@@ -334,6 +351,8 @@ export interface AppSettings {
   chromeSyncProfileDir: string | null
   // Where rendered links should open by default.
   linkOpenMode: 'browser-block' | 'external-browser'
+  // Host-selection policy for chat and background execution.
+  execution: ExecutionPreference
   // Local OpenAI-compat proxy endpoint remapping
   localProxyEnabled: boolean
   localProxyPort: number
@@ -384,6 +403,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   chromeSyncEnabled: false,
   chromeSyncProfileDir: null,
   linkOpenMode: 'browser-block',
+  execution: {
+    mode: 'auto',
+    hostId: null,
+  },
   localProxyEnabled: false,
   localProxyPort: 1337,
   pinnedExtensionIds: [],
@@ -434,6 +457,10 @@ export function withDefaultSettings(input: Partial<AppSettings> | null | undefin
   const base: AppSettings = {
     ...DEFAULT_SETTINGS,
     ...settings,
+    execution: {
+      ...DEFAULT_SETTINGS.execution,
+      ...(settings.execution ?? {}),
+    },
     defaultTileSizes: {
       ...DEFAULT_SETTINGS.defaultTileSizes,
       ...(settings.defaultTileSizes ?? {})

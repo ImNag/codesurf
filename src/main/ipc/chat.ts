@@ -13,14 +13,18 @@ import * as http from 'http'
 import * as net from 'net'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
-import { dirname, join, relative, resolve, sep } from 'path'
+import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { promisify } from 'util'
 import { getMCPPort, getMCPToken, getContexMcpToolNames } from '../mcp-server'
 import { getAgentPath, getShellEnvPath } from '../agent-paths'
 import { updateLinks } from '../peer-state'
 import { parseClaudeStream } from '../agent-stream'
 import { ensureLocalProxyRunning } from './localProxy'
-import type { ExtensionChatTransportConfig } from '../../shared/types'
+import type { ExecutionHostRecord, ExecutionPreference, ExtensionChatTransportConfig } from '../../shared/types'
+import { daemonClient } from '../daemon/client'
+import { ensureDaemonRunning, getDaemonStatus } from '../daemon/manager'
+import { getBuiltinExecutionHosts, resolveExecutionTarget } from '../execution/targets'
+import { readSettingsSync } from './workspace'
 // Lazy-loaded: @opencode-ai/sdk only exports ESM, Electron main is CJS.
 // externalizeDepsPlugin converts dynamic import() to require() which can't
 // resolve ESM-only exports — wrap in try/catch so the app still starts.
@@ -71,6 +75,11 @@ interface ChatRequest {
   peers?: PeerContext[]
   sessionId?: string | null
   providerTransport?: ExtensionChatTransportConfig | null
+  executionTarget?: 'local' | 'cloud'
+  cloudHostId?: string | null
+  executionPreference?: ExecutionPreference | null
+  jobId?: string | null
+  jobSequence?: number
 }
 
 function log(...args: unknown[]): void {
@@ -92,6 +101,11 @@ const activeQueries = new Map<string, Query>()
 const activeProcesses = new Map<string, ChildProcess>()
 // Active HTTP requests (proxy-backed providers)
 const activeHttpRequests = new Map<string, http.ClientRequest>()
+const activeDaemonStreams = new Map<string, {
+  abortController: AbortController
+  host: ExecutionHostRecord
+  jobId: string
+}>()
 // Stored session IDs for multi-turn conversations
 const sessionIds = new Map<string, string>()
 const execFileAsync = promisify(execFile)
@@ -149,6 +163,261 @@ function bufferHttpResponse(res: http.IncomingMessage): Promise<string> {
     res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     res.on('error', reject)
   })
+}
+
+function stopDaemonStream(cardId: string): void {
+  const active = activeDaemonStreams.get(cardId)
+  if (!active) return
+  active.abortController.abort()
+  activeDaemonStreams.delete(cardId)
+}
+
+async function resolveHostEndpoint(host: ExecutionHostRecord): Promise<{ baseUrl: string; token: string | null }> {
+  if (host.type === 'local-daemon') {
+    const info = await ensureDaemonRunning()
+    return {
+      baseUrl: `http://127.0.0.1:${info.port}`,
+      token: info.token,
+    }
+  }
+
+  if (host.type === 'remote-daemon') {
+    const baseUrl = String(host.url ?? '').trim().replace(/\/+$/, '')
+    if (!baseUrl) throw new Error(`Remote host ${host.label} is missing a URL`)
+    return {
+      baseUrl,
+      token: host.authToken ?? null,
+    }
+  }
+
+  throw new Error(`Host ${host.label} does not expose a daemon endpoint`)
+}
+
+async function hostRequest<T>(host: ExecutionHostRecord, path: string, options?: { method?: string; body?: unknown; signal?: AbortSignal }): Promise<T> {
+  const endpoint = await resolveHostEndpoint(host)
+  const response = await fetch(`${endpoint.baseUrl}${path}`, {
+    method: options?.method ?? (options?.body == null ? 'GET' : 'POST'),
+    headers: {
+      ...(endpoint.token ? { Authorization: `Bearer ${endpoint.token}` } : {}),
+      ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: options?.body == null ? undefined : JSON.stringify(options.body),
+    signal: options?.signal ?? AbortSignal.timeout(20_000),
+  })
+
+  const text = await response.text()
+  const payload = text.trim() ? JSON.parse(text) as T : null
+  if (!response.ok) {
+    const errorMessage = typeof payload === 'object' && payload && 'error' in payload
+      ? String((payload as { error?: unknown }).error ?? `Daemon request failed (${response.status})`)
+      : (text.trim() || `Daemon request failed (${response.status})`)
+    throw new Error(errorMessage)
+  }
+  return payload as T
+}
+
+async function listExecutionHosts(): Promise<ExecutionHostRecord[]> {
+  try {
+    await ensureDaemonRunning()
+    return await daemonClient.listHosts()
+  } catch {
+    return getBuiltinExecutionHosts()
+  }
+}
+
+async function selectChatExecutionHost(req: ChatRequest): Promise<ExecutionHostRecord | null> {
+  const hosts = await listExecutionHosts()
+  const settings = readSettingsSync()
+  const executionPreference = req.executionPreference ?? settings.execution
+
+  if (req.executionTarget === 'cloud') {
+    const remoteHosts = hosts.filter(host => host.type === 'remote-daemon' && host.enabled !== false)
+    const chosen = remoteHosts.find(host => host.id === req.cloudHostId)
+      ?? remoteHosts.find(host => host.id === executionPreference.hostId)
+      ?? remoteHosts[0]
+    if (!chosen) {
+      throw new Error('No remote daemon is registered for cloud execution')
+    }
+    return chosen
+  }
+
+  const daemonStatus = await getDaemonStatus()
+  const resolution = resolveExecutionTarget({
+    hosts,
+    preference: executionPreference,
+    localDaemonAvailable: daemonStatus.running === true,
+  })
+  return resolution.host.type === 'runtime' ? null : resolution.host
+}
+
+async function buildProjectContext(workspaceDir: string | undefined): Promise<{
+  workspaceDir: string | null
+  gitRemoteUrl: string | null
+  gitBranch: string | null
+  repoName: string | null
+}> {
+  const normalizedWorkspace = String(workspaceDir ?? '').trim()
+  if (!normalizedWorkspace) {
+    return { workspaceDir: null, gitRemoteUrl: null, gitBranch: null, repoName: null }
+  }
+
+  const shellPath = getShellEnvPath()
+  const env = { ...process.env, ...(shellPath && { PATH: shellPath }) }
+  let repoRoot = normalizedWorkspace
+  let gitRemoteUrl: string | null = null
+  let gitBranch: string | null = null
+
+  try {
+    repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: normalizedWorkspace,
+      encoding: 'utf8',
+      env,
+    }).trim() || normalizedWorkspace
+    gitRemoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env,
+    }).trim() || null
+    gitBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env,
+    }).trim() || null
+  } catch {
+    repoRoot = normalizedWorkspace
+  }
+
+  return {
+    workspaceDir: repoRoot,
+    gitRemoteUrl,
+    gitBranch,
+    repoName: basename(repoRoot) || null,
+  }
+}
+
+async function attachDaemonJobStream(cardId: string, host: ExecutionHostRecord, jobId: string, sinceSequence = 0): Promise<void> {
+  stopDaemonStream(cardId)
+
+  const endpoint = await resolveHostEndpoint(host)
+  const abortController = new AbortController()
+  activeDaemonStreams.set(cardId, { abortController, host, jobId })
+
+  try {
+    const response = await fetch(`${endpoint.baseUrl}/chat/job/events?jobId=${encodeURIComponent(jobId)}&since=${encodeURIComponent(String(sinceSequence))}`, {
+      headers: {
+        Accept: 'text/event-stream',
+        ...(endpoint.token ? { Authorization: `Bearer ${endpoint.token}` } : {}),
+      },
+      signal: abortController.signal,
+    })
+
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => '')
+      throw new Error(text || `Failed to stream daemon job (${response.status})`)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        const chunk = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const dataLines = chunk.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trim())
+        if (dataLines.length > 0) {
+          try {
+            const payload = JSON.parse(dataLines.join('\n'))
+            sendStream(cardId, payload)
+          } catch (error) {
+            log('daemon stream parse error', error)
+          }
+        }
+        boundary = buffer.indexOf('\n\n')
+      }
+    }
+  } catch (error) {
+    if (abortController.signal.aborted) return
+    if (error instanceof Error && error.name === 'AbortError') return
+    throw error
+  } finally {
+    const active = activeDaemonStreams.get(cardId)
+    if (active?.jobId === jobId) {
+      activeDaemonStreams.delete(cardId)
+    }
+  }
+}
+
+async function sendChatToDaemon(req: ChatRequest, host: ExecutionHostRecord): Promise<{ ok: boolean; jobId: string }> {
+  const projectContext = await buildProjectContext(req.workspaceDir)
+  const job = await hostRequest<{
+    id: string
+    status: string
+  }>(host, '/chat/job/start', {
+    body: {
+      request: {
+        ...req,
+        projectContext,
+      },
+    },
+  })
+
+  void attachDaemonJobStream(req.cardId, host, job.id, 0).catch((error: Error) => {
+    sendStream(req.cardId, { type: 'error', error: error.message, jobId: job.id })
+    sendStream(req.cardId, { type: 'done', jobId: job.id })
+  })
+
+  return { ok: true, jobId: job.id }
+}
+
+async function resumeChatDaemonJob(req: ChatRequest): Promise<{ ok: boolean; resumed: boolean; jobId: string | null }> {
+  if (!req.jobId) return { ok: false, resumed: false, jobId: null }
+  const host = await selectChatExecutionHost(req)
+  if (!host) return { ok: false, resumed: false, jobId: req.jobId }
+
+  const state = await hostRequest<{
+    id: string
+    status: string
+    lastSequence: number
+    error?: string | null
+    sessionId?: string | null
+  }>(host, `/chat/job/state?jobId=${encodeURIComponent(req.jobId)}`)
+
+  const sinceSequence = Number(req.jobSequence ?? 0)
+  if (state.status !== 'running' && sinceSequence >= Number(state.lastSequence ?? 0)) {
+    if (state.error) {
+      sendStream(req.cardId, { type: 'error', error: state.error, jobId: req.jobId, sequence: state.lastSequence })
+    }
+    sendStream(req.cardId, { type: 'done', jobId: req.jobId, sequence: state.lastSequence, sessionId: state.sessionId ?? undefined })
+    return { ok: true, resumed: false, jobId: req.jobId }
+  }
+
+  void attachDaemonJobStream(req.cardId, host, req.jobId, sinceSequence).catch((error: Error) => {
+    sendStream(req.cardId, { type: 'error', error: error.message, jobId: req.jobId })
+    sendStream(req.cardId, { type: 'done', jobId: req.jobId })
+  })
+
+  return { ok: true, resumed: true, jobId: req.jobId }
+}
+
+async function cancelChatDaemonJob(cardId: string): Promise<void> {
+  const active = activeDaemonStreams.get(cardId)
+  if (!active) return
+
+  try {
+    await hostRequest(active.host, '/chat/job/cancel', {
+      body: { jobId: active.jobId },
+    })
+  } catch (error) {
+    log('daemon cancel error', error)
+  } finally {
+    stopDaemonStream(cardId)
+  }
 }
 
 function chatLocalProxy(req: ChatRequest): void {
@@ -1762,6 +2031,24 @@ export function registerChatIPC(): void {
       activeHttpRequests.delete(req.cardId)
     }
 
+    await cancelChatDaemonJob(req.cardId)
+
+    let daemonHost: ExecutionHostRecord | null = null
+    try {
+      daemonHost = await selectChatExecutionHost(req)
+    } catch (error) {
+      sendStream(req.cardId, {
+        type: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      })
+      sendStream(req.cardId, { type: 'done' })
+      return { ok: false }
+    }
+
+    if (daemonHost) {
+      return await sendChatToDaemon(req, daemonHost)
+    }
+
     switch (req.provider) {
       case 'claude': chatClaude(req); break
       case 'codex': chatCodex(req); break
@@ -1780,6 +2067,10 @@ export function registerChatIPC(): void {
     return { ok: true }
   })
 
+  ipcMain.handle('chat:resumeJob', async (_, req: ChatRequest) => {
+    return await resumeChatDaemonJob(req)
+  })
+
   ipcMain.handle('chat:stop', async (_, cardId: string) => {
     const q = activeQueries.get(cardId)
     if (q) {
@@ -1796,6 +2087,7 @@ export function registerChatIPC(): void {
       httpRequest.destroy()
       activeHttpRequests.delete(cardId)
     }
+    await cancelChatDaemonJob(cardId)
     // Abort any active OpenCode session
     const ocSessionId = opencodeSessionIds.get(cardId)
     if (ocSessionId) {

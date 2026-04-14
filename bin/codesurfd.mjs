@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, s
 import { dirname, basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { findSessionEntryById, getExternalSessionChatState, invalidateExternalSessionCache, listExternalSessionEntries } from './session-index.mjs'
+import { createChatJobManager } from './chat-jobs.mjs'
 
 const HOME = process.env.CODESURF_HOME || join(homedir(), '.codesurf')
 const PID_PATH = process.env.CODESURF_DAEMON_PID_PATH || join(HOME, 'daemon', 'pid.json')
@@ -15,9 +16,11 @@ const STARTED_AT = new Date().toISOString()
 const LEGACY_CONFIG_PATH = join(HOME, 'config.json')
 const WORKSPACES_FILE = join(HOME, 'workspaces', 'workspaces.json')
 const PROJECTS_FILE = join(HOME, 'projects', 'projects.json')
+const HOSTS_FILE = join(HOME, 'hosts', 'hosts.json')
 const SETTINGS_FILE = join(HOME, 'settings.json')
 const AUTH_TOKEN = randomUUID()
 const SESSION_TEXT_LIMIT = 120
+const chatJobs = createChatJobManager({ homeDir: HOME })
 
 function ensureDir(dirPath) {
   mkdirSync(dirPath, { recursive: true })
@@ -65,6 +68,64 @@ function normalizeProject(project) {
     name: String(project?.name ?? basename(path) ?? 'Project').trim() || basename(path) || 'Project',
     path,
   }
+}
+
+function builtinExecutionHosts() {
+  return [
+    {
+      id: 'local-runtime',
+      type: 'runtime',
+      label: 'This app',
+      enabled: true,
+      url: null,
+      authToken: null,
+    },
+    {
+      id: 'local-daemon',
+      type: 'local-daemon',
+      label: 'Local daemon',
+      enabled: true,
+      url: 'http://127.0.0.1',
+      authToken: null,
+    },
+  ]
+}
+
+function normalizeExecutionHost(host) {
+  const id = String(host?.id ?? '').trim()
+  const type = String(host?.type ?? '').trim()
+  if (!id || !type) return null
+  if (!['runtime', 'local-daemon', 'remote-daemon'].includes(type)) return null
+  return {
+    id,
+    type,
+    label: String(host?.label ?? id).trim() || id,
+    enabled: host?.enabled !== false,
+    url: typeof host?.url === 'string' && host.url.trim().length > 0 ? host.url.trim() : null,
+    authToken: typeof host?.authToken === 'string' && host.authToken.trim().length > 0 ? host.authToken.trim() : null,
+  }
+}
+
+function mergeExecutionHosts(records) {
+  const merged = new Map()
+  for (const builtin of builtinExecutionHosts()) {
+    merged.set(builtin.id, builtin)
+  }
+  for (const record of Array.isArray(records) ? records : []) {
+    const normalized = normalizeExecutionHost(record)
+    if (!normalized) continue
+    const base = merged.get(normalized.id)
+    merged.set(normalized.id, {
+      ...(base ?? {}),
+      ...normalized,
+    })
+  }
+  return [...merged.values()].sort((a, b) => {
+    const orderA = a.id === 'local-runtime' ? 0 : (a.id === 'local-daemon' ? 1 : 2)
+    const orderB = b.id === 'local-runtime' ? 0 : (b.id === 'local-daemon' ? 1 : 2)
+    if (orderA !== orderB) return orderA - orderB
+    return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
+  })
 }
 
 function normalizeWorkspaceRecord(workspace) {
@@ -156,8 +217,9 @@ function ensureStateFiles() {
   ensureDir(join(HOME, 'daemon'))
   ensureDir(join(HOME, 'workspaces'))
   ensureDir(join(HOME, 'projects'))
+  ensureDir(join(HOME, 'hosts'))
 
-  if (!existsSync(WORKSPACES_FILE) || !existsSync(PROJECTS_FILE) || !existsSync(SETTINGS_FILE)) {
+  if (!existsSync(WORKSPACES_FILE) || !existsSync(PROJECTS_FILE) || !existsSync(SETTINGS_FILE) || !existsSync(HOSTS_FILE)) {
     const legacy = loadLegacyConfig()
     if (!existsSync(WORKSPACES_FILE)) {
       atomicWriteJson(WORKSPACES_FILE, {
@@ -178,6 +240,12 @@ function ensureStateFiles() {
         settings: legacy.settings ?? {},
       })
     }
+    if (!existsSync(HOSTS_FILE)) {
+      atomicWriteJson(HOSTS_FILE, {
+        version: 1,
+        hosts: builtinExecutionHosts(),
+      })
+    }
   }
 }
 
@@ -185,6 +253,7 @@ function readWorkspaceState() {
   ensureStateFiles()
   const workspaceDoc = readJsonFile(WORKSPACES_FILE, { version: 1, activeWorkspaceId: null, workspaces: [] })
   const projectDoc = readJsonFile(PROJECTS_FILE, { version: 1, projects: [] })
+  const hostsDoc = readJsonFile(HOSTS_FILE, { version: 1, hosts: builtinExecutionHosts() })
   const settingsDoc = readJsonFile(SETTINGS_FILE, { version: 1, settings: {} })
   const projects = Array.isArray(projectDoc.projects) ? projectDoc.projects.map(normalizeProject).filter(Boolean) : []
   const projectIds = new Set(projects.map(project => project.id))
@@ -202,6 +271,7 @@ function readWorkspaceState() {
     : []
   return {
     projects,
+    hosts: mergeExecutionHosts(hostsDoc.hosts),
     workspaces,
     activeWorkspaceId: typeof workspaceDoc.activeWorkspaceId === 'string'
       ? workspaceDoc.activeWorkspaceId
@@ -219,6 +289,13 @@ function writeWorkspaceState(state) {
   atomicWriteJson(PROJECTS_FILE, {
     version: 1,
     projects: state.projects,
+  })
+}
+
+function writeHosts(hosts) {
+  atomicWriteJson(HOSTS_FILE, {
+    version: 1,
+    hosts: mergeExecutionHosts(hosts),
   })
 }
 
@@ -458,6 +535,16 @@ function sortProjects(projects) {
   })
 }
 
+function upsertExecutionHost(currentHosts, input) {
+  const normalized = normalizeExecutionHost(input)
+  if (!normalized || normalized.id === 'local-runtime' || normalized.id === 'local-daemon') {
+    return mergeExecutionHosts(currentHosts)
+  }
+  const next = mergeExecutionHosts(currentHosts).filter(host => host.id !== normalized.id)
+  next.push(normalized)
+  return mergeExecutionHosts(next)
+}
+
 function sendJson(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(`${JSON.stringify(payload)}\n`)
@@ -581,6 +668,64 @@ const server = createServer(async (req, res) => {
         return
       }
       sendJson(res, 200, listLocalWorkspaceSessions(workspaceId))
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/chat/job/start') {
+      const body = await parseRequestBody(req)
+      if (!body?.request || typeof body.request !== 'object') {
+        sendJson(res, 400, { error: 'request is required' })
+        return
+      }
+      const job = await chatJobs.startJob(body.request)
+      sendJson(res, 200, job)
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/chat/job/state') {
+      const jobId = String(url.searchParams.get('jobId') ?? '').trim()
+      if (!jobId) {
+        sendJson(res, 400, { error: 'jobId is required' })
+        return
+      }
+      const state = await chatJobs.getJobState(jobId)
+      sendJson(res, state ? 200 : 404, state ?? { error: 'Job not found' })
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/chat/job/events') {
+      const jobId = String(url.searchParams.get('jobId') ?? '').trim()
+      const sinceSequence = Number(url.searchParams.get('since') ?? '0') || 0
+      if (!jobId) {
+        sendJson(res, 400, { error: 'jobId is required' })
+        return
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      })
+
+      const keepOpen = await chatJobs.streamJob(jobId, sinceSequence, res)
+      if (!keepOpen) {
+        res.end()
+      } else {
+        req.on('close', () => {
+          res.end()
+        })
+      }
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/chat/job/cancel') {
+      const body = await parseRequestBody(req)
+      const jobId = String(body?.jobId ?? '').trim()
+      if (!jobId) {
+        sendJson(res, 400, { error: 'jobId is required' })
+        return
+      }
+      sendJson(res, 200, await chatJobs.cancelJob(jobId))
       return
     }
 
@@ -791,6 +936,34 @@ const server = createServer(async (req, res) => {
       state.projects = state.projects.filter(project => referencedIds.has(project.id))
       writeWorkspaceState(state)
       sendJson(res, 200, { ok: true })
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/host/list') {
+      const state = readWorkspaceState()
+      sendJson(res, 200, state.hosts)
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/host/upsert') {
+      const body = await parseRequestBody(req)
+      const state = readWorkspaceState()
+      const nextHosts = upsertExecutionHost(state.hosts, body?.host)
+      writeHosts(nextHosts)
+      sendJson(res, 200, nextHosts)
+      return
+    }
+
+    if (method === 'DELETE' && url.pathname.startsWith('/host/')) {
+      const hostId = decodeURIComponent(url.pathname.slice('/host/'.length))
+      if (hostId === 'local-runtime' || hostId === 'local-daemon') {
+        sendJson(res, 400, { error: 'Built-in hosts cannot be deleted' })
+        return
+      }
+      const state = readWorkspaceState()
+      const nextHosts = mergeExecutionHosts(state.hosts).filter(host => host.id !== hostId)
+      writeHosts(nextHosts)
+      sendJson(res, 200, { ok: true, hosts: nextHosts })
       return
     }
 

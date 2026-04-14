@@ -17,6 +17,7 @@ import { registerActivityIPC } from './ipc/activity'
 import { registerCollabIPC, stopAllCollabWatchers } from './ipc/collab'
 import { registerTileContextIPC } from './ipc/tile-context'
 import { registerSystemIPC } from './ipc/system'
+import { registerExecutionIPC } from './ipc/execution'
 import { registerFileProtocol } from './file-protocol'
 import { flushAll as flushActivityStore } from './activity-store'
 import { initializeAgentPathsCache, registerAgentPathsIPC } from './agent-paths'
@@ -187,6 +188,7 @@ app.whenReady().then(async () => {
   registerCollabIPC()
   registerTileContextIPC()
   registerSystemIPC()
+  registerExecutionIPC()
   registerFileProtocol()
   registerAgentPathsIPC()
   registerChromeSyncIPC()
