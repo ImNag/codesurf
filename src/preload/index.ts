@@ -122,6 +122,7 @@ contextBridge.exposeInMainWorld('electron', {
     },
     getSessionState: (workspaceId: string, sessionEntryId: string) => ipcRenderer.invoke('canvas:getSessionState', workspaceId, sessionEntryId),
     deleteSession: (workspaceId: string, sessionEntryId: string) => ipcRenderer.invoke('canvas:deleteSession', workspaceId, sessionEntryId),
+    renameSession: (workspaceId: string, sessionEntryId: string, title: string) => ipcRenderer.invoke('canvas:renameSession', workspaceId, sessionEntryId, title),
   },
 
   // Kanban board state persistence
@@ -301,6 +302,12 @@ contextBridge.exposeInMainWorld('electron', {
     set: (settings: any) => ipcRenderer.invoke('settings:set', settings),
     getRawJson: () => ipcRenderer.invoke('settings:getRawJson'),
     setRawJson: (json: string) => ipcRenderer.invoke('settings:setRawJson', json),
+  },
+
+  permissions: {
+    list: () => ipcRenderer.invoke('permissions:list'),
+    clear: (id: string) => ipcRenderer.invoke('permissions:clear', id),
+    clearAll: () => ipcRenderer.invoke('permissions:clearAll'),
   },
 
   // Update checker

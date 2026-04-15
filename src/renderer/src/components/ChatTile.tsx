@@ -426,7 +426,7 @@ async function loadGitState(workspaceDir: string, force = false): Promise<Cached
 }
 
 // Font context so sub-components can read settings-derived fonts without prop drilling
-const FontCtx = React.createContext({ sans: FONT_SANS, secondary: FONT_SANS, mono: FONT_MONO, size: FONT_SIZE_DEFAULT, monoSize: MONO_SIZE_DEFAULT })
+const FontCtx = React.createContext({ sans: FONT_SANS, secondary: FONT_SANS, mono: FONT_MONO, size: FONT_SIZE_DEFAULT, monoSize: MONO_SIZE_DEFAULT, lineHeight: 1.5, weight: 400, monoLineHeight: 1.5, monoWeight: 400, secondarySize: 11, secondaryLineHeight: 1.4, secondaryWeight: 400 })
 function useFonts() { return React.useContext(FontCtx) }
 
 function sanitizeToolOutputText(text: string | undefined): string | undefined {
@@ -2596,9 +2596,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
         case 'done':
           if (event.sessionId) setSessionId(event.sessionId)
-          if (typeof event.jobId === 'string') {
-            setJobId(null)
-          }
           updateLast(m => ({
             ...m,
             isStreaming: false,
@@ -2613,9 +2610,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           break
 
         case 'error':
-          if (typeof event.jobId === 'string') {
-            setJobId(null)
-          }
           updateLast(m => ({
             ...m, content: m.content || `Error: ${event.error}`, isStreaming: false,
           }))
@@ -3056,7 +3050,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setAcQuery('')
   }, [syncComposerHeight])
 
-  const fontCtxValue = useMemo(() => ({ sans: fontSans, secondary: fontSecondary, mono: fontMono, size: fontSize, monoSize }), [fontSans, fontSecondary, fontMono, fontSize, monoSize])
+  const fontCtxValue = useMemo(() => ({ sans: fontSans, secondary: fontSecondary, mono: fontMono, size: fontSize, monoSize, lineHeight: fontLineHeight, weight: fontWeight, monoLineHeight, monoWeight, secondarySize, secondaryLineHeight, secondaryWeight }), [fontSans, fontSecondary, fontMono, fontSize, monoSize, fontLineHeight, fontWeight, monoLineHeight, monoWeight, secondarySize, secondaryLineHeight, secondaryWeight])
 
   return (
     <FontCtx.Provider value={fontCtxValue}>
@@ -3079,7 +3073,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           flexShrink: 0, display: 'flex', alignItems: 'center',
           padding: '4px 14px', gap: 6,
           borderBottom: `1px solid ${theme.chat.divider}`, fontSize: monoSize - 3,
-          color: theme.chat.muted, fontFamily: fontMono,
+          color: theme.chat.muted, fontFamily: fontMono, fontWeight: monoWeight, lineHeight: monoLineHeight,
         }}>
           <span style={{
             width: 5, height: 5, borderRadius: '50%',
@@ -3229,7 +3223,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                         border: msg.role === 'user' ? `1px solid ${theme.chat.userBubbleBorder}` : '0',
                         borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                         padding: '8px 12px',
-                        fontSize, lineHeight: 1.55,
+                        fontSize, lineHeight: fontLineHeight,
                         wordBreak: 'break-word',
                         color: theme.chat.text, position: 'relative',
                         width: '100%', minWidth: 0, overflow: 'hidden',
@@ -4146,7 +4140,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
 function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Element {
   const fonts = useFonts()
-  const appFonts = useAppFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
   const isActive = !thinking.done
@@ -4206,7 +4199,7 @@ function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Eleme
       {expanded && hasContent && (
         <div style={{
           padding: '8px 0 2px',
-          fontSize: 12, lineHeight: appFonts.lineHeight, color: theme.accent.hover,
+          fontSize: 12, lineHeight: fonts.lineHeight, color: theme.accent.hover,
           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           fontFamily: fonts.sans, maxHeight: 200, overflowY: 'auto',
           background: 'transparent',
@@ -4410,7 +4403,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                         color: theme.chat.text,
                         fontFamily: isFileChangeBlock ? fonts.sans : fonts.mono,
                         fontSize: isFileChangeBlock ? fonts.size : 11,
-                        fontWeight: isFileChangeBlock ? 500 : 400,
+                        fontWeight: isFileChangeBlock ? 500 : fonts.monoWeight,
                         textAlign: 'left',
                       }}
                     >
@@ -4437,7 +4430,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                           margin: 0,
                           padding: '10px 12px',
                           fontSize: codePanelFontSize,
-                          lineHeight: monoLineHeight,
+                          lineHeight: fonts.monoLineHeight,
                           fontFamily: fonts.mono,
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
@@ -4492,10 +4485,10 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                     <pre style={{
                       margin: '6px 0 0',
                       fontSize: codePanelFontSize,
-                      lineHeight: monoLineHeight,
+                      lineHeight: fonts.monoLineHeight,
                       color: theme.chat.muted,
                       fontFamily: fonts.mono,
-                      fontWeight: monoWeight,
+                      fontWeight: fonts.monoWeight,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
                       maxHeight: 120,
@@ -4520,7 +4513,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
           <pre style={{
             margin: 0, padding: 8, borderRadius: 6,
             background: theme.surface.panelMuted, color: theme.chat.textSecondary,
-            fontSize: codePanelFontSize, lineHeight: monoLineHeight, fontFamily: fonts.mono, fontWeight: monoWeight,
+            fontSize: codePanelFontSize, lineHeight: fonts.monoLineHeight, fontFamily: fonts.mono, fontWeight: fonts.monoWeight,
             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             maxHeight: 200, overflowY: 'auto',
           }}>

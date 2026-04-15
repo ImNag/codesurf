@@ -1,6 +1,6 @@
 import type { AppSettings, ExecutionHostRecord, ProjectRecord, Workspace } from '../../shared/types'
 import type { AggregatedSessionEntry } from '../session-sources'
-import { ensureDaemonRunning, invalidateDaemonCache, restartDaemon } from './manager'
+import { ensureDaemonRunning, getDaemonStatus, invalidateDaemonCache } from './manager'
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'DELETE'
@@ -11,9 +11,7 @@ async function daemonRequest<T>(path: string, options?: RequestOptions): Promise
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const daemon = attempt === 0
-      ? await ensureDaemonRunning()
-      : await restartDaemon()
+    const daemon = await ensureDaemonRunning()
 
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}${path}`, {
@@ -41,7 +39,10 @@ async function daemonRequest<T>(path: string, options?: RequestOptions): Promise
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
       if (attempt === 0) {
-        invalidateDaemonCache()
+        const daemonStatus = await getDaemonStatus().catch(() => ({ running: false as const, info: null }))
+        if (!daemonStatus.running) {
+          invalidateDaemonCache()
+        }
         continue
       }
       throw lastError
@@ -154,11 +155,23 @@ export const daemonClient = {
       },
     })
   },
+  renameExternalSession(workspacePath: string | null, sessionEntryId: string, title: string): Promise<{ ok: boolean; error?: string; title?: string }> {
+    return daemonRequest('/session/external/rename', {
+      body: {
+        workspacePath: String(workspacePath ?? '').trim() || null,
+        sessionEntryId,
+        title,
+      },
+    })
+  },
   getLocalSessionState(workspaceId: string, sessionEntryId: string): Promise<unknown | null> {
     return daemonRequest(`/session/local/state?workspaceId=${encodeURIComponent(workspaceId)}&sessionEntryId=${encodeURIComponent(sessionEntryId)}`)
   },
   deleteLocalSession(workspaceId: string, sessionEntryId: string): Promise<{ ok: boolean; error?: string }> {
     return daemonRequest('/session/local/delete', { body: { workspaceId, sessionEntryId } })
+  },
+  renameLocalSession(workspaceId: string, sessionEntryId: string, title: string): Promise<{ ok: boolean; error?: string; title?: string }> {
+    return daemonRequest('/session/local/rename', { body: { workspaceId, sessionEntryId, title } })
   },
   getSettings(): Promise<AppSettings> {
     return daemonRequest('/settings')

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, nativeTheme, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, nativeTheme, nativeImage, session, systemPreferences, desktopCapturer } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -18,6 +18,7 @@ import { registerCollabIPC, stopAllCollabWatchers } from './ipc/collab'
 import { registerTileContextIPC } from './ipc/tile-context'
 import { registerSystemIPC } from './ipc/system'
 import { registerExecutionIPC } from './ipc/execution'
+import { registerPermissionsIPC } from './ipc/permissions'
 import { registerFileProtocol } from './file-protocol'
 import { flushAll as flushActivityStore } from './activity-store'
 import { initializeAgentPathsCache, registerAgentPathsIPC } from './agent-paths'
@@ -119,6 +120,62 @@ function broadcastWindowList(): void {
   }
 }
 
+async function requestMacMediaAccess(kind: 'microphone' | 'camera'): Promise<boolean> {
+  if (process.platform !== 'darwin') return true
+  try {
+    return await systemPreferences.askForMediaAccess(kind)
+  } catch (error) {
+    console.warn(`[Permissions] Failed requesting ${kind} access:`, error)
+    return false
+  }
+}
+
+function installMediaPermissionHandlers(): void {
+  const defaultSession = session.defaultSession
+  if (!defaultSession) return
+
+  defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return permission === 'media' || permission === 'display-capture'
+  })
+
+  defaultSession.setPermissionRequestHandler(async (_webContents, permission, callback) => {
+    try {
+      if (permission === 'media') {
+        const [micAllowed, camAllowed] = await Promise.all([
+          requestMacMediaAccess('microphone'),
+          requestMacMediaAccess('camera'),
+        ])
+        callback(micAllowed || camAllowed)
+        return
+      }
+
+      if (permission === 'display-capture') {
+        callback(true)
+        return
+      }
+
+      callback(false)
+    } catch (error) {
+      console.warn('[Permissions] Permission request failed:', error)
+      callback(false)
+    }
+  })
+
+  defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] })
+      callback(
+        sources[0]
+          ? { video: sources[0], audio: 'loopback' as any }
+          : {},
+      )
+    } catch (error) {
+      console.warn('[Permissions] Display media request failed:', error)
+      callback({})
+    }
+  })
+}
+
 function createWindow(opts?: { fresh?: boolean }): BrowserWindow {
   const iconPath = resolveAppIconPath()
   const win = new BrowserWindow({
@@ -178,6 +235,7 @@ function createWindow(opts?: { fresh?: boolean }): BrowserWindow {
 
 app.whenReady().then(async () => {
   applyRuntimeAppBranding()
+  installMediaPermissionHandlers()
   electronApp.setAppUserModelId(APP_ID)
 
   app.on('browser-window-created', (_, window) => {
@@ -202,6 +260,7 @@ app.whenReady().then(async () => {
   registerTileContextIPC()
   registerSystemIPC()
   registerExecutionIPC()
+  registerPermissionsIPC()
   registerFileProtocol()
   registerAgentPathsIPC()
   registerChromeSyncIPC()

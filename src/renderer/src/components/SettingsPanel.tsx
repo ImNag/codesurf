@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, lazy } from 'react'
-import type { AppSettings, ExecutionHostRecord, ExecutionMode, FontToken } from '../../../shared/types'
+import type { AppSettings, ExecutionHostRecord, ExecutionMode, FontToken, ToolPermissionGrant } from '../../../shared/types'
 import { DEFAULT_FONTS, withDefaultSettings } from '../../../shared/types'
-import { Settings, Type, Monitor, FolderOpen, Plus, Trash2, ChevronDown, ChevronRight, FileJson, AlertTriangle, Check, Copy, RotateCcw, FormInput, Code2, Puzzle, RefreshCw, Star, Wrench, Users, FileText, Globe, Eye, EyeOff, PanelRight, Pin } from 'lucide-react'
+import { Settings, Type, Monitor, FolderOpen, Plus, Trash2, ChevronDown, ChevronRight, FileJson, AlertTriangle, Check, Copy, RotateCcw, FormInput, Code2, Puzzle, RefreshCw, Star, Wrench, Users, FileText, Globe, Eye, EyeOff, PanelRight, Pin, Shield } from 'lucide-react'
 import { useAppFonts } from '../FontContext'
 import { useTheme } from '../ThemeContext'
 import { THEME_OPTIONS, getThemeCanvasDefaults, resolveEffectiveThemeId, getThemeById, type AppearanceMode } from '../theme'
@@ -28,7 +28,7 @@ interface Props {
   systemPrefersDark?: boolean
 }
 
-type BuiltinSection = 'general' | 'daemon' | 'canvas' | 'sidebar' | 'browser' | 'mcp' | 'extensions' | 'prompts' | 'skills' | 'tools' | 'agents'
+type BuiltinSection = 'general' | 'daemon' | 'canvas' | 'sidebar' | 'browser' | 'permissions' | 'mcp' | 'extensions' | 'prompts' | 'skills' | 'tools' | 'agents'
 type Section = BuiltinSection | `ext:${string}`
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode; description: string; group?: string }[] = [
@@ -40,6 +40,7 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode; description
   { id: 'sidebar',    label: 'Sidebar',    icon: <FolderOpen size={15} />, description: 'File tree sort and ignored folders', group: 'app' },
 
   { id: 'browser',    label: 'Browser',    icon: <Globe size={15} />,      description: 'Chrome data sync — cookies, bookmarks, history', group: 'app' },
+  { id: 'permissions', label: 'Permissions', icon: <Shield size={15} />,   description: 'Tool approval memory, scoped grants, and reset controls', group: 'app' },
   // Customisation
   { id: 'prompts',    label: 'Prompts',    icon: <FileText size={15} />,   description: 'Prompt templates with variables and fields', group: 'customise' },
   { id: 'skills',     label: 'Skills',     icon: <Star size={15} />,       description: 'Custom skills and skill registry', group: 'customise' },
@@ -66,6 +67,11 @@ interface MCPConfig {
   mcpServers: Record<string, MCPServerEntry>
   endpoints: Record<string, string>
   updatedAt: string
+}
+
+type PermissionListResult = {
+  path: string
+  grants: ToolPermissionGrant[]
 }
 
 type ExtensionListEntry = {
@@ -525,6 +531,9 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
   const [newHostLabel, setNewHostLabel] = useState('')
   const [newHostUrl, setNewHostUrl] = useState('')
   const [newHostToken, setNewHostToken] = useState('')
+  const [permissionData, setPermissionData] = useState<PermissionListResult | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(false)
+  const [permissionsError, setPermissionsError] = useState<string | null>(null)
 
   const latestSettingsSaveRef = useRef(0)
   const settingsRef = useRef<AppSettings>(withDefaultSettings(initialSettings))
@@ -578,6 +587,40 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
     }
   }, [])
 
+  const loadPermissions = useCallback(async () => {
+    setPermissionsLoading(true)
+    setPermissionsError(null)
+    try {
+      const next = await window.electron.permissions.list()
+      setPermissionData(next)
+    } catch (e) {
+      setPermissionsError(e instanceof Error ? e.message : String(e))
+      setPermissionData(null)
+    } finally {
+      setPermissionsLoading(false)
+    }
+  }, [])
+
+  const clearPermissionGrantById = useCallback(async (id: string) => {
+    try {
+      const next = await window.electron.permissions.clear(id)
+      setPermissionData(next)
+      setPermissionsError(null)
+    } catch (e) {
+      setPermissionsError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
+  const clearAllPermissionGrants = useCallback(async () => {
+    try {
+      const next = await window.electron.permissions.clearAll()
+      setPermissionData(next)
+      setPermissionsError(null)
+    } catch (e) {
+      setPermissionsError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
   const handleRestartDaemon = useCallback(async () => {
     setDaemonRestarting(true)
     setDaemonError(null)
@@ -623,6 +666,11 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
       window.clearInterval(interval)
     }
   }, [section])
+
+  useEffect(() => {
+    if (section !== 'permissions') return
+    void loadPermissions()
+  }, [section, loadPermissions])
 
   useEffect(() => {
     if (section !== 'daemon') return
@@ -1318,6 +1366,117 @@ export function SettingsPanel({ onClose, settings: initialSettings, onSettingsCh
             <SettingRow label="Navigation" description="The sidebar shows workspaces and canvases. Use Files blocks on the canvas for file browsing.">
               <span style={{ fontSize: fonts.secondarySize, color: theme.text.muted }}>Files block replaces sidebar file browser</span>
             </SettingRow>
+          </>
+        )
+
+      case 'permissions':
+        return (
+          <>
+            <SectionLabel label="Tool Permission Memory" />
+            <div style={{ background: theme.surface.panelMuted, borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
+              <div style={{ fontSize: fonts.size, color: theme.text.secondary, marginBottom: 6 }}>
+                Approvals are remembered per provider, tool, and workspace.
+              </div>
+              <div style={{ fontSize: fonts.secondarySize, color: theme.text.muted, lineHeight: 1.6 }}>
+                When a tool asks for approval, CodeSurf can allow it once, for this session, for the rest of today, or permanently.
+              </div>
+              <div style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled, fontFamily: fonts.mono, marginTop: 8 }}>
+                {permissionData?.path ?? '~/.codesurf/permissions.json'}
+              </div>
+            </div>
+            <SettingRow label="Stored grants" description="Clear remembered approvals so tools prompt again.">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => { void loadPermissions() }}
+                  disabled={permissionsLoading}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    fontSize: fonts.secondarySize,
+                    fontWeight: 600,
+                    border: `1px solid ${theme.border.default}`,
+                    background: theme.surface.input,
+                    color: theme.text.secondary,
+                    cursor: permissionsLoading ? 'not-allowed' : 'pointer',
+                    opacity: permissionsLoading ? 0.6 : 1,
+                  }}
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void clearAllPermissionGrants() }}
+                  disabled={permissionsLoading || (permissionData?.grants.length ?? 0) === 0}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    fontSize: fonts.secondarySize,
+                    fontWeight: 600,
+                    border: `1px solid ${theme.border.default}`,
+                    background: `${theme.status.danger}14`,
+                    color: theme.status.danger,
+                    cursor: permissionsLoading || (permissionData?.grants.length ?? 0) === 0 ? 'not-allowed' : 'pointer',
+                    opacity: permissionsLoading || (permissionData?.grants.length ?? 0) === 0 ? 0.6 : 1,
+                  }}
+                >
+                  Clear all
+                </button>
+              </div>
+            </SettingRow>
+            {permissionsError && (
+              <div style={{ fontSize: fonts.secondarySize, color: theme.status.danger, padding: '4px 2px 10px' }}>
+                {permissionsError}
+              </div>
+            )}
+            {(permissionData?.grants.length ?? 0) === 0 ? (
+              <div style={{ fontSize: fonts.secondarySize, color: theme.text.muted, padding: '8px 2px' }}>
+                {permissionsLoading ? 'Loading permission grants…' : 'No remembered tool approvals.'}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {permissionData!.grants.map(grant => (
+                  <div key={grant.id} style={{ background: theme.surface.panelMuted, borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: fonts.size, color: theme.text.primary, fontWeight: 600 }}>{grant.title || grant.toolName}</span>
+                        <span style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled, background: theme.surface.input, padding: '2px 8px', borderRadius: 999 }}>
+                          {grant.provider}
+                        </span>
+                        <span style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.status.success, background: `${theme.status.success}14`, padding: '2px 8px', borderRadius: 999 }}>
+                          {grant.scope === 'forever' ? 'all time' : grant.scope}
+                        </span>
+                      </div>
+                      {grant.description && (
+                        <div style={{ fontSize: fonts.secondarySize, color: theme.text.muted, marginTop: 4 }}>
+                          {grant.description}
+                        </div>
+                      )}
+                      <div style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled, fontFamily: fonts.mono, marginTop: 6, wordBreak: 'break-all' }}>
+                        {grant.toolName}{grant.workspaceDir ? ` · ${grant.workspaceDir}` : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { void clearPermissionGrantById(grant.id) }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: fonts.secondarySize,
+                        fontWeight: 600,
+                        border: `1px solid ${theme.border.default}`,
+                        background: 'transparent',
+                        color: theme.text.secondary,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )
 
@@ -2130,33 +2289,6 @@ function validateDisplayJson(value: string): { ok: true; parsed: Partial<AppSett
   }
 }
 
-function SliderField({ value, min, max, step, onChange, format }: {
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (value: number) => void
-  format?: (value: number) => string
-}): React.JSX.Element {
-  const theme = useTheme()
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        style={{ width: '100%', minWidth: 0 }}
-      />
-      <span style={{ width: 32, textAlign: 'right', fontSize: 10, color: theme.text.secondary, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-        {format ? format(value) : value}
-      </span>
-    </div>
-  )
-}
-
 function StepperNumberField({ value, min, max, step, onChange, format }: {
   value: number
   min: number
@@ -2405,6 +2537,44 @@ function DisplaySettingsEditor({
             <CompactFontRow label="Primary" description="Main UI text, headings, chat messages" token={settings.fonts.primary} fontOptions={SANS_FONTS} onChange={next => updateFont('primary', next)} />
             <CompactFontRow label="Secondary" description="Metadata, subtitles, labels, smaller text" token={settings.fonts.secondary} fontOptions={SANS_FONTS} onChange={next => updateFont('secondary', next)} />
             <CompactFontRow label="Monospace" description="Terminal, code editor, data display" token={settings.fonts.mono} fontOptions={MONO_FONTS} onChange={next => updateFont('mono', next)} />
+          </div>
+
+          {/* Live font preview */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 10,
+            padding: '12px 14px',
+            background: theme.surface.panelMuted,
+            border: `1px solid ${theme.border.subtle}`,
+            borderRadius: 10,
+          }}>
+            <div style={{ fontSize: fonts.secondarySize - 2, fontWeight: 700, color: theme.text.disabled, letterSpacing: 1.2, textTransform: 'uppercase' }}>Preview</div>
+            <div style={{
+              fontFamily: settings.fonts.primary.family,
+              fontSize: settings.fonts.primary.size,
+              fontWeight: settings.fonts.primary.weight ?? 400,
+              lineHeight: settings.fonts.primary.lineHeight,
+              color: theme.text.primary,
+            }}>
+              Primary: The quick brown fox jumps over the lazy dog
+            </div>
+            <div style={{
+              fontFamily: settings.fonts.secondary.family,
+              fontSize: settings.fonts.secondary.size,
+              fontWeight: settings.fonts.secondary.weight ?? 400,
+              lineHeight: settings.fonts.secondary.lineHeight,
+              color: theme.text.secondary,
+            }}>
+              Secondary: Metadata, labels, and smaller interface text
+            </div>
+            <div style={{
+              fontFamily: settings.fonts.mono.family,
+              fontSize: settings.fonts.mono.size,
+              fontWeight: settings.fonts.mono.weight ?? 400,
+              lineHeight: settings.fonts.mono.lineHeight,
+              color: theme.text.muted,
+            }}>
+              Mono: const result = await fetch('/api/data')
+            </div>
           </div>
 
           <SectionLabel label="Updates" />

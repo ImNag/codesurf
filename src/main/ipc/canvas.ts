@@ -369,6 +369,24 @@ export function registerCanvasIPC(): void {
     return result
   })
 
+  ipcMain.handle('canvas:renameSession', async (_, workspaceId: string, sessionEntryId: string, title: string) => {
+    assertSafeId(workspaceId)
+    const workspacePath = await getWorkspacePathById(workspaceId)
+
+    const result = (sessionEntryId.startsWith('codesurf-tile:') || sessionEntryId.startsWith('codesurf-job:'))
+      ? await daemonClient.renameLocalSession(workspaceId, sessionEntryId, title).catch(error => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+      : await daemonClient.renameExternalSession(workspacePath, sessionEntryId, title).catch(error => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+
+    if (result.ok) broadcastSessionsChanged(workspaceId)
+    return result
+  })
+
   ipcMain.handle('canvas:deleteTileArtifacts', async (_, workspaceId: string, tileId: string) => {
     const storageIds = await ensureWorkspaceStorageMigrated(workspaceId)
     await Promise.all(storageIds.flatMap(storageId => [

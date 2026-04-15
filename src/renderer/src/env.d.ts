@@ -132,6 +132,7 @@ interface ElectronAPI {
     onSessionsChanged(cb: (payload: { workspaceId: string }) => void): () => void
     getSessionState(workspaceId: string, sessionEntryId: string): Promise<any>
     deleteSession(workspaceId: string, sessionEntryId: string): Promise<{ ok: boolean; error?: string }>
+    renameSession(workspaceId: string, sessionEntryId: string, title: string): Promise<{ ok: boolean; error?: string; title?: string }>
   }
   kanban?: {
     load(workspaceId: string, tileId: string): Promise<{ columns: Array<{ id: string; title: string }>; cards: import('./components/KanbanCard').KanbanCardData[] } | null>
@@ -166,6 +167,11 @@ interface ElectronAPI {
     set(settings: import('../../shared/types').AppSettings): Promise<import('../../shared/types').AppSettings>
     getRawJson(): Promise<{ path: string; content: string }>
     setRawJson(json: string): Promise<{ ok: boolean; error?: string; settings?: import('../../shared/types').AppSettings }>
+  }
+  permissions: {
+    list(): Promise<{ path: string; grants: import('../../shared/types').ToolPermissionGrant[] }>
+    clear(id: string): Promise<{ path: string; grants: import('../../shared/types').ToolPermissionGrant[] }>
+    clearAll(): Promise<{ path: string; grants: import('../../shared/types').ToolPermissionGrant[] }>
   }
   activity: {
     upsert(workspaceId: string, data: {

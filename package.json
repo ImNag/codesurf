@@ -24,6 +24,7 @@
     "build:preload": "EV_BUILD_TARGET=preload electron-vite build",
     "build:renderer": "EV_BUILD_TARGET=renderer electron-vite build",
     "build": "EV_BUILD_TARGET=main electron-vite build && EV_BUILD_TARGET=preload electron-vite build && EV_BUILD_TARGET=renderer electron-vite build",
+    "build:npm": "bun run scripts/build-npm-package.mjs",
     "dist:mac": "npm run build && electron-builder --mac dmg zip",
     "release:github": "npm run build && electron-builder --mac dmg zip --publish always",
     "dogfood": "electron-vite build && electron-vite preview",

@@ -19,6 +19,7 @@ const PROJECTS_FILE = join(HOME, 'projects', 'projects.json')
 const HOSTS_FILE = join(HOME, 'hosts', 'hosts.json')
 const SETTINGS_FILE = join(HOME, 'settings.json')
 const AGENT_KANBAN_DIR = join(HOME, 'agent-kanban')
+const SESSION_TITLE_OVERRIDES_FILE = join(HOME, 'session-title-overrides.json')
 const AUTH_TOKEN = randomUUID()
 const SESSION_TEXT_LIMIT = 120
 const chatJobs = createChatJobManager({ homeDir: HOME })
@@ -48,6 +49,66 @@ function readJsonFile(filePath, fallback) {
   } catch {
     return fallback
   }
+}
+
+function readSessionTitleOverrides() {
+  const parsed = readJsonFile(SESSION_TITLE_OVERRIDES_FILE, {})
+  return parsed && typeof parsed === 'object' ? parsed : {}
+}
+
+function writeSessionTitleOverrides(overrides) {
+  atomicWriteJson(SESSION_TITLE_OVERRIDES_FILE, overrides)
+}
+
+function localSessionOverrideKey(workspaceId, sessionEntryId) {
+  return `local:${String(workspaceId ?? '').trim()}:${String(sessionEntryId ?? '').trim()}`
+}
+
+function externalSessionOverrideKey(workspacePath, sessionEntryId) {
+  return `external:${normalizePath(workspacePath) || '__global__'}:${String(sessionEntryId ?? '').trim()}`
+}
+
+function applyLocalSessionTitleOverride(workspaceId, entry) {
+  const overrides = readSessionTitleOverrides()
+  const override = overrides[localSessionOverrideKey(workspaceId, entry.id)]
+  if (typeof override !== 'string' || !override.trim()) return entry
+  return { ...entry, title: override.trim() }
+}
+
+function setLocalSessionTitleOverride(workspaceId, sessionEntryId, title) {
+  const trimmedTitle = String(title ?? '').trim()
+  if (!trimmedTitle) return { ok: false, error: 'title is required' }
+  const overrides = readSessionTitleOverrides()
+  overrides[localSessionOverrideKey(workspaceId, sessionEntryId)] = trimmedTitle
+  writeSessionTitleOverrides(overrides)
+  return { ok: true, title: trimmedTitle }
+}
+
+function deleteLocalSessionTitleOverride(workspaceId, sessionEntryId) {
+  const overrides = readSessionTitleOverrides()
+  const key = localSessionOverrideKey(workspaceId, sessionEntryId)
+  if (!(key in overrides)) return
+  delete overrides[key]
+  writeSessionTitleOverrides(overrides)
+}
+
+function setExternalSessionTitleOverride(workspacePath, sessionEntryId, title) {
+  const trimmedTitle = String(title ?? '').trim()
+  if (!trimmedTitle) return { ok: false, error: 'title is required' }
+  const overrides = readSessionTitleOverrides()
+  overrides[externalSessionOverrideKey(workspacePath, sessionEntryId)] = trimmedTitle
+  writeSessionTitleOverrides(overrides)
+  invalidateExternalSessionCache(workspacePath)
+  return { ok: true, title: trimmedTitle }
+}
+
+function deleteExternalSessionTitleOverride(workspacePath, sessionEntryId) {
+  const overrides = readSessionTitleOverrides()
+  const key = externalSessionOverrideKey(workspacePath, sessionEntryId)
+  if (!(key in overrides)) return
+  delete overrides[key]
+  writeSessionTitleOverrides(overrides)
+  invalidateExternalSessionCache(workspacePath)
 }
 
 function sendHtml(res, status, html) {
@@ -1274,7 +1335,15 @@ function deleteExternalSession(codesurfHome, workspacePath, sessionEntryId) {
     }
 
     invalidateExternalSessionCache(workspacePath)
+    deleteExternalSessionTitleOverride(workspacePath, sessionEntryId)
     return { ok: true }
+  })
+}
+
+function renameExternalSession(codesurfHome, workspacePath, sessionEntryId, title) {
+  return findSessionEntryById(codesurfHome, workspacePath, sessionEntryId).then(entry => {
+    if (!entry) return { ok: false, error: 'Session not found' }
+    return setExternalSessionTitleOverride(workspacePath, sessionEntryId, title)
   })
 }
 
@@ -1302,7 +1371,7 @@ function listLocalWorkspaceSessions(workspaceId) {
         atomicWriteJson(summaryPath, summary)
       }
 
-      entries.push({
+      entries.push(applyLocalSessionTitleOverride(workspaceId, {
         id: `codesurf-tile:${name}`,
         source: 'codesurf',
         scope: 'workspace',
@@ -1321,7 +1390,7 @@ function listLocalWorkspaceSessions(workspaceId) {
         canOpenInChat: true,
         canOpenInApp: false,
         nestingLevel: 0,
-      })
+      }))
     }
   }
 
@@ -1353,6 +1422,7 @@ function deleteLocalSession(workspaceId, sessionEntryId) {
 
     moveFileToDeleted(filePath)
     rmSync(tileSessionSummaryPath(workspaceId, tileId), { force: true })
+    deleteLocalSessionTitleOverride(workspaceId, sessionEntryId)
     return { ok: true }
   }
   if (normalizedId.startsWith('codesurf-job:')) {
@@ -1361,7 +1431,25 @@ function deleteLocalSession(workspaceId, sessionEntryId) {
     if (!metadata) return { ok: false, error: 'Job not found' }
     rmSync(join(HOME, 'jobs', `${jobId}.json`), { force: true })
     rmSync(join(HOME, 'timelines', `${jobId}.jsonl`), { force: true })
+    deleteLocalSessionTitleOverride(workspaceId, sessionEntryId)
     return { ok: true }
+  }
+  return { ok: false, error: 'Unsupported local session id' }
+}
+
+function renameLocalSession(workspaceId, sessionEntryId, title) {
+  const normalizedId = String(sessionEntryId)
+  if (normalizedId.startsWith('codesurf-tile:')) {
+    const tileId = normalizedId.replace('codesurf-tile:tile-state-', '').replace('.json', '')
+    const filePath = tileStatePath(workspaceId, tileId)
+    if (!pathExists(filePath)) return { ok: false, error: 'Session file missing' }
+    return setLocalSessionTitleOverride(workspaceId, sessionEntryId, title)
+  }
+  if (normalizedId.startsWith('codesurf-job:')) {
+    const jobId = normalizedId.replace('codesurf-job:', '')
+    const metadata = readDaemonJobRecord(jobId)
+    if (!metadata) return { ok: false, error: 'Job not found' }
+    return setLocalSessionTitleOverride(workspaceId, sessionEntryId, title)
   }
   return { ok: false, error: 'Unsupported local session id' }
 }
@@ -1417,7 +1505,7 @@ function listDaemonWorkspaceSessions(workspaceId, existingEntries) {
       const updatedAt = job.updatedAt ? Date.parse(job.updatedAt) : 0
       return updatedAt > 0 && (now - updatedAt) <= 24 * 60 * 60 * 1000
     })
-    .map(job => ({
+    .map(job => applyLocalSessionTitleOverride(workspaceId, {
       id: `codesurf-job:${job.id}`,
       source: 'codesurf',
       scope: 'workspace',
@@ -1946,6 +2034,19 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    if (method === 'POST' && url.pathname === '/session/local/rename') {
+      const body = await parseRequestBody(req)
+      const workspaceId = String(body?.workspaceId ?? '').trim()
+      const sessionEntryId = String(body?.sessionEntryId ?? '').trim()
+      const title = String(body?.title ?? '').trim()
+      if (!workspaceId || !sessionEntryId || !title) {
+        sendJson(res, 400, { error: 'workspaceId, sessionEntryId, and title are required' })
+        return
+      }
+      sendJson(res, 200, renameLocalSession(workspaceId, sessionEntryId, title))
+      return
+    }
+
     if (method === 'POST' && url.pathname === '/session/external/invalidate') {
       const body = await parseRequestBody(req)
       const workspacePath = String(body?.workspacePath ?? '').trim() || null
@@ -1963,6 +2064,19 @@ const server = createServer(async (req, res) => {
         return
       }
       sendJson(res, 200, await deleteExternalSession(HOME, workspacePath, sessionEntryId))
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/session/external/rename') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim() || null
+      const sessionEntryId = String(body?.sessionEntryId ?? '').trim()
+      const title = String(body?.title ?? '').trim()
+      if (!sessionEntryId || !title) {
+        sendJson(res, 400, { error: 'sessionEntryId and title are required' })
+        return
+      }
+      sendJson(res, 200, await renameExternalSession(HOME, workspacePath, sessionEntryId, title))
       return
     }
 

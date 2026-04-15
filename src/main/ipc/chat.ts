@@ -25,6 +25,7 @@ import { daemonClient } from '../daemon/client'
 import { ensureDaemonRunning } from '../daemon/manager'
 import { getBuiltinExecutionHosts, resolveExecutionTarget } from '../execution/targets'
 import { readSettingsSync } from './workspace'
+import { requestToolPermission } from '../permissions'
 // Lazy-loaded: @opencode-ai/sdk only exports ESM, Electron main is CJS.
 // externalizeDepsPlugin converts dynamic import() to require() which can't
 // resolve ESM-only exports — wrap in try/catch so the app still starts.
@@ -891,7 +892,7 @@ function chatClaude(req: ChatRequest): void {
     plan: 'plan',
     bypassPermissions: 'bypassPermissions',
   }
-  const permMode = modeMap[req.mode ?? ''] ?? 'bypassPermissions'
+  const permMode = modeMap[req.mode ?? ''] ?? 'default'
 
   // Map thinking option from UI to SDK thinking config
   const thinkingMap: Record<string, { type: string; budget_tokens?: number }> = {
@@ -917,7 +918,6 @@ function chatClaude(req: ChatRequest): void {
   }
 
   const contexToolNames = getContexMcpToolNames()
-  const contexAllowedTools = contexToolNames.map(t => `mcp__contex__${t}`)
 
   // Register peer links in the collaboration state store
   if (req.peers && req.peers.length > 0) {
@@ -993,9 +993,30 @@ function chatClaude(req: ChatRequest): void {
     includePartialMessages: true,
     permissionMode: permMode as any,
     thinking: thinkingConfig as any,
+    ...(permMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+    ...(permMode !== 'bypassPermissions' ? {
+      canUseTool: async (toolName: string, _input: Record<string, unknown>, toolOptions: any) => {
+        const allowed = await requestToolPermission({
+          provider: 'claude',
+          toolName,
+          title: typeof toolOptions?.title === 'string' ? toolOptions.title : null,
+          description: typeof toolOptions?.description === 'string' ? toolOptions.description : null,
+          blockedPath: typeof toolOptions?.blockedPath === 'string' ? toolOptions.blockedPath : null,
+          workspaceDir: req.workspaceDir,
+        }, true)
+
+        if (allowed) {
+          return { behavior: 'allow', toolUseID: toolOptions?.toolUseID }
+        }
+
+        return {
+          behavior: 'deny',
+          message: 'Tool permission denied by the user.',
+          toolUseID: toolOptions?.toolUseID,
+        }
+      },
+    } : {}),
     ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
-    // Match tools/list (canvas + bus + node bridge + extensions); avoids blocking peer tools
-    ...(Object.keys(mcpServers).length > 0 && { allowedTools: contexAllowedTools }),
     // Use detected system binary, not the SDK's bundled cli.js
     ...(claudePath && { pathToClaudeCodeExecutable: claudePath }),
   }
@@ -1732,15 +1753,23 @@ function chatOpencode(req: ChatRequest): void {
             }
 
             case 'permission.asked': {
-              // Auto-approve permission requests so tools don't block
               const permReq = props as any
               log('opencode permission asked:', permReq.permission, 'id:', permReq.id)
               try {
+                const allowed = await requestToolPermission({
+                  provider: 'opencode',
+                  toolName: typeof permReq.permission === 'string' ? permReq.permission : 'tool',
+                  title: typeof permReq.title === 'string' ? permReq.title : null,
+                  description: typeof permReq.description === 'string' ? permReq.description : null,
+                  blockedPath: typeof permReq.path === 'string' ? permReq.path : null,
+                  workspaceDir: req.workspaceDir,
+                }, true)
                 await client.permission.reply({
                   requestID: permReq.id,
-                  reply: 'always',
+                  reply: allowed ? 'once' : 'reject',
+                  ...(allowed ? {} : { message: 'Tool permission denied by the user.' }),
                 })
-                log('opencode permission auto-approved:', permReq.id)
+                log('opencode permission decision:', permReq.id, allowed ? 'allow' : 'reject')
               } catch (permErr: any) {
                 log('opencode permission reply error:', permErr.message)
               }

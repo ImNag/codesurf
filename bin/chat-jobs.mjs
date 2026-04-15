@@ -13,6 +13,37 @@ function ensureDir(dirPath) {
   mkdirSync(dirPath, { recursive: true })
 }
 
+function readPermissionGrants(homeDir) {
+  try {
+    const raw = JSON.parse(readFileSync(join(homeDir, 'permissions.json'), 'utf8'))
+    const grants = Array.isArray(raw?.grants) ? raw.grants : []
+    const now = Date.now()
+    return grants.filter(grant => {
+      if (!grant || typeof grant !== 'object') return false
+      if (grant.action !== 'allow') return false
+      if (typeof grant.provider !== 'string' || typeof grant.toolName !== 'string') return false
+      if (grant.expiresAt) {
+        const expiry = Date.parse(grant.expiresAt)
+        if (Number.isFinite(expiry) && expiry <= now) return false
+      }
+      return true
+    })
+  } catch {
+    return []
+  }
+}
+
+function hasPersistedPermissionGrant(homeDir, { provider, toolName, workspaceDir }) {
+  const normalizedWorkspace = String(workspaceDir ?? '').trim()
+    ? resolve(String(workspaceDir).trim())
+    : ''
+  return readPermissionGrants(homeDir).some(grant => {
+    return grant.provider === provider
+      && grant.toolName === toolName
+      && String(grant.workspaceDir ?? '') === normalizedWorkspace
+  })
+}
+
 function normalizePath(value) {
   return String(value ?? '').trim().replace(/\/+$/, '')
 }
@@ -467,7 +498,7 @@ export function createChatJobManager({ homeDir }) {
       plan: 'plan',
       bypassPermissions: 'bypassPermissions',
     }
-    const permMode = modeMap[request.mode ?? ''] ?? 'bypassPermissions'
+    const permMode = modeMap[request.mode ?? ''] ?? 'default'
     const thinkingMap = {
       adaptive: { type: 'adaptive' },
       none: { type: 'disabled' },
@@ -482,6 +513,22 @@ export function createChatJobManager({ homeDir }) {
       persistSession: true,
       includePartialMessages: true,
       permissionMode: permMode,
+      ...(permMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+      ...(permMode !== 'bypassPermissions' ? {
+        canUseTool: async (toolName, _input, toolOptions) => {
+          const allowed = hasPersistedPermissionGrant(homeDir, {
+            provider: 'claude',
+            toolName,
+            workspaceDir,
+          })
+          if (allowed) return { behavior: 'allow', toolUseID: toolOptions?.toolUseID }
+          return {
+            behavior: 'deny',
+            message: `Permission required for ${toolName}. Save an all-day or all-time grant from an interactive chat before running this daemon job.`,
+            toolUseID: toolOptions?.toolUseID,
+          }
+        },
+      } : {}),
       thinking: thinkingMap[request.thinking ?? ''] ?? { type: 'adaptive' },
       cwd: workspaceDir || undefined,
       ...(request.sessionId ? { resume: request.sessionId } : {}),

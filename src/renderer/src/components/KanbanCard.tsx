@@ -614,7 +614,7 @@ export function KanbanCard({
       {/* Collapsed summary strip */}
       {!expanded && (
         <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: fonts.size, color: instructionPreview ? theme.text.primary : theme.text.disabled, lineHeight: 1.5, minHeight: 40, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', fontWeight: 400 } as React.CSSProperties}>
+          <div style={{ fontSize: fonts.size, color: instructionPreview ? theme.text.primary : theme.text.disabled, lineHeight: fonts.lineHeight, minHeight: 40, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', fontWeight: fonts.weight } as React.CSSProperties}>
             {instructionPreview || 'No instructions yet'}
           </div>
           {(card.tools.length > 0 || card.fileRefs.length > 0 || card.cardRefs.length > 0) && (

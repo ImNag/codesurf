@@ -3086,6 +3086,18 @@ function App(): JSX.Element {
       }
       default:
         if (tile.type.startsWith('ext:')) {
+          const extensionPeers = (negotiatedDiscoveryState.byTileConnections.get(tile.id) ?? []).map(peer => {
+            const extActions = extensionActionRegistry.get(peer.peerId)
+            const peerTile = tileByIdMap.get(peer.peerId)
+            return {
+              peerId: peer.peerId,
+              peerType: peer.peerType,
+              tools: peer.capabilities.filter(c => c.startsWith('tool:')).map(c => stripCapabilityPrefix(c)),
+              actions: extActions,
+              filePath: peerTile?.filePath,
+              label: peerTile?.label,
+            }
+          })
           return (
             <LazyExtensionTile
               tileId={tile.id}
@@ -3095,7 +3107,7 @@ function App(): JSX.Element {
               workspaceId={workspace?.id ?? ''}
               workspacePath={workspace?.path ?? ''}
               isInteracting={isTileInteracting}
-              connectedPeers={negotiatedDiscoveryState.byTileConnections.get(tile.id)?.map(link => link.peerId) ?? []}
+              connectedPeers={extensionPeers}
               onCreateTile={(type, opts) => addTile(
                 type as TileType,
                 opts?.filePath,
@@ -3678,7 +3690,7 @@ function App(): JSX.Element {
     <ThemeProvider value={theme}>
     <FontTokenProvider value={fontTokens}>
     <FontProvider value={appFonts}>
-    <div className="w-full h-full" style={{ position: 'relative', color: theme.text.primary, fontFamily: appFonts.primary, fontSize: appFonts.size, fontWeight: appFonts.weight, lineHeight: appFonts.lineHeight, background: theme.surface.app }}>
+    <div className="w-full h-full" style={{ position: 'relative', color: theme.text.primary, fontFamily: appFonts.primary, fontSize: appFonts.size, background: theme.surface.app }}>
       {/* Sidebar inset panel — floats over the canvas */}
       <div style={{
         position: 'absolute',

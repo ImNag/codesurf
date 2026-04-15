@@ -368,6 +368,27 @@ export interface AppSettings {
   extensionsDisabled: boolean
 }
 
+export type ToolPermissionDecisionScope = 'once' | 'session' | 'today' | 'forever'
+
+export interface ToolPermissionGrant {
+  id: string
+  provider: string
+  toolName: string
+  action: 'allow'
+  scope: Exclude<ToolPermissionDecisionScope, 'once'>
+  workspaceDir: string | null
+  title?: string | null
+  description?: string | null
+  blockedPath?: string | null
+  createdAt: string
+  expiresAt?: string | null
+}
+
+export interface ToolPermissionStore {
+  version: number
+  grants: ToolPermissionGrant[]
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   fonts: { ...DEFAULT_FONTS },
   appearance: 'dark',

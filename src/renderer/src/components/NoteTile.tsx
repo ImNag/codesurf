@@ -155,8 +155,7 @@ function StickyNote({ initialContent, tileId, workspacePath }: { initialContent:
   }, [contextDir, contextFile, settingsFile, setColorId, setFontId])
 
   // Auto-save content to context dir
-  const handleChange = useCallback((value: string) => {
-    setContent(value)
+  const persistContent = useCallback((value: string) => {
     if (!contextDir || !contextFile || !loaded.current) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
@@ -165,6 +164,11 @@ function StickyNote({ initialContent, tileId, workspacePath }: { initialContent:
       })
     }, 500)
   }, [contextDir, contextFile])
+
+  const handleChange = useCallback((value: string) => {
+    setContent(value)
+    persistContent(value)
+  }, [persistContent])
 
   useEffect(() => {
     if (!contextDir || !settingsFile || !loaded.current) return
@@ -188,14 +192,19 @@ function StickyNote({ initialContent, tileId, workspacePath }: { initialContent:
     const subscriberId = `note-${tileId}`
     const unsub = window.electron?.bus?.subscribe(channel, subscriberId, (event: { payload?: { command?: string; content?: string } }) => {
       if (event.payload?.command === 'note_append_context' && event.payload.content) {
-        setContent(prev => prev ? `${prev}\n${event.payload!.content}` : event.payload!.content!)
+        setContent(prev => {
+          const next = prev ? `${prev}\n${event.payload!.content}` : event.payload!.content!
+          persistContent(next)
+          return next
+        })
       }
       if (event.payload?.command === 'note_write_content' && typeof event.payload.content === 'string') {
         setContent(event.payload.content)
+        persistContent(event.payload.content)
       }
     })
     return () => unsub?.()
-  }, [tileId])
+  }, [persistContent, tileId])
 
   return (
     <div style={{
@@ -415,7 +424,7 @@ export function StickyColorPicker(): JSX.Element {
   )
 }
 
-function FileNote({ filePath, initialContent }: { filePath?: string; initialContent: string }): JSX.Element {
+function FileNote({ tileId, filePath, initialContent }: { tileId?: string; filePath?: string; initialContent: string }): JSX.Element {
   const [content, setContent] = useState<string | undefined>(undefined)
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -440,9 +449,7 @@ function FileNote({ filePath, initialContent }: { filePath?: string; initialCont
     })
   }, [filePath, initialContent])
 
-  const handleChange = useCallback((value: string | undefined) => {
-    if (!loaded.current || value === undefined) return
-    setContent(value)
+  const persistContent = useCallback((value: string) => {
     if (!filePath) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
@@ -450,7 +457,33 @@ function FileNote({ filePath, initialContent }: { filePath?: string; initialCont
     }, 500)
   }, [filePath])
 
+  const handleChange = useCallback((value: string | undefined) => {
+    if (!loaded.current || value === undefined) return
+    setContent(value)
+    persistContent(value)
+  }, [persistContent])
+
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [])
+
+  useEffect(() => {
+    if (!tileId) return
+    const channel = `tile:${tileId}`
+    const subscriberId = `note-${tileId}`
+    const unsub = window.electron?.bus?.subscribe(channel, subscriberId, (event: { payload?: { command?: string; content?: string } }) => {
+      if (event.payload?.command === 'note_append_context' && event.payload.content) {
+        setContent(prev => {
+          const next = prev ? `${prev}\n${event.payload!.content}` : event.payload!.content!
+          persistContent(next)
+          return next
+        })
+      }
+      if (event.payload?.command === 'note_write_content' && typeof event.payload.content === 'string') {
+        setContent(event.payload.content)
+        persistContent(event.payload.content)
+      }
+    })
+    return () => unsub?.()
+  }, [persistContent, tileId])
 
   // Safe preview: render user-authored markdown (HTML-escaped first in renderMarkdown)
   useEffect(() => {
@@ -575,7 +608,7 @@ function FileNote({ filePath, initialContent }: { filePath?: string; initialCont
 
 export function NoteTile({ tileId, filePath, initialContent = '', workspacePath }: Props): JSX.Element {
   if (filePath) {
-    return <FileNote filePath={filePath} initialContent={initialContent} />
+    return <FileNote tileId={tileId} filePath={filePath} initialContent={initialContent} />
   }
   return <StickyNote initialContent={initialContent} tileId={tileId} workspacePath={workspacePath} />
 }

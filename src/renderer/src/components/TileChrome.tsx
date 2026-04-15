@@ -1502,7 +1502,7 @@ export function TileChrome({
 
         {/* Content */}
         <div
-          style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative', userSelect: 'text', WebkitUserSelect: 'text' } as React.CSSProperties}
+          style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' } as React.CSSProperties}
           onDragOver={e => { if (tile.type !== 'kanban') e.stopPropagation() }}
           onDrop={e => { if (tile.type !== 'kanban') e.stopPropagation() }}
         >

@@ -158,7 +158,8 @@ function ThreadMenuItem({
         WebkitUserSelect: 'none',
         fontFamily: fonts.primary,
         fontSize: Math.max(fonts.size, 14),
-        lineHeight: 1.2,
+        lineHeight: fonts.lineHeight,
+        fontWeight: fonts.weight,
         textAlign: 'left',
       }}
     >
@@ -858,8 +859,24 @@ export function Sidebar({
       items.push({ label: 'Open Raw File', action: () => onOpenFile(session.filePath!) })
     }
 
+    items.push({
+      label: 'Rename Thread',
+      action: () => {
+        const nextTitle = window.prompt('Rename thread', session.title)?.trim()
+        if (!nextTitle || nextTitle === session.title) return
+        void window.electron.canvas.renameSession(session.workspaceId, session.id, nextTitle).then(result => {
+          if (!result?.ok) return
+          setSessions(prev => prev.map(entry => entry.id === session.id && entry.workspaceId === session.workspaceId
+            ? { ...entry, title: nextTitle }
+            : entry))
+          const workspaceEntry = workspaceById.get(session.workspaceId)
+          if (workspaceEntry) void loadWorkspaceSessions(workspaceEntry, true)
+        }).catch(() => {})
+      },
+    })
+
     return items.length > 0 ? items : [{ label: 'No actions available', action: () => {} }]
-  }, [onFocusTile, onOpenFile, onOpenSessionInApp, onOpenSessionInChat])
+  }, [loadWorkspaceSessions, onFocusTile, onOpenFile, onOpenSessionInApp, onOpenSessionInChat, workspaceById])
   const resizing = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
@@ -1113,6 +1130,10 @@ export function Sidebar({
       transition: 'width 0.15s ease',
       userSelect: 'none',
       WebkitUserSelect: 'none',
+      fontFamily: fonts.primary,
+      fontSize: fonts.size,
+      fontWeight: fonts.weight,
+      lineHeight: fonts.lineHeight,
     }}>
       {/* Scrollable sections */}
       <div
@@ -1156,7 +1177,7 @@ export function Sidebar({
           ))}
         </div>
 
-        <div style={{ padding: '8px 12px 10px' }}>
+        <div style={{ padding: '8px 12px 10px', fontSize: fonts.secondarySize, fontWeight: fonts.secondaryWeight, lineHeight: fonts.secondaryLineHeight }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
             <span style={{
               fontSize: fonts.secondarySize - 2,

@@ -11,6 +11,7 @@ const MAX_SESSION_LISTING_TEXT_SAMPLE_BYTES = 16 * 1024
 const GENERIC_OPENCLAW_LABELS = new Set(['openclaw studio', 'openclawstudio', 'openclaw-tui', 'vibeclaw', 'heartbeat'])
 
 const externalSessionCache = new Map()
+const SESSION_TITLE_OVERRIDES_FILE = 'session-title-overrides.json'
 
 function getProjectCodeSurfDir(codesurfHome, workspacePath) {
   return join(workspacePath, '.codesurf')
@@ -18,6 +19,29 @@ function getProjectCodeSurfDir(codesurfHome, workspacePath) {
 
 async function ensureDir(path) {
   await fs.mkdir(path, { recursive: true })
+}
+
+async function readSessionTitleOverrides(codesurfHome) {
+  try {
+    const raw = await fs.readFile(join(codesurfHome, SESSION_TITLE_OVERRIDES_FILE), 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function externalSessionOverrideKey(workspacePath, id) {
+  return `external:${normalizePath(workspacePath) || '__global__'}:${String(id ?? '').trim()}`
+}
+
+async function applyExternalSessionTitleOverrides(codesurfHome, workspacePath, entries) {
+  const overrides = await readSessionTitleOverrides(codesurfHome)
+  return entries.map(entry => {
+    const override = overrides[externalSessionOverrideKey(workspacePath, entry.id)]
+    if (typeof override !== 'string' || !override.trim()) return entry
+    return { ...entry, title: override.trim() }
+  })
 }
 
 export async function ensureCodeSurfStructure(codesurfHome, workspacePath) {
@@ -892,9 +916,10 @@ export async function listExternalSessionEntries(codesurfHome, workspacePath, op
     ...(await listOpenClawSessions(workspacePath)),
     ...(await listOpenCodeSessions(workspacePath)),
   ].sort(compareSessions)
+  const overriddenEntries = await applyExternalSessionTitleOverrides(codesurfHome, workspacePath, entries)
 
-  externalSessionCache.set(cacheKey, { at: Date.now(), entries })
-  return entries
+  externalSessionCache.set(cacheKey, { at: Date.now(), entries: overriddenEntries })
+  return overriddenEntries
 }
 
 export async function findSessionEntryById(codesurfHome, workspacePath, id) {
