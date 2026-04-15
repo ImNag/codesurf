@@ -12,6 +12,9 @@ import { setTerminalNotifier, updateLinks, removeTile as removePeerTile, getLink
 import { readSettingsSync } from './workspace'
 
 function ensureNodePtySpawnHelperExecutable(): void {
+  // On Windows, node-pty uses conpty (no spawn-helper needed)
+  if (process.platform === 'win32') return
+
   const candidates = [
     join(__dirname, '../../node_modules/node-pty/build/Release/spawn-helper'),
     join(__dirname, '../../node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper'),
@@ -49,8 +52,21 @@ const ALLOWED_SHELLS = new Set([
   '/opt/homebrew/bin/bash', '/opt/homebrew/bin/zsh', '/opt/homebrew/bin/fish',
 ])
 
+// Windows shells
+if (process.platform === 'win32') {
+  ALLOWED_SHELLS.add('powershell.exe')
+  ALLOWED_SHELLS.add('pwsh.exe')
+  ALLOWED_SHELLS.add('cmd.exe')
+  const sysRoot = process.env.SystemRoot || 'C:\\Windows'
+  ALLOWED_SHELLS.add(`${sysRoot}\\System32\\cmd.exe`)
+  ALLOWED_SHELLS.add(`${sysRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`)
+  // Add pwsh if installed
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files'
+  ALLOWED_SHELLS.add(`${programFiles}\\PowerShell\\7\\pwsh.exe`)
+}
+
 // Also allow the user's default shell
-const userShell = process.env.SHELL
+const userShell = process.env.SHELL || (process.platform === 'win32' ? process.env.COMSPEC : undefined)
 if (userShell) ALLOWED_SHELLS.add(userShell)
 
 // Known agent CLIs that are allowed to be spawned directly
@@ -59,8 +75,8 @@ const ALLOWED_AGENT_BINS = ['claude', 'codex', 'aider', 'opencode', 'openclaw', 
 function isAllowedBinary(bin: string): boolean {
   // Allow known shells
   if (ALLOWED_SHELLS.has(bin)) return true
-  // Allow known agent CLIs (matched by basename)
-  const base = bin.split('/').pop() || ''
+  // Allow known agent CLIs (matched by basename, handle both / and \ separators)
+  const base = (bin.split(/[/\\]/).pop() || '').replace(/\.exe$/i, '')
   if (ALLOWED_AGENT_BINS.includes(base)) return true
   return false
 }
@@ -94,6 +110,11 @@ function expandHome(arg: string): string {
 let _tmuxPath: string | null = null
 function getTmuxPath(): string | null {
   if (_tmuxPath !== null) return _tmuxPath || null
+  // tmux is not available on Windows
+  if (process.platform === 'win32') {
+    _tmuxPath = ''
+    return null
+  }
   // Search common paths directly instead of using shell
   const candidates = [
     '/opt/homebrew/bin/tmux',
@@ -295,7 +316,10 @@ export function registerTerminalIPC(): void {
     }
 
     // If a binary is specified, spawn it directly (no shell wrapper)
-    const bin = launchBin || process.env.SHELL || '/bin/zsh'
+    const defaultShell = process.platform === 'win32'
+      ? (process.env.COMSPEC || 'cmd.exe')
+      : (process.env.SHELL || '/bin/zsh')
+    const bin = launchBin || defaultShell
     const args = launchBin ? (launchArgs ?? []).map(expandHome) : []
 
     // Check if we should inject MCP config for agent CLIs

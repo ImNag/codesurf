@@ -37,31 +37,48 @@ let cachedPaths: AgentPathsConfig | null = null
 
 /** Get the user's real shell PATH (packaged Electron gets a minimal one) */
 function resolveShellPath(): string {
-  try {
-    const shell = process.env.SHELL || '/bin/zsh'
-    // -ilc loads the user's full login profile
-    return execFileSync(shell, ['-ilc', 'echo -n "$PATH"'], {
-      timeout: 5000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim()
-  } catch {
-    // Assemble a reasonable fallback
-    return [
-      '/usr/local/bin',
-      '/opt/homebrew/bin',
-      '/usr/bin',
-      '/bin',
-      '/usr/sbin',
-      '/sbin',
-      `${homedir()}/.bun/bin`,
-      `${homedir()}/.npm-global/bin`,
-      `${homedir()}/.local/bin`,
-      `${homedir()}/.nvm/versions/node`,
-      `${homedir()}/go/bin`,
-      `${homedir()}/.yarn/bin`,
-    ].join(':')
+  const isWin = process.platform === 'win32'
+
+  if (!isWin) {
+    try {
+      const shell = process.env.SHELL || '/bin/zsh'
+      // -ilc loads the user's full login profile
+      return execFileSync(shell, ['-ilc', 'echo -n "$PATH"'], {
+        timeout: 5000,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim()
+    } catch { /* fall through to fallback */ }
   }
+
+  if (isWin) {
+    // On Windows, process.env.PATH is usually already correct
+    if (process.env.PATH) return process.env.PATH
+    const home = homedir()
+    return [
+      join(home, 'AppData', 'Roaming', 'npm'),
+      join(home, '.bun', 'bin'),
+      join(home, 'go', 'bin'),
+      join(home, '.cargo', 'bin'),
+      'C:\\Program Files\\nodejs',
+    ].join(';')
+  }
+
+  // Unix fallback
+  return [
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+    `${homedir()}/.bun/bin`,
+    `${homedir()}/.npm-global/bin`,
+    `${homedir()}/.local/bin`,
+    `${homedir()}/.nvm/versions/node`,
+    `${homedir()}/go/bin`,
+    `${homedir()}/.yarn/bin`,
+  ].join(':')
 }
 
 // Cache the resolved PATH once
@@ -71,16 +88,19 @@ function getShellPath(): string {
   return _shellPath
 }
 
-/** Simple `which` using the real shell PATH */
+/** Simple `which`/`where` using the real shell PATH */
 function whichSync(cmd: string): string | null {
   try {
-    const result = execSync(`which ${cmd}`, {
+    const whichCmd = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`
+    const result = execSync(whichCmd, {
       timeout: 3000,
       encoding: 'utf8',
       env: { ...process.env, PATH: getShellPath() },
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim()
-    return result && !result.includes('not found') ? result : null
+    if (!result || result.includes('not found') || result.includes('Could not find')) return null
+    // `where` on Windows may return multiple lines; take the first
+    return result.split(/\r?\n/)[0]?.trim() || null
   } catch {
     return null
   }
@@ -125,45 +145,42 @@ function getVersionSync(binPath: string): string | null {
   }
 }
 
-// Fallback paths if `which` fails
+// Fallback paths if `which`/`where` fails
+const isWin = process.platform === 'win32'
+const ext = isWin ? '.cmd' : ''
+
+function buildFallbackPaths(cmd: string, extras: string[] = []): string[] {
+  const home = homedir()
+  if (isWin) {
+    return [
+      join(home, 'AppData', 'Roaming', 'npm', `${cmd}${ext}`),
+      join(home, '.bun', 'bin', `${cmd}.exe`),
+      join(home, '.local', 'bin', `${cmd}.exe`),
+      join(home, 'go', 'bin', `${cmd}.exe`),
+      join(home, '.cargo', 'bin', `${cmd}.exe`),
+      ...extras,
+    ]
+  }
+  return [
+    `/usr/local/bin/${cmd}`,
+    `/opt/homebrew/bin/${cmd}`,
+    `${home}/.bun/bin/${cmd}`,
+    `${home}/.npm-global/bin/${cmd}`,
+    `${home}/.local/bin/${cmd}`,
+    `${home}/.yarn/bin/${cmd}`,
+    ...extras,
+  ]
+}
+
 const FALLBACK_PATHS: Record<string, string[]> = {
-  claude: [
-    '/usr/local/bin/claude',
-    '/opt/homebrew/bin/claude',
-    `${homedir()}/.bun/bin/claude`,
-    `${homedir()}/.npm-global/bin/claude`,
-    `${homedir()}/.local/bin/claude`,
-    `${homedir()}/.yarn/bin/claude`,
-  ],
-  codex: [
-    '/usr/local/bin/codex',
-    '/opt/homebrew/bin/codex',
-    `${homedir()}/.bun/bin/codex`,
-    `${homedir()}/.npm-global/bin/codex`,
-    `${homedir()}/.local/bin/codex`,
-    `${homedir()}/.yarn/bin/codex`,
-  ],
-  opencode: [
-    '/usr/local/bin/opencode',
-    '/opt/homebrew/bin/opencode',
-    `${homedir()}/.bun/bin/opencode`,
-    `${homedir()}/go/bin/opencode`,
-    `${homedir()}/.local/bin/opencode`,
-  ],
-  openclaw: [
-    '/usr/local/bin/openclaw',
-    '/opt/homebrew/bin/openclaw',
-    `${homedir()}/.local/bin/openclaw`,
-    `${homedir()}/.cargo/bin/openclaw`,
-    `${homedir()}/.bun/bin/openclaw`,
-    `${homedir()}/.npm-global/bin/openclaw`,
-  ],
-  hermes: [
-    '/usr/local/bin/hermes',
-    `${homedir()}/.local/bin/hermes`,
-    `${homedir()}/.hermes/bin/hermes`,
-    `${homedir()}/Documents/GitHub/hermes-agent/hermes`,
-  ],
+  claude: buildFallbackPaths('claude'),
+  codex: buildFallbackPaths('codex'),
+  opencode: buildFallbackPaths('opencode', isWin ? [] : [`${homedir()}/go/bin/opencode`]),
+  openclaw: buildFallbackPaths('openclaw', isWin ? [] : [`${homedir()}/.cargo/bin/openclaw`]),
+  hermes: buildFallbackPaths('hermes', [
+    ...(isWin ? [] : [`${homedir()}/.hermes/bin/hermes`]),
+    join(homedir(), 'Documents', 'GitHub', 'hermes-agent', isWin ? 'hermes.exe' : 'hermes'),
+  ]),
 }
 
 /** Detect a single agent binary */

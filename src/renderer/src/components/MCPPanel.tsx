@@ -116,7 +116,8 @@ export function MCPPanel({ onClose }: Props): JSX.Element {
 
       const path = `${(window as any).process?.env?.HOME ?? '~'}/.contex/mcp-server.json`
       try {
-        const raw = await window.electron.fs.readFile(path.replace('~', (window as any).__HOME__ ?? '/Users/' + ((window as any).process?.env?.USER ?? '')))
+        const home = (window as any).__HOME__ ?? (window as any).process?.env?.HOME ?? (window as any).process?.env?.USERPROFILE ?? ''
+        const raw = await window.electron.fs.readFile(path.replace('~', home))
         applyConfig(JSON.parse(raw) as MCPConfig)
       } catch {
         setLoading(false)

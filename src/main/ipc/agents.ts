@@ -99,8 +99,10 @@ const AGENTS_TO_DETECT: Array<Omit<AgentInfo, 'available' | 'path' | 'version'> 
   {
     id: 'shell',
     label: 'Shell',
-    cmd: process.env.SHELL ?? '/bin/zsh',
-    bins: [process.env.SHELL ?? '/bin/zsh'],
+    cmd: process.platform === 'win32' ? (process.env.COMSPEC ?? 'cmd.exe') : (process.env.SHELL ?? '/bin/zsh'),
+    bins: process.platform === 'win32'
+      ? [process.env.COMSPEC ?? 'cmd.exe', 'powershell.exe', 'pwsh.exe']
+      : [process.env.SHELL ?? '/bin/zsh'],
     versionFlag: '--version'
   }
 ]
@@ -132,16 +134,18 @@ async function detectAgent(agent: typeof AGENTS_TO_DETECT[0]): Promise<AgentInfo
     }
   }
 
-  // Try which as fallback
-  const whichResult = await runCmd(`which ${agent.cmd} 2>/dev/null`)
-  if (whichResult && !whichResult.includes('not found')) {
+  // Try which/where as fallback
+  const whichCmd = process.platform === 'win32' ? `where ${agent.cmd}` : `which ${agent.cmd} 2>/dev/null`
+  const whichResult = await runCmd(whichCmd)
+  const whichPath = whichResult?.split(/\r?\n/)[0]?.trim()
+  if (whichPath && !whichPath.includes('not found') && !whichPath.includes('Could not find')) {
     let version: string | undefined
     if (agent.versionFlag) {
       const out = await runCmd(`${agent.cmd} ${agent.versionFlag} 2>&1`)
       const match = out.match(/[\d]+\.[\d]+[\d.]*/)
       version = match ? match[0] : undefined
     }
-    return { id: agent.id, label: agent.label, cmd: whichResult.trim(), path: whichResult.trim(), version, available: true }
+    return { id: agent.id, label: agent.label, cmd: whichPath, path: whichPath, version, available: true }
   }
 
   return { id: agent.id, label: agent.label, cmd: agent.cmd, available: false }

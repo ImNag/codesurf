@@ -17,17 +17,19 @@
   ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "electron-vite dev -- --js-flags=\"--expose-gc --max-old-space-size=${CODESURF_MAX_OLD_SPACE_SIZE_MB:-8192}\"",
-    "build:main": "EV_BUILD_TARGET=main electron-vite build",
-    "build:preload": "EV_BUILD_TARGET=preload electron-vite build",
-    "build:renderer": "EV_BUILD_TARGET=renderer electron-vite build",
-    "build": "EV_BUILD_TARGET=main electron-vite build && EV_BUILD_TARGET=preload electron-vite build && EV_BUILD_TARGET=renderer electron-vite build",
+    "dev": "electron-vite dev -- --js-flags=\"--expose-gc --max-old-space-size=8192\"",
+    "build:main": "cross-env EV_BUILD_TARGET=main electron-vite build",
+    "build:preload": "cross-env EV_BUILD_TARGET=preload electron-vite build",
+    "build:renderer": "cross-env EV_BUILD_TARGET=renderer electron-vite build",
+    "build": "cross-env EV_BUILD_TARGET=main electron-vite build && cross-env EV_BUILD_TARGET=preload electron-vite build && cross-env EV_BUILD_TARGET=renderer electron-vite build",
     "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "dist:windows": "npm run build && node scripts/patch-node-pty-win.js && electron-builder --win nsis portable",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb",
     "release:github": "npm run build && electron-builder --mac dmg zip --publish always",
     "dogfood": "electron-vite build && electron-vite preview",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f -w node-pty,better-sqlite3",
-    "postinstall": "electron-rebuild -f -w node-pty,better-sqlite3"
+    "postinstall": "node scripts/patch-node-pty-win.js && electron-rebuild -f -o better-sqlite3 && electron-rebuild -f -o node-pty"
   },
   "keywords": [],
   "author": "Jason",
@@ -43,6 +45,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.27",
+    "cross-env": "^10.1.0",
     "electron": "^40.8.2",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
@@ -90,6 +93,7 @@
       "resources/**/*"
     ],
     "asar": true,
+    "beforeBuild": "scripts/before-build.js",
     "icon": "resources/icon.png",
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -100,7 +104,20 @@
       "icon": "resources/icon.png"
     },
     "win": {
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
     },
     "linux": {
       "category": "Development",

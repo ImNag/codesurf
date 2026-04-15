@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { promises as fs } from 'fs'
 import { basename, dirname, join } from 'path'
+import { homedir } from 'os'
 import type { TileState } from '../../shared/types'
 import { CONTEX_HOME } from '../paths'
 import { findSessionEntryById, getExternalSessionChatState, invalidateExternalSessionCache, listExternalSessionEntries, type AggregatedSessionEntry } from '../session-sources'
@@ -443,7 +444,7 @@ export function registerCanvasIPC(): void {
     if (entry.source === 'openclaw') {
       const [, agentId, ...keyParts] = sessionEntryId.split(':')
       const sessionKey = keyParts.join(':')
-      const indexPath = join(process.env.HOME || '', '.openclaw', 'agents', agentId, 'sessions', 'sessions.json')
+      const indexPath = join(process.env.HOME || process.env.USERPROFILE || homedir(), '.openclaw', 'agents', agentId, 'sessions', 'sessions.json')
       if (agentId && sessionKey && await pathExists(indexPath)) {
         try {
           const raw = await fs.readFile(indexPath, 'utf8')

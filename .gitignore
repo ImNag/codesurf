@@ -8,3 +8,4 @@ out/
 release
 /.contex
 opensrc/morph-labs--morph-typescript-sdk/
+.omc/
