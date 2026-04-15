@@ -3546,7 +3546,7 @@ function App(): JSX.Element {
           WebkitBackdropFilter: 'blur(12px)',
           borderRadius: 0,
           border: 'none',
-          paddingTop: (window as any).electron?.platform === 'darwin' ? 40 : 6,
+          paddingTop: (window as any).electron?.platform === 'darwin' ? 40 : 38,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
