@@ -268,8 +268,8 @@ function SidebarItem({ label, icon, active, muted, onClick, onContextMenu, inden
     >
       {icon && <span style={{ color: active ? theme.accent.base : muted ? theme.text.disabled : theme.text.muted, flexShrink: 0, display: 'flex', alignItems: 'center' }}>{icon}</span>}
       <span style={{
-        fontSize: fonts.size, fontWeight: active ? 500 : 400,
-        lineHeight: 1.2,
+        fontSize: fonts.size, fontWeight: active ? Math.min(900, fonts.weight + 100) : fonts.weight,
+        lineHeight: fonts.lineHeight,
         color: active ? theme.accent.base : muted ? theme.text.disabled : theme.text.secondary,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         flex: 1,
@@ -626,6 +626,9 @@ export function Sidebar({
   const scrollContentRef = useRef<HTMLDivElement>(null)
   useEffect(() => { widthRef.current = width }, [width])
   const [sectionsCollapsed, setSectionsCollapsed] = useState<Record<string, boolean>>({})
+  const [extGroupsCollapsed, setExtGroupsCollapsed] = useState<Record<string, boolean>>({})
+  const [extSearch, setExtSearch] = useState('')
+  const [projectSearch, setProjectSearch] = useState('')
   const [sessionCtx, setSessionCtx] = useState<{ x: number; y: number; session: SessionEntry } | null>(null)
   const [sessions, setSessions] = useState<SessionEntry[]>([])
   const [projects, setProjects] = useState<ProjectRecord[]>([])
@@ -931,6 +934,23 @@ export function Sidebar({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [extensionTiles, extensionNameById])
 
+  const filteredGroupedExtensions = useMemo(() => {
+    const q = extSearch.trim().toLowerCase()
+    if (!q) return groupedExtensions
+    return groupedExtensions
+      .map(group => {
+        if (group.name.toLowerCase().includes(q)) return group
+        const matchedItems = group.items.filter(item => item.label.toLowerCase().includes(q))
+        if (matchedItems.length === 0) return null
+        return { ...group, items: matchedItems }
+      })
+      .filter(Boolean) as typeof groupedExtensions
+  }, [groupedExtensions, extSearch])
+
+  const toggleExtGroup = useCallback((extId: string) => {
+    setExtGroupsCollapsed(prev => ({ ...prev, [extId]: !prev[extId] }))
+  }, [])
+
   const visibleSessions = useMemo(() => {
     const deduped = new Map<string, SessionEntry>()
     for (const session of sessions) {
@@ -995,6 +1015,20 @@ export function Sidebar({
         }
       })
   }, [displayedSessions, projectEntries, threadOrganizeMode])
+
+  const filteredSessionGroups = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase()
+    if (!q) return displayedSessionGroups
+    return displayedSessionGroups
+      .map(group => {
+        const labelMatch = group.label.toLowerCase().includes(q)
+        const matchedSessions = group.sessions.filter(s => s.title.toLowerCase().includes(q))
+        if (labelMatch) return group
+        if (matchedSessions.length === 0) return null
+        return { ...group, sessions: matchedSessions }
+      })
+      .filter(Boolean) as typeof displayedSessionGroups
+  }, [displayedSessionGroups, projectSearch])
 
   const hasMoreSessions = displayedSessions.length < visibleSessions.length
 
@@ -1240,11 +1274,68 @@ export function Sidebar({
             </div>
           </div>
 
+          {/* Project/thread search filter */}
+          {displayedSessionGroups.length > 0 && (
+            <div style={{ padding: '0 0 6px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                borderRadius: 6,
+                background: theme.surface.hover,
+                border: `1px solid ${theme.border.subtle}`,
+              }}>
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
+                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Filter projects and threads..."
+                  value={projectSearch}
+                  onChange={e => setProjectSearch(e.target.value)}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: theme.text.primary,
+                    fontSize: fonts.secondarySize,
+                    fontFamily: 'inherit',
+                    padding: 0,
+                    minWidth: 0,
+                  }}
+                />
+                {projectSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setProjectSearch('')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: theme.text.disabled,
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {threadOrganizeMode === 'chronological' && visibleSessions.length === 0 ? (
             <div style={{ padding: '4px 0', fontSize: fonts.secondarySize, color: theme.text.disabled }}>No threads yet</div>
           ) : (
             <>
-              {displayedSessionGroups.map(group => (
+              {filteredSessionGroups.map(group => (
                 <div key={group.key} style={{ paddingBottom: 8 }}>
                   {threadOrganizeMode === 'project' && (
                     <button
@@ -1381,6 +1472,9 @@ export function Sidebar({
                 </div>
               ))}
 
+              {filteredSessionGroups.length === 0 && projectSearch && (
+                <div style={{ padding: '4px 0', fontSize: fonts.secondarySize, color: theme.text.disabled }}>No matching projects or threads</div>
+              )}
               {hasMoreSessions && (
                 <div style={{ padding: '2px 0 0', textAlign: 'center' }}>
                   <button
@@ -1412,10 +1506,67 @@ export function Sidebar({
             <SectionHeader label="Extensions" collapsed={!!sectionsCollapsed.extensions} onToggle={() => toggleSection('extensions')} />
             {!sectionsCollapsed.extensions && (
               <div style={{ paddingBottom: 6 }}>
+                {/* Search filter */}
+                {(groupedExtensions.length > 3) && (
+                  <div style={{ padding: '2px 8px 4px', margin: '0 6px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      background: theme.surface.hover,
+                      border: `1px solid ${theme.border.subtle}`,
+                    }}>
+                      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
+                        <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                        <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Filter extensions..."
+                        value={extSearch}
+                        onChange={e => setExtSearch(e.target.value)}
+                        style={{
+                          flex: 1,
+                          background: 'transparent',
+                          border: 'none',
+                          outline: 'none',
+                          color: theme.text.primary,
+                          fontSize: fonts.secondarySize,
+                          fontFamily: 'inherit',
+                          padding: 0,
+                          minWidth: 0,
+                        }}
+                      />
+                      {extSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setExtSearch('')}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: theme.text.disabled,
+                            cursor: 'pointer',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                            <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {/* Installed extensions with instances */}
-                {groupedExtensions.map(group => {
+                {filteredGroupedExtensions.map(group => {
                   const multiBlock = group.items.length > 1
                   const groupPinned = pinnedExtensionIdSet.has(group.extId)
+                  const groupCollapsed = !!extGroupsCollapsed[group.extId] && !extSearch
                   if (!multiBlock) {
                     const ext = group.items[0]
                     const instances = extGroups[ext.type] ?? []
@@ -1471,16 +1622,25 @@ export function Sidebar({
                   return (
                     <React.Fragment key={group.extId}>
                       <div
+                        onClick={() => toggleExtGroup(group.extId)}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           gap: 7,
                           padding: '6px 8px 4px 12px',
                           margin: '0 6px',
+                          cursor: 'pointer',
                           userSelect: 'none',
                           WebkitUserSelect: 'none',
+                          borderRadius: 6,
                         }}
                       >
+                        <svg
+                          width="8" height="8" viewBox="0 0 8 8"
+                          style={{ transition: 'transform 0.15s ease', transform: groupCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', opacity: 0.4, flexShrink: 0 }}
+                        >
+                          <path d="M2 1l4 3-4 3" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                         <span style={{ color: theme.text.muted, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                           <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><path d="M6 1.5h2a.5.5 0 01.5.5v1.5H8a1 1 0 00-1 1v0a1 1 0 001 1h.5V7a.5.5 0 01-.5.5H6V7a1 1 0 00-1-1v0a1 1 0 00-1 1v.5H2.5A.5.5 0 012 7V5.5h.5a1 1 0 001-1v0a1 1 0 00-1-1H2V2a.5.5 0 01.5-.5H6z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /></svg>
                         </span>
@@ -1498,7 +1658,10 @@ export function Sidebar({
                         <button
                           type="button"
                           title={groupPinned ? 'Unpin all blocks from canvas menu' : 'Pin all blocks to canvas menu'}
-                          onClick={() => onTogglePinnedExtension?.(group.extId)}
+                          onClick={e => {
+                            e.stopPropagation()
+                            onTogglePinnedExtension?.(group.extId)
+                          }}
                           style={{
                             width: 20,
                             height: 20,
@@ -1517,7 +1680,7 @@ export function Sidebar({
                           <Pin size={12} />
                         </button>
                       </div>
-                      {group.items.map(ext => {
+                      {!groupCollapsed && group.items.map(ext => {
                         const instances = extGroups[ext.type] ?? []
                         const explicitBlockPinned = pinnedExtensionIdSet.has(ext.type)
                         const blockPinned = groupPinned || explicitBlockPinned
@@ -1579,6 +1742,9 @@ export function Sidebar({
                     </React.Fragment>
                   )
                 })}
+                {filteredGroupedExtensions.length === 0 && extSearch && (
+                  <div style={{ padding: '4px 12px', fontSize: fonts.secondarySize, color: theme.text.disabled }}>No matching extensions</div>
+                )}
                 {extensionInstances.length === 0 && !extensionTiles?.length && (
                   <div style={{ padding: '4px 12px', fontSize: fonts.secondarySize, color: theme.text.disabled }}>No extensions</div>
                 )}

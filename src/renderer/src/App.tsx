@@ -3678,7 +3678,7 @@ function App(): JSX.Element {
     <ThemeProvider value={theme}>
     <FontTokenProvider value={fontTokens}>
     <FontProvider value={appFonts}>
-    <div className="w-full h-full" style={{ position: 'relative', color: theme.text.primary, fontFamily: appFonts.primary, fontSize: appFonts.size, background: theme.surface.app }}>
+    <div className="w-full h-full" style={{ position: 'relative', color: theme.text.primary, fontFamily: appFonts.primary, fontSize: appFonts.size, fontWeight: appFonts.weight, lineHeight: appFonts.lineHeight, background: theme.surface.app }}>
       {/* Sidebar inset panel — floats over the canvas */}
       <div style={{
         position: 'absolute',

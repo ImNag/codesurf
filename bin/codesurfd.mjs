@@ -18,6 +18,7 @@ const WORKSPACES_FILE = join(HOME, 'workspaces', 'workspaces.json')
 const PROJECTS_FILE = join(HOME, 'projects', 'projects.json')
 const HOSTS_FILE = join(HOME, 'hosts', 'hosts.json')
 const SETTINGS_FILE = join(HOME, 'settings.json')
+const AGENT_KANBAN_DIR = join(HOME, 'agent-kanban')
 const AUTH_TOKEN = randomUUID()
 const SESSION_TEXT_LIMIT = 120
 const chatJobs = createChatJobManager({ homeDir: HOME })
@@ -363,6 +364,275 @@ function readDaemonJobTimeline(jobId, limit = 200) {
     }
   }
   return events.slice(-limit)
+}
+
+function agentKanbanBoardPath(workspacePath) {
+  const safe = String(workspacePath || 'default')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 80)
+  return join(AGENT_KANBAN_DIR, `${safe}.json`)
+}
+
+function defaultAgentKanbanBoard() {
+  return {
+    columns: [
+      { id: 'backlog', label: 'Backlog', cards: [] },
+      { id: 'in_progress', label: 'In Progress', cards: [] },
+      { id: 'review', label: 'Review', cards: [] },
+      { id: 'trash', label: 'Trash', cards: [] },
+    ],
+    dependencies: [],
+    version: 2,
+  }
+}
+
+function readAgentKanbanBoard(workspacePath) {
+  return readJsonFile(agentKanbanBoardPath(workspacePath), defaultAgentKanbanBoard())
+}
+
+function writeAgentKanbanBoard(workspacePath, board) {
+  atomicWriteJson(agentKanbanBoardPath(workspacePath), board)
+}
+
+function agentKanbanTaskTitle(prompt) {
+  const text = String(prompt || '').replace(/\s+/g, ' ').trim()
+  if (!text) return 'Untitled task'
+  return text.length > 96 ? `${text.slice(0, 95).trimEnd()}…` : text
+}
+
+function createShortTaskId() {
+  return randomUUID().replaceAll('-', '').slice(0, 5)
+}
+
+function createUniqueAgentKanbanTaskId(board) {
+  const existing = new Set(board.columns.flatMap(column => column.cards.map(card => card.id)))
+  for (let index = 0; index < 16; index += 1) {
+    const id = createShortTaskId()
+    if (!existing.has(id)) return id
+  }
+  return (Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 5)
+}
+
+function findAgentKanbanTask(board, taskId) {
+  for (let columnIndex = 0; columnIndex < board.columns.length; columnIndex += 1) {
+    const column = board.columns[columnIndex]
+    const taskIndex = column.cards.findIndex(card => card.id === taskId)
+    if (taskIndex !== -1) {
+      return {
+        columnIndex,
+        taskIndex,
+        columnId: column.id,
+        task: column.cards[taskIndex],
+      }
+    }
+  }
+  return null
+}
+
+function getAgentKanbanTaskColumnId(board, taskId) {
+  return findAgentKanbanTask(board, taskId)?.columnId ?? null
+}
+
+function normalizeAgentKanbanDependencies(board) {
+  if (!Array.isArray(board.dependencies) || board.dependencies.length === 0) return board
+  const allIds = new Set(board.columns.flatMap(column => column.cards.map(card => card.id)))
+  const seen = new Set()
+  const dependencies = []
+  for (const dep of board.dependencies) {
+    const fromTaskId = String(dep?.fromTaskId ?? '').trim()
+    const toTaskId = String(dep?.toTaskId ?? '').trim()
+    if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) continue
+    if (!allIds.has(fromTaskId) || !allIds.has(toTaskId)) continue
+    const fromColumnId = getAgentKanbanTaskColumnId(board, fromTaskId)
+    const toColumnId = getAgentKanbanTaskColumnId(board, toTaskId)
+    if (!fromColumnId || !toColumnId || fromColumnId === 'trash' || toColumnId === 'trash') continue
+    const key = `${fromTaskId}::${toTaskId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    dependencies.push({
+      id: String(dep?.id ?? randomUUID().replaceAll('-', '').slice(0, 8)),
+      fromTaskId,
+      toTaskId,
+      createdAt: Number(dep?.createdAt ?? Date.now()),
+    })
+  }
+  return { ...board, dependencies }
+}
+
+function addAgentKanbanTask(board, columnId, input) {
+  const task = {
+    id: createUniqueAgentKanbanTaskId(board),
+    prompt: String(input?.prompt ?? '').trim(),
+    agentId: String(input?.agentId ?? 'claude').trim() || 'claude',
+    baseRef: String(input?.baseRef ?? 'HEAD').trim() || 'HEAD',
+    startInPlanMode: Boolean(input?.startInPlanMode),
+    autoReviewEnabled: Boolean(input?.autoReviewEnabled),
+    autoReviewMode: String(input?.autoReviewMode ?? 'commit').trim() || 'commit',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+  const columns = board.columns.map(column =>
+    column.id === columnId
+      ? { ...column, cards: [task, ...column.cards] }
+      : column
+  )
+  return { board: { ...board, columns }, task }
+}
+
+function moveAgentKanbanTask(board, taskId, targetColumnId) {
+  const loc = findAgentKanbanTask(board, taskId)
+  if (!loc) return { moved: false, board, task: null, fromColumnId: null }
+  if (loc.columnId === targetColumnId) {
+    return { moved: false, board, task: loc.task, fromColumnId: loc.columnId }
+  }
+
+  const movedTask = { ...loc.task, updatedAt: Date.now() }
+  const columns = board.columns.map((column, columnIndex) => {
+    if (columnIndex === loc.columnIndex) {
+      return { ...column, cards: column.cards.filter((_, taskIndex) => taskIndex !== loc.taskIndex) }
+    }
+    if (column.id === targetColumnId) {
+      return {
+        ...column,
+        cards: targetColumnId === 'trash'
+          ? [movedTask, ...column.cards]
+          : [...column.cards, movedTask],
+      }
+    }
+    return column
+  })
+  return {
+    moved: true,
+    board: normalizeAgentKanbanDependencies({ ...board, columns }),
+    task: movedTask,
+    fromColumnId: loc.columnId,
+  }
+}
+
+function updateAgentKanbanTask(board, taskId, input) {
+  let updatedTask = null
+  const columns = board.columns.map(column => ({
+    ...column,
+    cards: column.cards.map(card => {
+      if (card.id !== taskId) return card
+      updatedTask = { ...card, ...input, id: card.id, updatedAt: Date.now() }
+      return updatedTask
+    }),
+  }))
+  return { board: { ...board, columns }, task: updatedTask, updated: Boolean(updatedTask) }
+}
+
+function deleteAgentKanbanTask(board, taskId) {
+  const columns = board.columns.map(column => ({
+    ...column,
+    cards: column.cards.filter(card => card.id !== taskId),
+  }))
+  const dependencies = board.dependencies.filter(dep => dep.fromTaskId !== taskId && dep.toTaskId !== taskId)
+  return { board: { ...board, columns, dependencies } }
+}
+
+function addAgentKanbanDependency(board, fromTaskId, toTaskId) {
+  const fromId = String(fromTaskId ?? '').trim()
+  const toId = String(toTaskId ?? '').trim()
+  if (!fromId || !toId || fromId === toId) return { board, added: false, reason: 'same_task' }
+
+  const fromColumnId = getAgentKanbanTaskColumnId(board, fromId)
+  const toColumnId = getAgentKanbanTaskColumnId(board, toId)
+  if (!fromColumnId || !toColumnId) return { board, added: false, reason: 'missing_task' }
+  if (fromColumnId === 'trash' || toColumnId === 'trash') return { board, added: false, reason: 'trash_task' }
+
+  let backlogId = fromId
+  let linkedId = toId
+  if (fromColumnId !== 'backlog' && toColumnId === 'backlog') {
+    backlogId = toId
+    linkedId = fromId
+  }
+  if (fromColumnId !== 'backlog' && toColumnId !== 'backlog') return { board, added: false, reason: 'non_backlog' }
+
+  const duplicate = board.dependencies.some(dep => dep.fromTaskId === backlogId && dep.toTaskId === linkedId)
+  if (duplicate) return { board, added: false, reason: 'duplicate' }
+
+  const dependency = {
+    id: randomUUID().replaceAll('-', '').slice(0, 8),
+    fromTaskId: backlogId,
+    toTaskId: linkedId,
+    createdAt: Date.now(),
+  }
+  return {
+    board: { ...board, dependencies: [...board.dependencies, dependency] },
+    added: true,
+    dependency,
+  }
+}
+
+function removeAgentKanbanDependency(board, dependencyId) {
+  const dependencies = board.dependencies.filter(dep => dep.id !== dependencyId)
+  if (dependencies.length === board.dependencies.length) return { board, removed: false }
+  return { board: { ...board, dependencies }, removed: true }
+}
+
+function annotateAgentKanbanTask(task) {
+  return {
+    ...task,
+    title: agentKanbanTaskTitle(task.prompt),
+    worktreeCreated: false,
+    session: null,
+  }
+}
+
+function buildAgentKanbanBoardPayload(workspacePath, board) {
+  return {
+    workspacePath: workspacePath || '',
+    projectName: workspacePath ? basename(workspacePath) : 'default',
+    updatedAt: new Date().toISOString(),
+    version: board.version || 1,
+    dependencies: Array.isArray(board.dependencies) ? board.dependencies : [],
+    columns: board.columns.map(column => ({
+      ...column,
+      cards: column.cards.map(annotateAgentKanbanTask),
+    })),
+  }
+}
+
+function buildAgentKanbanSummary(workspacePath, board) {
+  const tasks = board.columns.flatMap(column =>
+    column.cards.map(task => ({
+      ...annotateAgentKanbanTask(task),
+      columnId: column.id,
+    })),
+  )
+  const counts = {
+    backlog: tasks.filter(task => task.columnId === 'backlog').length,
+    active: tasks.filter(task => task.columnId === 'in_progress').length,
+    review: tasks.filter(task => task.columnId === 'review').length,
+    completed: tasks.filter(task => task.columnId === 'trash').length,
+    failed: 0,
+    total: tasks.length,
+  }
+  return {
+    workspacePath: workspacePath || '',
+    projectName: workspacePath ? basename(workspacePath) : 'default',
+    updatedAt: new Date().toISOString(),
+    counts,
+    checklist: tasks
+      .filter(task => task.columnId !== 'trash')
+      .slice(0, 8)
+      .map(task => ({
+        id: task.id,
+        title: task.title,
+        done: false,
+        state: 'idle',
+        columnId: task.columnId,
+      })),
+    tasks: tasks.map(task => ({
+      id: task.id,
+      title: task.title,
+      columnId: task.columnId,
+      state: 'idle',
+      agentId: task.agentId || 'claude',
+      blocked: false,
+    })),
+  }
 }
 
 function renderDashboardHtml() {
@@ -908,12 +1178,12 @@ function sessionTitleFromText(text, provider) {
 }
 
 function extractSessionTitle(messages, provider) {
-  for (const message of messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
     if (!message || typeof message !== 'object') continue
-    const role = typeof message.role === 'string' ? message.role : ''
     const text = truncateSessionText(typeof message.content === 'string' ? message.content : null)
     if (!text) continue
-    if (role === 'user') return sessionTitleFromText(text, provider)
+    return sessionTitleFromText(text, provider)
   }
   return null
 }
@@ -1510,6 +1780,33 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    if (method === 'GET' && url.pathname === '/agent-kanban/board') {
+      const workspacePath = String(url.searchParams.get('workspacePath') ?? '').trim()
+      const board = readAgentKanbanBoard(workspacePath)
+      sendJson(res, 200, buildAgentKanbanBoardPayload(workspacePath, board))
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/agent-kanban/summary') {
+      const workspacePath = String(url.searchParams.get('workspacePath') ?? '').trim()
+      const board = readAgentKanbanBoard(workspacePath)
+      sendJson(res, 200, buildAgentKanbanSummary(workspacePath, board))
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/agent-kanban/task') {
+      const workspacePath = String(url.searchParams.get('workspacePath') ?? '').trim()
+      const taskId = String(url.searchParams.get('taskId') ?? '').trim()
+      if (!taskId) {
+        sendJson(res, 400, { error: 'taskId is required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const task = board.columns.flatMap(column => column.cards).find(card => card.id === taskId) ?? null
+      sendJson(res, 200, task ? annotateAgentKanbanTask(task) : null)
+      return
+    }
+
     if (method === 'GET' && url.pathname === '/health') {
       sendJson(res, 200, {
         ok: true,
@@ -1801,6 +2098,171 @@ const server = createServer(async (req, res) => {
       state.activeWorkspaceId = workspace.id
       writeWorkspaceState(state)
       sendJson(res, 200, { ok: true })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/task/create') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const prompt = String(body?.prompt ?? '').trim()
+      if (!prompt) {
+        sendJson(res, 400, { error: 'prompt is required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = addAgentKanbanTask(board, String(body?.columnId ?? 'backlog').trim() || 'backlog', body)
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+        task: annotateAgentKanbanTask(result.task),
+      })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/task/update') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const taskId = String(body?.taskId ?? '').trim()
+      if (!taskId) {
+        sendJson(res, 400, { error: 'taskId is required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = updateAgentKanbanTask(board, taskId, {
+        prompt: body?.prompt,
+        agentId: body?.agentId,
+        baseRef: body?.baseRef,
+        startInPlanMode: body?.startInPlanMode,
+        autoReviewEnabled: body?.autoReviewEnabled,
+        autoReviewMode: body?.autoReviewMode,
+      })
+      if (!result.updated || !result.task) {
+        sendJson(res, 404, { error: 'Task not found' })
+        return
+      }
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+        task: annotateAgentKanbanTask(result.task),
+      })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/task/move') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const taskId = String(body?.taskId ?? '').trim()
+      const columnId = String(body?.columnId ?? '').trim()
+      if (!taskId || !columnId) {
+        sendJson(res, 400, { error: 'taskId and columnId are required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = moveAgentKanbanTask(board, taskId, columnId)
+      if (!result.moved || !result.task) {
+        sendJson(res, 404, { error: 'Task not found or already in target column' })
+        return
+      }
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        fromColumnId: result.fromColumnId,
+        toColumnId: columnId,
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+        task: annotateAgentKanbanTask(result.task),
+      })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/task/archive') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const taskId = String(body?.taskId ?? '').trim()
+      if (!taskId) {
+        sendJson(res, 400, { error: 'taskId is required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = moveAgentKanbanTask(board, taskId, 'trash')
+      if (!result.moved || !result.task) {
+        sendJson(res, 404, { error: 'Task not found or already archived' })
+        return
+      }
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+        task: annotateAgentKanbanTask(result.task),
+      })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/task/delete') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const taskId = String(body?.taskId ?? '').trim()
+      if (!taskId) {
+        sendJson(res, 400, { error: 'taskId is required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = deleteAgentKanbanTask(board, taskId)
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+        ok: true,
+      })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/dependency/add') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const fromTaskId = String(body?.fromTaskId ?? '').trim()
+      const toTaskId = String(body?.toTaskId ?? '').trim()
+      if (!fromTaskId || !toTaskId) {
+        sendJson(res, 400, { error: 'fromTaskId and toTaskId are required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = addAgentKanbanDependency(board, fromTaskId, toTaskId)
+      if (!result.added) {
+        sendJson(res, 200, { ok: false, reason: result.reason, board: buildAgentKanbanBoardPayload(workspacePath, result.board) })
+        return
+      }
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        ok: true,
+        dependency: result.dependency,
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+      })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/agent-kanban/dependency/remove') {
+      const body = await parseRequestBody(req)
+      const workspacePath = String(body?.workspacePath ?? '').trim()
+      const dependencyId = String(body?.dependencyId ?? '').trim()
+      if (!dependencyId) {
+        sendJson(res, 400, { error: 'dependencyId is required' })
+        return
+      }
+      const board = readAgentKanbanBoard(workspacePath)
+      const result = removeAgentKanbanDependency(board, dependencyId)
+      if (!result.removed) {
+        sendJson(res, 404, { error: 'Dependency not found' })
+        return
+      }
+      writeAgentKanbanBoard(workspacePath, result.board)
+      sendJson(res, 200, {
+        ok: true,
+        board: buildAgentKanbanBoardPayload(workspacePath, result.board),
+        summary: buildAgentKanbanSummary(workspacePath, result.board),
+      })
       return
     }
 

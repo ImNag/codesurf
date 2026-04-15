@@ -8,6 +8,7 @@ import type {
   ExtensionChatModel,
   ExtensionChatProviderConfig,
   ExtensionChatTransportConfig,
+  SkillDefinition,
 } from '../../../shared/types'
 import { basename, getDroppedPaths, isImagePath } from '../utils/dnd'
 import { dispatchOpenLink, findAnchorFromEventTarget } from '../utils/links'
@@ -22,6 +23,35 @@ import { useAppFonts } from '../FontContext'
 import { useTheme } from '../ThemeContext'
 import { stripCapabilityPrefix, getAllNodeTools } from '../../../shared/nodeTools'
 import { getChatTileRuntimeState, setChatTileRuntimeState, reviveChatTileRuntimeState, isChatTileRuntimeStateDisposed } from './chatTileRuntimeState'
+
+const CHAT_SLASH_COMMANDS = [
+  { value: '/compact', description: 'Compact conversation' },
+  { value: '/clear', description: 'Clear conversation' },
+  { value: '/model', description: 'Switch model' },
+  { value: '/mode', description: 'Switch mode (plan, build, etc.)' },
+  { value: '/help', description: 'Show help' },
+  { value: '/init', description: 'Initialize workspace' },
+] as const
+
+const CHAT_DEFAULT_SKILL_LOCATIONS = [
+  '$HOME/.claude/commands',
+  '$WORKSPACE/.claude/commands',
+  '$HOME/.claude/skills',
+  '$WORKSPACE/.claude/skills',
+  '$HOME/.config/opencode/skills',
+  '$WORKSPACE/.opencode/skills',
+  '$WORKSPACE/.cursor/rules',
+  '$WORKSPACE/.continue/prompts',
+].join('\n')
+
+function resolveChatSkillLocations(raw: string, homePath: string, workspacePath: string | null): string[] {
+  return raw
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => workspacePath || !line.startsWith('$WORKSPACE'))
+    .map(line => line.replace(/^\$HOME/, homePath).replace(/^\$WORKSPACE/, workspacePath ?? ''))
+}
 
 // --- Custom provider SVG icons (matching Paseo) ----------------------------------
 
@@ -1341,7 +1371,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const fontLineHeight = settings?.fonts?.primary?.lineHeight ?? 1.5
   const fontWeight = settings?.fonts?.primary?.weight ?? 400
   const monoSize = settings?.fonts?.mono?.size ?? settings?.monoFont?.size ?? MONO_SIZE_DEFAULT
+  const monoLineHeight = settings?.fonts?.mono?.lineHeight ?? 1.5
+  const monoWeight = settings?.fonts?.mono?.weight ?? 400
   const fontSecondary = settings?.fonts?.secondary?.family ?? settings?.secondaryFont?.family ?? FONT_SANS
+  const secondarySize = settings?.fonts?.secondary?.size ?? 11
+  const secondaryLineHeight = settings?.fonts?.secondary?.lineHeight ?? 1.4
+  const secondaryWeight = settings?.fonts?.secondary?.weight ?? 400
   const initialRuntimeStateRef = useRef<ChatTilePersistedState | null>(getChatTileRuntimeState<ChatTilePersistedState>(tileId))
   const initialProvider = initialRuntimeStateRef.current?.provider ?? DEFAULT_PROVIDER_ID
   const initialModel = initialRuntimeStateRef.current?.model
@@ -1367,6 +1402,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [provider, setProvider] = useState<string>(() => initialProvider)
   const [model, setModel] = useState(() => initialModel)
   const [mcpEnabled, setMcpEnabled] = useState(() => initialRuntimeStateRef.current?.mcpEnabled ?? true)
+  const [workspaceSkills, setWorkspaceSkills] = useState<SkillDefinition[]>([])
   const mcpServers = useMCPServers()
   const [disabledServers, setDisabledServers] = useState<Set<string>>(new Set())
   const peerToolNames = useMemo(() => {
@@ -1391,6 +1427,93 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
     return Array.from(discovered).sort()
   }, [connectedPeers])
+
+  const availableToolInventory = useMemo(() => {
+    const items: Array<{ id: string; label: string; source: 'builtin' | 'peer' | 'mcp-server'; detail?: string }> = []
+    const seen = new Set<string>()
+
+    for (const tool of getAllNodeTools()) {
+      if (seen.has(`builtin:${tool.name}`)) continue
+      seen.add(`builtin:${tool.name}`)
+      items.push({
+        id: `builtin:${tool.name}`,
+        label: tool.name,
+        source: 'builtin',
+        detail: tool.description,
+      })
+    }
+
+    if (mcpEnabled) {
+      for (const server of mcpServers) {
+        const key = `mcp-server:${server.name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push({
+          id: key,
+          label: server.name,
+          source: 'mcp-server',
+          detail: server.url ? 'http server' : 'stdio server',
+        })
+      }
+
+      for (const toolName of peerToolNames) {
+        const key = `peer:${toolName}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push({
+          id: key,
+          label: toolName,
+          source: 'peer',
+          detail: 'Connected peer tool',
+        })
+      }
+    }
+
+    return items.sort((a, b) => {
+      const sourceOrder = { builtin: 0, peer: 1, 'mcp-server': 2 }
+      const sourceDelta = sourceOrder[a.source] - sourceOrder[b.source]
+      if (sourceDelta !== 0) return sourceDelta
+      return a.label.localeCompare(b.label)
+    })
+  }, [mcpEnabled, mcpServers, peerToolNames])
+
+  const availableSkillInventory = useMemo(() => {
+    const items: Array<{ id: string; name: string; enabled: boolean; source: 'workspace' | 'command'; description?: string }> = []
+    const seen = new Set<string>()
+
+    for (const skill of workspaceSkills) {
+      const key = `workspace:${skill.name}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({
+        id: skill.id || key,
+        name: skill.name,
+        enabled: true,
+        source: 'workspace',
+        description: skill.description,
+      })
+    }
+
+    for (const command of CHAT_SLASH_COMMANDS) {
+      const key = `command:${command.value}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({
+        id: key,
+        name: command.value,
+        enabled: true,
+        source: 'command',
+        description: command.description,
+      })
+    }
+
+    return items.sort((a, b) => {
+      const sourceOrder = { workspace: 0, command: 1 }
+      const sourceDelta = sourceOrder[a.source] - sourceOrder[b.source]
+      if (sourceDelta !== 0) return sourceDelta
+      return a.name.localeCompare(b.name)
+    })
+  }, [workspaceSkills])
 
   // Track current context values published by peer extension tiles
   const peerContextRef = useRef<Map<string, Record<string, unknown>>>(new Map())
@@ -1530,14 +1653,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const latestGitWorkspaceKeyRef = useRef(normalizeGitWorkspaceKey(_workspaceDir))
 
   // Slash commands
-  const SLASH_COMMANDS = [
-    { value: '/compact', description: 'Compact conversation' },
-    { value: '/clear', description: 'Clear conversation' },
-    { value: '/model', description: 'Switch model' },
-    { value: '/mode', description: 'Switch mode (plan, build, etc.)' },
-    { value: '/help', description: 'Show help' },
-    { value: '/init', description: 'Initialize workspace' },
-  ]
+  const SLASH_COMMANDS = CHAT_SLASH_COMMANDS
 
   // File mention stubs
   const MENTION_STUBS = [
@@ -1623,6 +1739,107 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   }, [acItems.length])
 
   useEffect(() => { ensureShimmerStyle() }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const workspacePath = _workspaceDir?.trim() || null
+    const homePath = window.electron.homedir ?? ''
+    const skillsPath = workspacePath ? `${workspacePath}/.contex/customisation/skills.json` : null
+    const locationsPath = workspacePath ? `${workspacePath}/.contex/customisation/locations-skills.json` : null
+
+    ;(async () => {
+      const discovered = new Map<string, SkillDefinition>()
+
+      const registerSkill = (skill: SkillDefinition) => {
+        const key = skill.name.trim().toLowerCase()
+        if (!key || discovered.has(key)) return
+        discovered.set(key, skill)
+      }
+
+      if (skillsPath) {
+        const savedRaw = await window.electron.fs.readFile(skillsPath).catch(() => '')
+        if (savedRaw) {
+          try {
+            const parsed = JSON.parse(savedRaw)
+            if (Array.isArray(parsed)) {
+              for (const item of parsed) {
+                if (
+                  typeof item === 'object'
+                  && item !== null
+                  && typeof (item as { id?: unknown }).id === 'string'
+                  && typeof (item as { name?: unknown }).name === 'string'
+                  && typeof (item as { content?: unknown }).content === 'string'
+                ) {
+                  registerSkill(item as SkillDefinition)
+                }
+              }
+            }
+          } catch {
+            // Ignore invalid JSON and continue with discovery.
+          }
+        }
+      }
+
+      let rawLocations = CHAT_DEFAULT_SKILL_LOCATIONS
+      if (locationsPath) {
+        const locationsRaw = await window.electron.fs.readFile(locationsPath).catch(() => '')
+        if (locationsRaw) {
+          try {
+            const parsed = JSON.parse(locationsRaw)
+            if (typeof parsed === 'string' && parsed.trim()) rawLocations = parsed
+          } catch {
+            if (locationsRaw.trim()) rawLocations = locationsRaw
+          }
+        }
+      }
+
+      const dirs = resolveChatSkillLocations(rawLocations, homePath, workspacePath)
+      for (const dir of dirs) {
+        const entries: Array<{ name: string; path: string; isDir: boolean; ext: string }> = await window.electron.fs.readDir(dir).catch(() => [])
+        for (const entry of entries) {
+          if (entry.isDir || (entry.ext !== '.md' && entry.ext !== '.txt' && entry.ext !== '.mdc')) continue
+          const content = await window.electron.fs.readFile(entry.path).catch(() => '')
+          if (!content) continue
+          const nameMatch = content.match(/^---[\s\S]*?name:\s*(.+?)$/m)
+          const descriptionMatch = content.match(/^---[\s\S]*?description:\s*(.+?)$/m)
+          const name = nameMatch?.[1]?.trim() ?? entry.name.replace(/\.(md|txt|mdc)$/i, '')
+          registerSkill({
+            id: `discovered-${entry.path}`,
+            name,
+            description: descriptionMatch?.[1]?.trim() ?? `From ${dir}`,
+            content,
+            command: name,
+          })
+        }
+      }
+
+      if (cancelled) return
+      setWorkspaceSkills(Array.from(discovered.values()).sort((a, b) => a.name.localeCompare(b.name)))
+    })().catch(() => {
+      if (!cancelled) setWorkspaceSkills([])
+    })
+
+    return () => { cancelled = true }
+  }, [_workspaceDir])
+
+  useEffect(() => {
+    window.electron?.bus?.publish(`tile:${tileId}`, 'tool_inventory', `chat:${tileId}`, {
+      provider,
+      model,
+      mcpEnabled,
+      tools: availableToolInventory,
+      updatedAt: Date.now(),
+    })
+  }, [tileId, provider, model, mcpEnabled, availableToolInventory])
+
+  useEffect(() => {
+    window.electron?.bus?.publish(`tile:${tileId}`, 'skill_inventory', `chat:${tileId}`, {
+      provider,
+      model,
+      skills: availableSkillInventory,
+      updatedAt: Date.now(),
+    })
+  }, [tileId, provider, model, availableSkillInventory])
 
   // Only tiles actively using OpenCode should subscribe to the model list, otherwise
   // every chat tile holds the same large provider payload in memory.
@@ -2982,7 +3199,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                               border: msg.role === 'user' ? `1px solid ${theme.chat.userBubbleBorder}` : '0',
                               borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                               padding: '8px 12px',
-                              fontSize, lineHeight: 1.55,
+                              fontSize, lineHeight: fontLineHeight,
                               wordBreak: 'break-word',
                               color: theme.chat.text, position: 'relative',
                               width: '100%', minWidth: 0, overflow: 'hidden',
@@ -3432,7 +3649,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
             width: '100%', boxSizing: 'border-box', flex: 1,
             background: 'transparent', color: theme.chat.text,
             border: 'none', padding: '10px 14px 2px 14px',
-            fontSize, fontFamily: fontSans, lineHeight: 1.5,
+            fontSize, fontFamily: fontSans, lineHeight: fontLineHeight,
             resize: 'none', outline: 'none', overflow: 'hidden',
             minHeight: CHAT_COMPOSER_TEXTAREA_MIN_HEIGHT, opacity: 1,
           }}
@@ -3929,6 +4146,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
 function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Element {
   const fonts = useFonts()
+  const appFonts = useAppFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
   const isActive = !thinking.done
@@ -3987,8 +4205,8 @@ function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Eleme
       {/* Expanded thinking content */}
       {expanded && hasContent && (
         <div style={{
-          padding: '8px 0 2px 0',
-          fontSize: 12, lineHeight: 1.6, color: theme.accent.hover,
+          padding: '8px 0 2px',
+          fontSize: 12, lineHeight: appFonts.lineHeight, color: theme.accent.hover,
           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           fontFamily: fonts.sans, maxHeight: 200, overflowY: 'auto',
           background: 'transparent',
@@ -4219,7 +4437,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                           margin: 0,
                           padding: '10px 12px',
                           fontSize: codePanelFontSize,
-                          lineHeight: 1.6,
+                          lineHeight: monoLineHeight,
                           fontFamily: fonts.mono,
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
@@ -4274,9 +4492,10 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                     <pre style={{
                       margin: '6px 0 0',
                       fontSize: codePanelFontSize,
-                      lineHeight: 1.5,
+                      lineHeight: monoLineHeight,
                       color: theme.chat.muted,
                       fontFamily: fonts.mono,
+                      fontWeight: monoWeight,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
                       maxHeight: 120,
@@ -4301,7 +4520,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
           <pre style={{
             margin: 0, padding: 8, borderRadius: 6,
             background: theme.surface.panelMuted, color: theme.chat.textSecondary,
-            fontSize: codePanelFontSize, lineHeight: 1.5, fontFamily: fonts.mono,
+            fontSize: codePanelFontSize, lineHeight: monoLineHeight, fontFamily: fonts.mono, fontWeight: monoWeight,
             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             maxHeight: 200, overflowY: 'auto',
           }}>

@@ -619,7 +619,7 @@ export interface SkillConfig {
   id: string
   name: string
   enabled: boolean
-  source: 'builtin' | 'mcp'
+  source: 'builtin' | 'mcp' | 'workspace' | 'command'
   server?: string          // MCP server name (if source === 'mcp')
   description?: string
 }

@@ -162,6 +162,12 @@ html, body, #root {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
 }
 
+/* Override Tailwind preflight line-height on html so the app root's
+   inline style can cascade without competing with the stylesheet value. */
+html {
+  line-height: normal;
+}
+
 body {
   background: transparent;
   color: #cccccc;

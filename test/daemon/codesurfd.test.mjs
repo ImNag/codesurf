@@ -231,6 +231,61 @@ test('daemon creates, switches, and deletes workspaces while maintaining the act
   assert.equal(active.payload.id, beta.payload.id)
 })
 
+test('daemon manages agent kanban board state in ~/.codesurf storage', async t => {
+  const daemon = await startDaemon()
+  t.after(async () => {
+    await daemon.stop()
+  })
+
+  let response = await daemon.request('/agent-kanban/board?workspacePath=/tmp/project-alpha')
+  assert.equal(response.status, 200)
+  assert.equal(response.payload.columns.length, 4)
+  assert.equal(response.payload.columns[0].id, 'backlog')
+
+  response = await daemon.request('/agent-kanban/task/create', {
+    body: {
+      workspacePath: '/tmp/project-alpha',
+      prompt: 'Implement daemon-backed kanban task persistence',
+      agentId: 'codex',
+      baseRef: 'main',
+      columnId: 'backlog',
+    },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(response.payload.task.agentId, 'codex')
+  const taskId = response.payload.task.id
+
+  response = await daemon.request('/agent-kanban/dependency/add', {
+    body: {
+      workspacePath: '/tmp/project-alpha',
+      fromTaskId: taskId,
+      toTaskId: taskId,
+    },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(response.payload.ok, false)
+
+  response = await daemon.request('/agent-kanban/task/move', {
+    body: {
+      workspacePath: '/tmp/project-alpha',
+      taskId,
+      columnId: 'in_progress',
+    },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(response.payload.toColumnId, 'in_progress')
+
+  response = await daemon.request('/agent-kanban/summary?workspacePath=/tmp/project-alpha')
+  assert.equal(response.status, 200)
+  assert.equal(response.payload.counts.active, 1)
+  assert.equal(response.payload.counts.total, 1)
+
+  const boardFile = join(daemon.homeDir, 'agent-kanban', '_tmp_project-alpha.json')
+  const boardDoc = await readJson(boardFile)
+  assert.equal(boardDoc.columns[1].cards.length, 1)
+  assert.equal(boardDoc.columns[1].cards[0].id, taskId)
+})
+
 test('daemon lists, reads, and deletes local session state while maintaining summary files', async t => {
   const daemon = await startDaemon()
   t.after(async () => {

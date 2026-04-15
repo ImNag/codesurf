@@ -109,12 +109,12 @@ function sessionTitleFromText(text: string | null | undefined, provider: string)
 }
 
 function extractSessionTitle(messages: Record<string, unknown>[], provider: string): string | null {
-  for (const rawMessage of messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const rawMessage = messages[index]
     if (!rawMessage || typeof rawMessage !== 'object') continue
-    const role = typeof rawMessage.role === 'string' ? rawMessage.role : ''
     const text = truncateSessionText(typeof rawMessage.content === 'string' ? rawMessage.content : null)
     if (!text) continue
-    if (role === 'user') return sessionTitleFromText(text, provider)
+    return sessionTitleFromText(text, provider)
   }
   return null
 }

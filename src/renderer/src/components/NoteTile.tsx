@@ -213,7 +213,7 @@ function StickyNote({ initialContent, tileId, workspacePath }: { initialContent:
           flex: 1, resize: 'none', border: 'none', outline: 'none',
           background: 'transparent',
           color: colour.text,
-          fontSize: fonts.size, lineHeight: 1.6,
+          fontSize: fonts.size, lineHeight: fonts.lineHeight, fontWeight: fonts.weight,
           padding: '8px 14px 14px',
           fontFamily: noteFont.family,
           letterSpacing: 0.1,
@@ -531,7 +531,7 @@ function FileNote({ filePath, initialContent }: { filePath?: string; initialCont
             options={{
               minimap: { enabled: false },
               fontSize: fonts.monoSize,
-              lineHeight: 1.7,
+              lineHeight: fonts.monoLineHeight,
               wordWrap: 'on',
               automaticLayout: true,
               padding: { top: 12 },
