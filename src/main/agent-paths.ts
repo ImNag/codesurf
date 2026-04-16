@@ -89,7 +89,7 @@ function getShellPath(): string {
 }
 
 /** Simple `which`/`where` using the real shell PATH */
-function whichSync(cmd: string): string | null {
+export function whichSync(cmd: string): string | null {
   // Use execFileSync, not execSync — execSync goes through a shell where an
   // unescaped `cmd` could be interpreted (shell-injection surface) and fails
   // if the name contains spaces.

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { execFile } from 'child_process'
 import { promises as fs } from 'fs'
 import { homedir } from 'os'
+import { whichSync } from '../agent-paths'
 
 export interface AgentInfo {
   id: string
@@ -120,19 +121,6 @@ function runExec(prog: string, args: string[]): Promise<string> {
   })
 }
 
-/** Pick the best match from a `where`/`which` result. On Windows prefer a
- *  native .exe so Node's spawn() can execute it directly — a leading .cmd
- *  shim would crash with EINVAL. */
-function pickBestPath(whichOutput: string): string | null {
-  const lines = whichOutput.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
-  if (lines.length === 0) return null
-  if (process.platform === 'win32') {
-    const exeMatch = lines.find(line => /\.exe$/i.test(line))
-    if (exeMatch) return exeMatch
-  }
-  return lines[0] || null
-}
-
 async function detectAgent(agent: typeof AGENTS_TO_DETECT[0]): Promise<AgentInfo> {
   // Try each bin path
   for (const bin of agent.bins) {
@@ -148,18 +136,18 @@ async function detectAgent(agent: typeof AGENTS_TO_DETECT[0]): Promise<AgentInfo
     }
   }
 
-  // Try which/where as fallback — use execFile, not a shell string
-  const prog = process.platform === 'win32' ? 'where.exe' : 'which'
-  const whichResult = await runExec(prog, [agent.cmd])
-  const whichPath = pickBestPath(whichResult)
-  if (whichPath && !whichPath.includes('not found') && !whichPath.includes('Could not find')) {
+  // Fall back to the shared resolver — uses the hydrated shell PATH (important
+  // for packaged GUI launches where process.env.PATH is minimal) and prefers
+  // a native .exe over .cmd/.bat shims on Windows.
+  const resolved = whichSync(agent.cmd)
+  if (resolved) {
     let version: string | undefined
     if (agent.versionFlag) {
-      const out = await runExec(whichPath, [agent.versionFlag])
+      const out = await runExec(resolved, [agent.versionFlag])
       const match = out.match(/[\d]+\.[\d]+[\d.]*/)
       version = match ? match[0] : undefined
     }
-    return { id: agent.id, label: agent.label, cmd: whichPath, path: whichPath, version, available: true }
+    return { id: agent.id, label: agent.label, cmd: resolved, path: resolved, version, available: true }
   }
 
   return { id: agent.id, label: agent.label, cmd: agent.cmd, available: false }

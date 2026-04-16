@@ -46,6 +46,9 @@ export function TerminalTile({ tileId, workspaceDir, width, height, fontSize = 1
     } catch { /* ignore */ }
   }
 
+  // Mount-only effect: creates the Terminal instance. fontSize, resolvedFont,
+  // and theme are intentionally omitted from deps — remounting would destroy
+  // the PTY buffer and scrollback. Reactive updates for those live below.
   useEffect(() => {
     if (!containerRef.current || mountedRef.current) return
     mountedRef.current = true
@@ -178,6 +181,13 @@ export function TerminalTile({ tileId, workspaceDir, width, height, fontSize = 1
   useEffect(() => {
     doFit()
   }, [width, height])
+
+  // Apply fontSize prop changes without remounting the Terminal.
+  useEffect(() => {
+    if (!termRef.current) return
+    termRef.current.options.fontSize = fontSize
+    doFit()
+  }, [fontSize])
 
   useEffect(() => {
     if (!termRef.current) return
