@@ -245,6 +245,7 @@ interface ChatTilePersistedState {
   thinking: string
   agentMode: boolean
   autoAgentMode: boolean
+  preserveSessionSummary?: boolean
   sessionId: string | null
   jobId?: string | null
   jobSequence?: number
@@ -1590,6 +1591,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [showBranchMenu, setShowBranchMenu] = useState(false)
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(() => initialRuntimeStateRef.current?.sessionId ?? null)
+  const [preserveSessionSummary, setPreserveSessionSummary] = useState<boolean>(() => initialRuntimeStateRef.current?.preserveSessionSummary === true)
   const [jobId, setJobId] = useState<string | null>(() => initialJobId)
   const [jobSequence, setJobSequence] = useState<number>(() => initialJobSequence)
   const [executionHosts, setExecutionHosts] = useState<import('../../../shared/types').ExecutionHostRecord[]>([])
@@ -1927,6 +1929,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       thinking,
       agentMode: effectiveAgentMode,
       autoAgentMode,
+      preserveSessionSummary,
       sessionId,
       jobId,
       jobSequence,
@@ -1937,7 +1940,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       if (isChatTileRuntimeStateDisposed(tileId)) return
       setChatTileRuntimeState(tileId, latestStateRef.current)
     }
-  }, [tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, jobId, jobSequence, cloudHostId, isStreaming])
+  }, [tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, preserveSessionSummary, sessionId, jobId, jobSequence, cloudHostId, isStreaming])
 
   const persistLatestState = useCallback((stateOverride?: ChatTilePersistedState | null) => {
     if (persistTimerRef.current) {
@@ -1979,6 +1982,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       if (typeof saved.mode === 'string') setMode(saved.mode)
       if (typeof saved.thinking === 'string') setThinking(saved.thinking)
       if (typeof saved.autoAgentMode === 'boolean') setAutoAgentMode(saved.autoAgentMode)
+      if (typeof saved.preserveSessionSummary === 'boolean') setPreserveSessionSummary(saved.preserveSessionSummary)
       if (typeof saved.sessionId === 'string' || saved.sessionId === null) setSessionId(saved.sessionId)
       if (typeof saved.jobId === 'string' || saved.jobId === null) setJobId(saved.jobId ?? null)
       if (typeof saved.jobSequence === 'number') {
@@ -2024,7 +2028,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         persistTimerRef.current = null
       }
     }
-  }, [workspaceId, tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, sessionId, jobId, jobSequence, cloudHostId, isStreaming, persistLatestState])
+  }, [workspaceId, tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, preserveSessionSummary, sessionId, jobId, jobSequence, cloudHostId, isStreaming, persistLatestState])
 
   useEffect(() => {
     return () => {
@@ -2777,6 +2781,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       thinking: activeThinking,
       agentMode: state?.agentMode ?? effectiveAgentMode,
       autoAgentMode: state?.autoAgentMode ?? autoAgentMode,
+      preserveSessionSummary: false,
       sessionId: activeSessionId,
       jobId: null,
       jobSequence: 0,
@@ -2784,6 +2789,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       isStreaming: true,
     }
 
+    setPreserveSessionSummary(false)
     setMessagesSafe(optimisticMessages)
     setIsStreaming(true)
     setJobId(null)
@@ -2879,6 +2885,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       createdAt: Date.now(),
     }
 
+    setPreserveSessionSummary(false)
     setQueuedTurns(prev => [...prev, queuedTurn])
     setInput('')
     setAttachments([])
@@ -2920,6 +2927,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setMessagesSafe([])
     setAttachments([])
     setQueuedTurns([])
+    setPreserveSessionSummary(false)
     setSessionId(null)
     setJobId(null)
     setJobSequence(0)

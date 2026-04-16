@@ -2423,6 +2423,7 @@ function App(): JSX.Element {
       thinking: 'adaptive',
       agentMode: false,
       autoAgentMode: false,
+      preserveSessionSummary: true,
       sessionId: typeof state.sessionId === 'string' || state.sessionId === null ? state.sessionId : session.sessionId,
       jobId: typeof state.jobId === 'string' || state.jobId === null ? state.jobId : null,
       jobSequence: typeof state.jobSequence === 'number' ? state.jobSequence : 0,

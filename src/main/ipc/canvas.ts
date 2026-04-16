@@ -185,6 +185,18 @@ async function readTileSessionSummary(summaryPath: string): Promise<TileSessionS
 async function writeTileSessionSummary(storageId: string, tileId: string, state: unknown): Promise<{ changed: boolean; summary: TileSessionSummary | null }> {
   const summaryPath = tileSessionSummaryPath(storageId, tileId)
   const previous = await readTileSessionSummary(summaryPath)
+  const record = state && typeof state === 'object' ? state as Record<string, unknown> : null
+  const preserveSessionSummary = record?.preserveSessionSummary === true
+
+  if (preserveSessionSummary) {
+    if (previous) {
+      tileSessionSummaryCache.set(summaryPath, previous)
+      return { changed: false, summary: previous }
+    }
+    tileSessionSummaryCache.set(summaryPath, null)
+    return { changed: false, summary: null }
+  }
+
   const next = extractTileSessionSummary(tileId, state)
 
   if (!next) {
@@ -202,7 +214,7 @@ async function writeTileSessionSummary(storageId: string, tileId: string, state:
 
   const summaryToWrite: TileSessionSummary = {
     ...next,
-    updatedAt: Date.now(),
+    updatedAt: previous ? Date.now() : next.updatedAt,
   }
   await fs.writeFile(summaryPath, JSON.stringify(summaryToWrite, null, 2))
   tileSessionSummaryCache.set(summaryPath, summaryToWrite)

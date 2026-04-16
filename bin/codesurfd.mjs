@@ -407,24 +407,54 @@ function summarizeDaemonJobs(records) {
 
 function readDaemonJobTimeline(jobId, limit = 200) {
   const safeId = String(jobId ?? '').trim()
-  if (!safeId || /[\/\\]|\.\./.test(safeId)) return []
+  if (!safeId || /[\/\\]|\\.\\./.test(safeId)) return []
 
   const timelinePath = join(HOME, 'timelines', `${safeId}.jsonl`)
   if (!existsSync(timelinePath)) return []
 
+  const stats = statSync(timelinePath)
   const events = []
-  const raw = readFileSync(timelinePath, 'utf8')
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
+  const BUFFER_SIZE = 8192
+  const file = readFileSync(timelinePath, 'utf8')
+  
+  // For small files, parse all (cheaper than reverse iteration)
+  if (stats.size < BUFFER_SIZE * 10) {
+    const lines = file.split('\n')
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (parsed && typeof parsed.sequence === 'number') {
+          events.push(parsed)
+          if (events.length >= limit) break
+        }
+      } catch {
+        // ignore corrupt timeline entries
+      }
+    }
+    return events
+  }
+  
+  // For large files, read from end backwards (much faster)
+  const lines = file.split('\n')
+  let collected = 0
+  for (let i = lines.length - 1; i >= 0 && collected < limit; i--) {
+    const line = lines[i].trim()
+    if (!line) continue
     try {
-      const parsed = JSON.parse(trimmed)
-      if (parsed && typeof parsed.sequence === 'number') events.push(parsed)
+      const parsed = JSON.parse(line)
+      if (parsed && typeof parsed.sequence === 'number') {
+        events.push(parsed)
+        collected++
+      }
     } catch {
       // ignore corrupt timeline entries
     }
   }
-  return events.slice(-limit)
+  
+  // Reverse to maintain chronological order
+  return events.reverse()
 }
 
 function agentKanbanBoardPath(workspacePath) {
@@ -1304,6 +1334,99 @@ function moveFileToDeleted(filePath) {
   return targetPath
 }
 
+function cleanupOldDeletedFiles(maxAgeDays = 30) {
+  const cutoff = Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
+  
+  // Clean ~/.contex/deleted
+  const homeDeleted = join(HOME, 'deleted')
+  if (existsSync(homeDeleted)) {
+    try {
+      for (const name of readDirNames(homeDeleted)) {
+        const filePath = join(homeDeleted, name)
+        try {
+          const stat = statSync(filePath)
+          if (stat.mtimeMs < cutoff) {
+            rmSync(filePath, { force: true })
+          }
+        } catch {
+          // ignore stat errors
+        }
+      }
+    } catch {
+      // ignore directory read errors
+    }
+  }
+  
+  // Clean ~/.contex/jobs/deleted
+  const jobsDeleted = join(HOME, 'jobs', 'deleted')
+  if (existsSync(jobsDeleted)) {
+    try {
+      for (const name of readDirNames(jobsDeleted)) {
+        const filePath = join(jobsDeleted, name)
+        try {
+          const stat = statSync(filePath)
+          if (stat.mtimeMs < cutoff) {
+            rmSync(filePath, { force: true })
+          }
+        } catch {
+          // ignore stat errors
+        }
+      }
+    } catch {
+      // ignore directory read errors
+    }
+  }
+  
+  // Clean ~/.contex/timelines/deleted
+  const timelinesDeleted = join(HOME, 'timelines', 'deleted')
+  if (existsSync(timelinesDeleted)) {
+    try {
+      for (const name of readDirNames(timelinesDeleted)) {
+        const filePath = join(timelinesDeleted, name)
+        try {
+          const stat = statSync(filePath)
+          if (stat.mtimeMs < cutoff) {
+            rmSync(filePath, { force: true })
+          }
+        } catch {
+          // ignore stat errors
+        }
+      }
+    } catch {
+      // ignore directory read errors
+    }
+  }
+  
+  // Clean workspace .contex/deleted directories
+  const workspacesDir = join(HOME, 'workspaces')
+  if (existsSync(workspacesDir)) {
+    try {
+      for (const workspaceId of readDirNames(workspacesDir)) {
+        const workspaceDeleted = join(workspacesDir, workspaceId, '.contex', 'deleted')
+        if (existsSync(workspaceDeleted)) {
+          try {
+            for (const name of readDirNames(workspaceDeleted)) {
+              const filePath = join(workspaceDeleted, name)
+              try {
+                const stat = statSync(filePath)
+                if (stat.mtimeMs < cutoff) {
+                  rmSync(filePath, { force: true })
+                }
+              } catch {
+                // ignore stat errors
+              }
+            }
+          } catch {
+            // ignore directory read errors
+          }
+        }
+      }
+    } catch {
+      // ignore directory read errors
+    }
+  }
+}
+
 function deleteExternalSession(codesurfHome, workspacePath, sessionEntryId) {
   return findSessionEntryById(codesurfHome, workspacePath, sessionEntryId).then(entry => {
     if (!entry?.filePath) return { ok: false, error: 'Session file missing' }
@@ -1350,6 +1473,8 @@ function renameExternalSession(codesurfHome, workspacePath, sessionEntryId, titl
 function listLocalWorkspaceSessions(workspaceId) {
   const dotDir = workspaceContexDir(workspaceId)
   const entries = []
+  
+  // Scan tile sessions
   if (existsSync(dotDir)) {
     for (const name of readDirNames(dotDir)) {
       if (!name.startsWith('tile-state-') || !name.endsWith('.json')) continue
@@ -1359,7 +1484,25 @@ function listLocalWorkspaceSessions(workspaceId) {
       const summaryPath = tileSessionSummaryPath(workspaceId, tileId)
 
       let summary = readJsonFile(summaryPath, null)
+      
+      // Fix 3: Rebuild summary if tile state is newer
+      let shouldRebuildSummary = false
       if (!summary) {
+        shouldRebuildSummary = true
+      } else {
+        try {
+          const stat = statSync(filePath)
+          const summaryStat = statSync(summaryPath)
+          // If tile state is newer than summary, rebuild it
+          if (!summaryStat || stat.mtimeMs > summaryStat.mtimeMs) {
+            shouldRebuildSummary = true
+          }
+        } catch {
+          shouldRebuildSummary = true
+        }
+      }
+      
+      if (shouldRebuildSummary) {
         const state = readJsonFile(filePath, null)
         if (!state) continue
         summary = extractTileSessionSummary(tileId, state)
@@ -1394,10 +1537,41 @@ function listLocalWorkspaceSessions(workspaceId) {
     }
   }
 
-  entries.push(...listDaemonWorkspaceSessions(workspaceId, entries))
-
-  entries.sort((a, b) => b.updatedAt - a.updatedAt)
-  return entries
+  // Add daemon sessions
+  const daemonEntries = listDaemonWorkspaceSessions(workspaceId, entries)
+  
+  // Fix 1: Session ID deduplication
+  // Build a map of sessionId -> best entry (by updatedAt)
+  const sessionMap = new Map()
+  
+  // First, add all tile sessions
+  for (const entry of entries) {
+    if (!entry.sessionId) {
+      // No sessionId, can't dedupe, add directly
+      sessionMap.set(`nosession-${entry.id}`, entry)
+    } else {
+      const existing = sessionMap.get(entry.sessionId)
+      if (!existing || entry.updatedAt > existing.updatedAt) {
+        sessionMap.set(entry.sessionId, entry)
+      }
+    }
+  }
+  
+  // Then, add daemon sessions, keeping the most recent for each sessionId
+  for (const entry of daemonEntries) {
+    if (!entry.sessionId) {
+      sessionMap.set(`daemon-${entry.id}`, entry)
+    } else {
+      const existing = sessionMap.get(entry.sessionId)
+      if (!existing || entry.updatedAt > existing.updatedAt) {
+        sessionMap.set(entry.sessionId, entry)
+      }
+    }
+  }
+  
+  // Convert map to array and sort by updatedAt
+  const dedupedEntries = Array.from(sessionMap.values()).sort((a, b) => b.updatedAt - a.updatedAt)
+  return dedupedEntries
 }
 
 function getLocalSessionState(workspaceId, sessionEntryId) {
@@ -1429,8 +1603,18 @@ function deleteLocalSession(workspaceId, sessionEntryId) {
     const jobId = normalizedId.replace('codesurf-job:', '')
     const metadata = readDaemonJobRecord(jobId)
     if (!metadata) return { ok: false, error: 'Job not found' }
-    rmSync(join(HOME, 'jobs', `${jobId}.json`), { force: true })
-    rmSync(join(HOME, 'timelines', `${jobId}.jsonl`), { force: true })
+    
+    // Fix 2: Move to deleted/ instead of rmSync
+    const jobFilePath = join(HOME, 'jobs', `${jobId}.json`)
+    const timelineFilePath = join(HOME, 'timelines', `${jobId}.jsonl`)
+    
+    if (pathExists(jobFilePath)) {
+      moveFileToDeleted(jobFilePath)
+    }
+    if (pathExists(timelineFilePath)) {
+      moveFileToDeleted(timelineFilePath)
+    }
+    
     deleteLocalSessionTitleOverride(workspaceId, sessionEntryId)
     return { ok: true }
   }
@@ -1531,11 +1715,11 @@ function normalizedWorkspaceDirOrNull(workspaceDir) {
   return normalized || null
 }
 
-function buildDaemonSessionState(jobId, workspaceId) {
+function buildDaemonSessionState(jobId, workspaceId, limit = 100) {
   const metadata = readDaemonJobRecord(jobId)
   if (!metadata) return null
 
-  const timeline = readDaemonJobTimeline(jobId, 400)
+  const timeline = readDaemonJobTimeline(jobId, limit)
   const requestedAt = metadata.requestedAt ? Date.parse(metadata.requestedAt) : Date.now()
   const initialPrompt = String(metadata.initialPrompt ?? metadata.taskLabel ?? `${metadata.provider ?? 'Agent'} task`).trim()
   const userMessage = {
@@ -2486,6 +2670,22 @@ async function start() {
     protocolVersion: PROTOCOL_VERSION,
     appVersion: APP_VERSION,
   })
+  
+  // Start periodic cleanup task (every 24 hours)
+  setInterval(() => {
+    try {
+      cleanupOldDeletedFiles(30)
+    } catch (error) {
+      console.error('[codesurfd] cleanupOldDeletedFiles failed:', error)
+    }
+  }, 24 * 60 * 60 * 1000)
+  
+  // Run cleanup once on startup
+  try {
+    cleanupOldDeletedFiles(30)
+  } catch (error) {
+    console.error('[codesurfd] initial cleanupOldDeletedFiles failed:', error)
+  }
 }
 
 let shuttingDown = false

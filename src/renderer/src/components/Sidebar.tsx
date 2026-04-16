@@ -843,14 +843,17 @@ export function Sidebar({
     }
   }, [loadWorkspaceSessions, loadedSessionWorkspaceIdSet, workspaceById])
 
+  const openTileIdSet = useMemo(() => new Set(tiles.map(tile => tile.id)), [tiles])
+
   const sessionContextMenuItems = useCallback((session: SessionEntry): MenuItem[] => {
     const items: MenuItem[] = []
+    const hasOpenTile = Boolean(session.tileId && openTileIdSet.has(session.tileId))
 
-    if (session.tileId) {
+    if (hasOpenTile) {
       items.push({ label: 'Focus Existing Chat', action: () => onFocusTile(session.tileId!) })
     }
     if (session.canOpenInChat !== false) {
-      items.push({ label: 'Open in Chat', action: () => onOpenSessionInChat(session) })
+      items.push({ label: hasOpenTile ? 'Open in New Chat' : 'Open in Chat', action: () => onOpenSessionInChat(session) })
     }
     if (session.canOpenInApp) {
       items.push({ label: `Open in ${session.sourceLabel}`, action: () => onOpenSessionInApp(session) })
@@ -876,7 +879,7 @@ export function Sidebar({
     })
 
     return items.length > 0 ? items : [{ label: 'No actions available', action: () => {} }]
-  }, [loadWorkspaceSessions, onFocusTile, onOpenFile, onOpenSessionInApp, onOpenSessionInChat, workspaceById])
+  }, [loadWorkspaceSessions, onFocusTile, onOpenFile, onOpenSessionInApp, onOpenSessionInChat, openTileIdSet, workspaceById])
   const resizing = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
@@ -968,7 +971,7 @@ export function Sidebar({
     setExtGroupsCollapsed(prev => ({ ...prev, [extId]: !prev[extId] }))
   }, [])
 
-  const visibleSessions = useMemo(() => {
+const visibleSessions = useMemo(() => {
     const deduped = new Map<string, SessionEntry>()
     for (const session of sessions) {
       const existing = deduped.get(session.id)
@@ -1419,7 +1422,7 @@ export function Sidebar({
                       indent={Math.max(1, session.displayIndent + 1)}
                       extraWidth={132}
                       onClick={() => {
-                        if (session.tileId) {
+                        if (session.tileId && openTileIdSet.has(session.tileId)) {
                           onFocusTile(session.tileId)
                           return
                         }
