@@ -122,6 +122,79 @@ const activeDaemonStreams = new Map<string, {
 const sessionIds = new Map<string, string>()
 const execFileAsync = promisify(execFile)
 
+// ---- AskUserQuestion interactive-form handling ----------------------------
+interface AskUserQuestionOption {
+  label: string
+  description?: string
+  preview?: string
+}
+interface AskUserQuestionItem {
+  question: string
+  header?: string
+  multiSelect?: boolean
+  options: AskUserQuestionOption[]
+}
+interface AskUserQuestionAnswer {
+  answers: Record<string, string>
+  annotations?: Record<string, { notes?: string; preview?: string }>
+}
+interface PendingAskUserQuestion {
+  resolve: (value: AskUserQuestionAnswer) => void
+  reject: (err: Error) => void
+}
+// Keyed by `${cardId}::${toolUseID}` so we can address the exact tool_use.
+const pendingAskUserQuestions = new Map<string, PendingAskUserQuestion>()
+
+function askUserQuestionKey(cardId: string, toolUseID: string | null | undefined): string {
+  return `${cardId}::${toolUseID ?? ''}`
+}
+
+function awaitAskUserQuestionAnswer(
+  cardId: string,
+  toolUseID: string | null,
+  questions: AskUserQuestionItem[],
+): Promise<AskUserQuestionAnswer> {
+  const key = askUserQuestionKey(cardId, toolUseID)
+  // Reject any prior pending prompt at the same key (shouldn't happen, but be safe).
+  const prior = pendingAskUserQuestions.get(key)
+  if (prior) {
+    try { prior.reject(new Error('AskUserQuestion superseded')) } catch { /* noop */ }
+    pendingAskUserQuestions.delete(key)
+  }
+  return new Promise<AskUserQuestionAnswer>((resolve, reject) => {
+    pendingAskUserQuestions.set(key, { resolve, reject })
+    // Notify the renderer that a form is awaiting user input.
+    sendStream(cardId, {
+      type: 'ask_user_question',
+      toolId: toolUseID,
+      questions,
+    })
+  })
+}
+
+function resolvePendingAskUserQuestion(
+  cardId: string,
+  toolUseID: string | null | undefined,
+  payload: AskUserQuestionAnswer,
+): boolean {
+  const key = askUserQuestionKey(cardId, toolUseID)
+  const pending = pendingAskUserQuestions.get(key)
+  if (!pending) return false
+  pendingAskUserQuestions.delete(key)
+  pending.resolve(payload)
+  return true
+}
+
+function cancelPendingAskUserQuestionsForCard(cardId: string, reason: string = 'Cancelled'): void {
+  const prefix = `${cardId}::`
+  for (const [key, pending] of pendingAskUserQuestions.entries()) {
+    if (key.startsWith(prefix)) {
+      pendingAskUserQuestions.delete(key)
+      try { pending.reject(new Error(reason)) } catch { /* noop */ }
+    }
+  }
+}
+
 interface StreamToolFileChange {
   path: string
   previousPath?: string
@@ -993,29 +1066,58 @@ function chatClaude(req: ChatRequest): void {
     includePartialMessages: true,
     permissionMode: permMode as any,
     thinking: thinkingConfig as any,
-    ...(permMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
-    ...(permMode !== 'bypassPermissions' ? {
-      canUseTool: async (toolName: string, _input: Record<string, unknown>, toolOptions: any) => {
-        const allowed = await requestToolPermission({
-          provider: 'claude',
-          toolName,
-          title: typeof toolOptions?.title === 'string' ? toolOptions.title : null,
-          description: typeof toolOptions?.description === 'string' ? toolOptions.description : null,
-          blockedPath: typeof toolOptions?.blockedPath === 'string' ? toolOptions.blockedPath : null,
-          workspaceDir: req.workspaceDir,
-        }, true)
-
-        if (allowed) {
-          return { behavior: 'allow', toolUseID: toolOptions?.toolUseID }
+    // AskUserQuestion must be intercepted regardless of permission mode so the
+    // agent's question actually reaches the user. Everything else honours permMode.
+    canUseTool: async (toolName: string, input: Record<string, unknown>, toolOptions: any) => {
+      if (toolName === 'AskUserQuestion') {
+        try {
+          const rawQuestions = (input as { questions?: unknown })?.questions
+          const questions: AskUserQuestionItem[] = Array.isArray(rawQuestions)
+            ? (rawQuestions as AskUserQuestionItem[]).filter(q => q && typeof q.question === 'string' && Array.isArray(q.options))
+            : []
+          if (questions.length > 0) {
+            const toolUseID = typeof toolOptions?.toolUseID === 'string' ? toolOptions.toolUseID : null
+            const { answers, annotations } = await awaitAskUserQuestionAnswer(req.cardId, toolUseID, questions)
+            return {
+              behavior: 'allow',
+              updatedInput: {
+                ...(input as Record<string, unknown>),
+                answers,
+                ...(annotations && Object.keys(annotations).length > 0 ? { annotations } : {}),
+              },
+              toolUseID: toolOptions?.toolUseID,
+            }
+          }
+        } catch (err) {
+          log('AskUserQuestion interception error:', (err as Error).message)
         }
+        // No questions or error — just allow the tool through unchanged.
+        return { behavior: 'allow', toolUseID: toolOptions?.toolUseID }
+      }
 
-        return {
-          behavior: 'deny',
-          message: 'Tool permission denied by the user.',
-          toolUseID: toolOptions?.toolUseID,
-        }
-      },
-    } : {}),
+      if (permMode === 'bypassPermissions') {
+        return { behavior: 'allow', toolUseID: toolOptions?.toolUseID }
+      }
+
+      const allowed = await requestToolPermission({
+        provider: 'claude',
+        toolName,
+        title: typeof toolOptions?.title === 'string' ? toolOptions.title : null,
+        description: typeof toolOptions?.description === 'string' ? toolOptions.description : null,
+        blockedPath: typeof toolOptions?.blockedPath === 'string' ? toolOptions.blockedPath : null,
+        workspaceDir: req.workspaceDir,
+      }, true)
+
+      if (allowed) {
+        return { behavior: 'allow', toolUseID: toolOptions?.toolUseID }
+      }
+
+      return {
+        behavior: 'deny',
+        message: 'Tool permission denied by the user.',
+        toolUseID: toolOptions?.toolUseID,
+      }
+    },
     ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
     // Use detected system binary, not the SDK's bundled cli.js
     ...(claudePath && { pathToClaudeCodeExecutable: claudePath }),
@@ -2264,6 +2366,7 @@ export function registerChatIPC(): void {
       activeHttpRequests.delete(cardId)
     }
     await cancelChatDaemonJob(cardId)
+    cancelPendingAskUserQuestionsForCard(cardId, 'Chat stopped')
     // Abort any active OpenCode session
     const ocSessionId = opencodeSessionIds.get(cardId)
     if (ocSessionId) {
@@ -2289,7 +2392,40 @@ export function registerChatIPC(): void {
     opencodeSessionIds.delete(cardId)
     openclawSessionIds.delete(cardId)
     hermesSessionIds.delete(cardId)
+    cancelPendingAskUserQuestionsForCard(cardId, 'Session cleared')
     log('session cleared for card', cardId)
+    return { ok: true }
+  })
+
+  // AskUserQuestion — receive the user's form submission from the renderer and
+  // resolve the pending canUseTool promise so the agent can continue.
+  ipcMain.handle('chat:answerUserQuestion', async (_, payload: {
+    cardId: string
+    toolId: string | null
+    answers: Record<string, string>
+    annotations?: Record<string, { notes?: string; preview?: string }>
+  }) => {
+    if (!payload || typeof payload.cardId !== 'string') {
+      return { ok: false, error: 'invalid payload' }
+    }
+    const answers = (payload.answers && typeof payload.answers === 'object') ? payload.answers : {}
+    const annotations = (payload.annotations && typeof payload.annotations === 'object') ? payload.annotations : undefined
+    const delivered = resolvePendingAskUserQuestion(payload.cardId, payload.toolId ?? null, { answers, annotations })
+    if (!delivered) {
+      log('chat:answerUserQuestion: no pending question for', payload.cardId, payload.toolId)
+      return { ok: false, error: 'no pending question' }
+    }
+    // Emit a tool_summary so the form is replaced by a permanent summary of the
+    // user's selections (persists across re-renders and session rehydration).
+    const summaryLines = Object.entries(answers).map(([q, a]) => `• ${q} — ${a}`)
+    if (summaryLines.length > 0) {
+      sendStream(payload.cardId, {
+        type: 'tool_summary',
+        toolId: payload.toolId,
+        toolName: 'AskUserQuestion',
+        text: summaryLines.join('\n'),
+      })
+    }
     return { ok: true }
   })
 

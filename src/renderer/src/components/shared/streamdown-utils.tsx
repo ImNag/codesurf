@@ -47,6 +47,64 @@ export function ensureShimmerStyles(): void {
   document.head.appendChild(style)
 }
 
+// --- Streamdown code-block layout fix (injected once globally) --------------------
+// Streamdown only adds a block-level line class when lineNumbers is enabled. When
+// lineNumbers is off, each code line is rendered as an inline <span>, which makes
+// multiple source lines collapse onto a single visual row and overflow horizontally.
+// We force line-spans to display:block and ensure the body scrolls horizontally so
+// long lines don't clip. This is applied via CSS so it survives async Shiki
+// highlighting (useEffect-based DOM patches can race with it).
+// Bump this version suffix whenever the injected CSS below changes so that
+// Vite HMR re-injects a fresh <style> tag instead of short-circuiting on the
+// stale one left behind from a previous build.
+const CODE_LAYOUT_STYLE_VERSION = 'v3'
+const CODE_LAYOUT_STYLE_ID = `shared-streamdown-code-layout-${CODE_LAYOUT_STYLE_VERSION}`
+
+export function ensureCodeBlockLayoutStyles(): void {
+  if (document.getElementById(CODE_LAYOUT_STYLE_ID)) return
+  // Tear down any older versions so their outdated rules stop applying.
+  document.querySelectorAll('style[id^="shared-streamdown-code-layout"]').forEach(node => {
+    if (node.id !== CODE_LAYOUT_STYLE_ID) node.remove()
+  })
+  const style = document.createElement('style')
+  style.id = CODE_LAYOUT_STYLE_ID
+  style.textContent = `
+    /* Outer code-block: kill streamdown's intrinsic-size placeholder that
+       leaves a huge empty gap before async Shiki layout finishes. */
+    [data-streamdown="code-block"] {
+      display: flex !important;
+      flex-direction: column !important;
+      content-visibility: visible !important;
+      contain-intrinsic-size: auto !important;
+    }
+    /* Inner body: flatten streamdown's default rounded border so we don't
+       get a box-inside-a-box, and keep horizontal scroll on long lines. */
+    [data-streamdown="code-block-body"] {
+      overflow-x: auto !important;
+      border: none !important;
+      border-radius: 0 !important;
+      min-width: 0;
+    }
+    [data-streamdown="code-block-body"] pre {
+      white-space: pre !important;
+      overflow-x: visible !important;
+      margin: 0 !important;
+      min-width: 0;
+    }
+    [data-streamdown="code-block-body"] pre > code {
+      display: block;
+      white-space: pre !important;
+    }
+    /* Force each line-span onto its own row. Streamdown only adds a block
+       className when lineNumbers is enabled; without that, bare spans render
+       inline and collapse lines onto a single row. */
+    [data-streamdown="code-block-body"] pre > code > span {
+      display: block;
+    }
+  `
+  document.head.appendChild(style)
+}
+
 // --- ShimmerText component ---------------------------------------------------------
 export function ShimmerText({ children, style, baseColor = '#888' }: {
   children: React.ReactNode
@@ -85,7 +143,6 @@ export function WorkingDots({ color, size = 5 }: { color?: string; size?: number
             height: size,
             borderRadius: '50%',
             background: color ?? theme.accent.base,
-            animation: `chat-dot-bounce 1.2s ease-in-out ${i * 0.15}s infinite`,
           }}
         />
       ))}
@@ -106,7 +163,7 @@ export function usePatchCodeBlocks(
     if (!el) return
     const { shellBackground, bodyBackground, headerBackground, headerColor } = tokens.code
     const { shellBackground: tableShellBackground, innerBackground: tableInnerBackground, headerBackground: tableHeaderBackground } = tokens.table
-    const fontSize = Math.max(12, fonts.size - 1)
+    const fontSize = Math.max(10, fonts.size - 3)
 
     // Code blocks
     const blocks = el.querySelectorAll<HTMLElement>('[data-streamdown="code-block"]')
@@ -233,6 +290,10 @@ export const ChatMarkdown = React.memo(({ text, isStreaming, className }: {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useTheme()
   const fonts = useAppFonts()
+  useEffect(() => {
+    ensureShimmerStyles()
+    ensureCodeBlockLayoutStyles()
+  }, [])
   usePatchCodeBlocks(ref, theme, fonts)
   useLinkClickHandler(ref)
 

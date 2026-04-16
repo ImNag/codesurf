@@ -181,10 +181,13 @@ function ItemCard({ title, description, chips, onEdit, onDelete, color }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: description ? 6 : 0 }}>
         {color && <span style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />}
         <span style={{ fontSize: fonts.size, fontWeight: 600, color: theme.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-        {onDelete && hovered && (
+        {onDelete && (
           <button onClick={e => { e.stopPropagation(); onDelete() }} style={{
             width: 20, height: 20, borderRadius: 4, border: 'none', background: 'transparent',
             color: theme.text.disabled, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            visibility: hovered ? 'visible' : 'hidden',
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.12s ease',
           }}
             onMouseEnter={e => { e.currentTarget.style.color = theme.status.danger }}
             onMouseLeave={e => { e.currentTarget.style.color = theme.text.disabled }}
