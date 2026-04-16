@@ -99,8 +99,17 @@ function whichSync(cmd: string): string | null {
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim()
     if (!result || result.includes('not found') || result.includes('Could not find')) return null
-    // `where` on Windows may return multiple lines; take the first
-    return result.split(/\r?\n/)[0]?.trim() || null
+    const lines = result.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    if (lines.length === 0) return null
+    // `where` on Windows returns all PATH matches. Prefer a native .exe (which
+    // Node's spawn() can execute directly) over .cmd/.bat shims or extensionless
+    // shell scripts. npm-global installs via Volta create all of these side by
+    // side in the same directory, and the shim was winning as "first match".
+    if (process.platform === 'win32') {
+      const exeMatch = lines.find(line => /\.exe$/i.test(line))
+      if (exeMatch) return exeMatch
+    }
+    return lines[0] || null
   } catch {
     return null
   }
