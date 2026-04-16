@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, webFrame } from 'electron'
 import { homedir } from 'os'
 
 function channelMatches(pattern: string, channel: string): boolean {
@@ -504,5 +504,11 @@ contextBridge.exposeInMainWorld('electron', {
     } catch {
       return ''
     }
+  },
+
+  // UI zoom (webFrame) — reliable alternative to Electron menu role accelerators
+  zoom: {
+    getLevel: () => webFrame.getZoomLevel(),
+    setLevel: (level: number) => webFrame.setZoomLevel(level),
   },
 })

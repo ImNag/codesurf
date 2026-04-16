@@ -279,6 +279,10 @@ interface ElectronAPI {
     markRead(channel: string, subscriberId: string): Promise<void>
     onEvent(callback: (event: import('../../shared/types').BusEvent) => void): () => void
   }
+  zoom: {
+    getLevel(): number
+    setLevel(level: number): void
+  }
   getPathForFile(file: File): string
   system: {
     cleanupTile(tileId: string): Promise<{ ok: boolean; channelsDropped?: number }>
