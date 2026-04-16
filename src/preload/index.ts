@@ -485,9 +485,14 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
 
-  // UI zoom (webFrame) — reliable alternative to Electron menu role accelerators
+  // UI zoom — routed through main so the chosen level persists to
+  // ~/.codesurf/ui-state.json and is restored on the next app launch.
+  // getLevel reads what main currently has applied (via webFrame, so it
+  // reflects the live zoom state immediately after setLevel resolves).
   zoom: {
     getLevel: () => webFrame.getZoomLevel(),
-    setLevel: (level: number) => webFrame.setZoomLevel(level),
+    setLevel: async (level: number) => {
+      await ipcRenderer.invoke('ui:setZoomLevel', level)
+    },
   },
 })

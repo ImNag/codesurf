@@ -19,6 +19,7 @@ import { registerTileContextIPC } from './ipc/tile-context'
 import { registerSystemIPC } from './ipc/system'
 import { registerExecutionIPC } from './ipc/execution'
 import { registerPermissionsIPC } from './ipc/permissions'
+import { getSavedZoomLevel, registerUIIPC } from './ipc/ui'
 import { registerFileProtocol } from './file-protocol'
 import { flushAll as flushActivityStore } from './activity-store'
 import { initializeAgentPathsCache, registerAgentPathsIPC } from './agent-paths'
@@ -216,6 +217,17 @@ function createWindow(opts?: { fresh?: boolean }): BrowserWindow {
     broadcastWindowList()
   })
 
+  // Electron's built-in per-origin zoom restore is unreliable in practice —
+  // users were opening to a drastically zoomed UI even after Cmd+0. Restore
+  // the zoom level ourselves from ~/.codesurf/ui-state.json on every load
+  // so the choice persists deterministically across launches.
+  win.webContents.on('did-finish-load', async () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return
+    const level = await getSavedZoomLevel()
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return
+    win.webContents.setZoomLevel(level)
+  })
+
   win.on('focus', () => broadcastWindowList())
   win.on('blur', () => broadcastWindowList())
 
@@ -277,6 +289,7 @@ app.whenReady().then(async () => {
   registerSystemIPC()
   registerExecutionIPC()
   registerPermissionsIPC()
+  registerUIIPC()
   registerFileProtocol()
   registerAgentPathsIPC()
   registerChromeSyncIPC()

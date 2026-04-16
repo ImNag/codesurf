@@ -260,7 +260,7 @@ interface ElectronAPI {
   }
   zoom: {
     getLevel(): number
-    setLevel(level: number): void
+    setLevel(level: number): Promise<void>
   }
   getPathForFile(file: File): string
   system: {
