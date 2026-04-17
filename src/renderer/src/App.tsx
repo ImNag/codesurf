@@ -3622,14 +3622,13 @@ function App(): JSX.Element {
     ? `${theme.canvas.backgroundEffect}, ${canvasBackground}`
     : canvasBackground
   const sidebarPanelTop = 0
-  const sidebarFooterBottom = 0
+  const sidebarFooterBottom = 2
   const sidebarFooterLeft = 0
   const sidebarFooterHeight = 42
   const sidebarToFooterGap = 8
   const sidebarPanelBottomOffset = sidebarFooterBottom + sidebarFooterHeight - 12
-  // 6px bottom margin between the main panel's bottom edge and the footer top —
-  // mirrors the 6px left/right insets for consistent spacing on all sides.
-  const mainPanelBottomInset = sidebarFooterHeight + 6
+  // 2px margin between the main panel's bottom edge and the footer top.
+  const mainPanelBottomInset = sidebarFooterHeight-6
   const mainStatusBarLeft = sidebarCollapsed ? 0 : sidebarWidth
   const openSidebarToolbarPadding = sidebarWidth + 16
   const openSidebarPillLeft = sidebarWidth - 5
