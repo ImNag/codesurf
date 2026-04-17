@@ -1147,6 +1147,12 @@ function chatClaude(req: ChatRequest): void {
     // Consume the async generator in the background
     ;(async () => {
       let capturedSessionId = false
+      // Track streamed text per content_block index so we can fall back to the
+      // assembled `assistant` message for any text the partial stream missed.
+      // Key format: `${turn}:${index}` — we bump `turn` on each assistant message.
+      const streamedTextByIndex = new Map<string, string>()
+      let streamTurn = 0
+      let currentThinkingId: string | null = null
       try {
         for await (const msg of q) {
           // Capture session_id from the first message we receive
@@ -1165,9 +1171,11 @@ function chatClaude(req: ChatRequest): void {
             const evt = msg.event as any
             if (evt.type === 'content_block_delta') {
               if (evt.delta?.type === 'text_delta' && evt.delta.text) {
+                const key = `${streamTurn}:${evt.index ?? 0}`
+                streamedTextByIndex.set(key, (streamedTextByIndex.get(key) ?? '') + evt.delta.text)
                 sendStream(req.cardId, { type: 'text', text: evt.delta.text })
               } else if (evt.delta?.type === 'thinking_delta' && evt.delta.thinking) {
-                sendStream(req.cardId, { type: 'thinking', text: evt.delta.thinking })
+                sendStream(req.cardId, { type: 'thinking', text: evt.delta.thinking, thinkingId: currentThinkingId })
               } else if (evt.delta?.type === 'input_json_delta' && evt.delta.partial_json) {
                 sendStream(req.cardId, { type: 'tool_input', text: evt.delta.partial_json })
               }
@@ -1179,16 +1187,22 @@ function chatClaude(req: ChatRequest): void {
                   toolId: evt.content_block.id,
                 })
               } else if (evt.content_block?.type === 'thinking') {
-                sendStream(req.cardId, { type: 'thinking_start' })
+                const thinkingId = `think-${streamTurn}-${evt.index ?? 0}`
+                currentThinkingId = thinkingId
+                sendStream(req.cardId, { type: 'thinking_start', thinkingId })
               }
             } else if (evt.type === 'content_block_stop') {
-              sendStream(req.cardId, { type: 'block_stop', index: evt.index })
+              sendStream(req.cardId, { type: 'block_stop', index: evt.index, thinkingId: currentThinkingId })
+              currentThinkingId = null
             }
           } else if (msg.type === 'assistant') {
-            // Full assembled message -- extract tool results
+            // Full assembled message -- forward tool_use blocks AND any text
+            // that the partial stream missed (dropping text here is what caused
+            // "lost chatter between tool uses").
             const message = (msg as any).message
             if (message?.content) {
-              for (const block of message.content) {
+              for (let idx = 0; idx < message.content.length; idx++) {
+                const block = message.content[idx]
                 if (block.type === 'tool_use') {
                   sendStream(req.cardId, {
                     type: 'tool_use',
@@ -1196,9 +1210,22 @@ function chatClaude(req: ChatRequest): void {
                     toolId: block.id,
                     toolInput: JSON.stringify(block.input, null, 2),
                   })
+                } else if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
+                  const key = `${streamTurn}:${idx}`
+                  const alreadyStreamed = streamedTextByIndex.get(key) ?? ''
+                  if (block.text === alreadyStreamed) continue
+                  const tail = block.text.startsWith(alreadyStreamed)
+                    ? block.text.slice(alreadyStreamed.length)
+                    : block.text
+                  if (tail.length > 0) {
+                    sendStream(req.cardId, { type: 'text', text: tail })
+                    streamedTextByIndex.set(key, block.text)
+                  }
                 }
               }
             }
+            // Advance turn so the next assistant message gets fresh indices.
+            streamTurn += 1
           } else if (msg.type === 'tool_use_summary') {
             sendStream(req.cardId, {
               type: 'tool_summary',

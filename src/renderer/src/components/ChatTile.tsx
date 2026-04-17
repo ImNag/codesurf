@@ -2880,15 +2880,47 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           })
           break
 
-        case 'thinking_start':
-          updateLast(m => ({ ...m, thinking: { content: '', done: false } }))
+        case 'thinking_start': {
+          const thinkingId = typeof event.thinkingId === 'string'
+            ? event.thinkingId
+            : `think-${Date.now()}`
+          updateLast(m => ({
+            ...m,
+            // Keep legacy `thinking` in sync with the latest block so the
+            // fallback indicator keeps working for messages without ids.
+            thinking: { content: '', done: false, id: thinkingId },
+            thinkingBlocks: [...(m.thinkingBlocks ?? []), { id: thinkingId, content: '', done: false }],
+            contentBlocks: [...(m.contentBlocks ?? []), { type: 'thinking' as const, thinkingId }],
+          }))
           break
+        }
 
         case 'thinking':
-          if (event.text) updateLast(m => ({
-            ...m,
-            thinking: { content: (m.thinking?.content ?? '') + event.text, done: false },
-          }))
+          if (event.text) updateLast(m => {
+            const targetId = typeof event.thinkingId === 'string' ? event.thinkingId : m.thinking?.id
+            const existing = m.thinkingBlocks ?? []
+            const idx = targetId
+              ? existing.findIndex(b => b.id === targetId)
+              : existing.length - 1
+            let nextBlocks: ThinkingBlock[]
+            let nextContentBlocks = m.contentBlocks
+            if (idx >= 0) {
+              nextBlocks = [...existing]
+              nextBlocks[idx] = { ...nextBlocks[idx], content: nextBlocks[idx].content + event.text, done: false }
+            } else {
+              // No start event seen yet — synthesise an entry + content-block so
+              // the delta still surfaces inline instead of being lost.
+              const syntheticId = targetId ?? `think-${Date.now()}`
+              nextBlocks = [...existing, { id: syntheticId, content: event.text, done: false }]
+              nextContentBlocks = [...(m.contentBlocks ?? []), { type: 'thinking' as const, thinkingId: syntheticId }]
+            }
+            return {
+              ...m,
+              thinking: { content: (m.thinking?.content ?? '') + event.text, done: false, id: m.thinking?.id },
+              thinkingBlocks: nextBlocks,
+              contentBlocks: nextContentBlocks,
+            }
+          })
           break
 
         case 'tool_start': {
@@ -2976,9 +3008,19 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
             if (lastRunning >= 0) {
               blocks[lastRunning] = { ...blocks[lastRunning], status: 'done' }
             }
+            const thinkingBlocks = [...(m.thinkingBlocks ?? [])]
+            const targetId = typeof event.thinkingId === 'string' ? event.thinkingId : null
+            if (targetId) {
+              const ti = thinkingBlocks.findIndex(b => b.id === targetId)
+              if (ti >= 0) thinkingBlocks[ti] = { ...thinkingBlocks[ti], done: true }
+            } else {
+              const ti = thinkingBlocks.findLastIndex(b => !b.done)
+              if (ti >= 0) thinkingBlocks[ti] = { ...thinkingBlocks[ti], done: true }
+            }
             return {
               ...m,
               thinking: m.thinking ? { ...m.thinking, done: true } : m.thinking,
+              thinkingBlocks,
               toolBlocks: blocks,
             }
           })
@@ -3530,10 +3572,16 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 marginBottom: msg.role === 'user' ? 5 : 0,
                 gap: 6,
               }}>
-                {/* Thinking block — show immediately when streaming starts */}
-                {(msg.thinking || (msg.isStreaming && !msg.content)) && (
-                  <ThinkingBlockView thinking={msg.thinking ?? { content: '', done: false }} />
-                )}
+                {/* Thinking block — show the pre-tools indicator only when there
+                    are no inline thinking content-blocks yet, so we don't render
+                    the first thinking block twice. */}
+                {(() => {
+                  const hasInlineThinking = (msg.contentBlocks ?? []).some(b => b.type === 'thinking')
+                  const showLegacy = !hasInlineThinking && (msg.thinking || (msg.isStreaming && !msg.content))
+                  return showLegacy
+                    ? <ThinkingBlockView thinking={msg.thinking ?? { content: '', done: false }} />
+                    : null
+                })()}
 
                 {/* Interleaved content blocks — text and tool calls in stream order */}
                 {(msg.contentBlocks?.length ?? 0) > 0 ? (
@@ -3544,11 +3592,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                       let i = 0
                       while (i < blocks.length) {
                         const block = blocks[i]
+                        if (block.type === 'thinking') {
+                          const tb = msg.thinkingBlocks?.find(t => t.id === block.thinkingId)
+                          if (tb) {
+                            elements.push(<ThinkingBlockView key={`think-${block.thinkingId}`} thinking={tb} />)
+                          }
+                          i++
+                          continue
+                        }
                         if (block.type === 'tool') {
                           // Collect consecutive tool blocks, then sub-group same-name completed ones
                           const rawTools: ToolBlock[] = []
-                          while (i < blocks.length && blocks[i].type === 'tool') {
-                            const tb = msg.toolBlocks?.find(t => t.id === blocks[i].toolId)
+                          while (i < blocks.length) {
+                            const cb = blocks[i]
+                            if (cb.type !== 'tool') break
+                            const tb = msg.toolBlocks?.find(t => t.id === cb.toolId)
                             if (tb && shouldRenderToolBlock(tb)) rawTools.push(tb)
                             i++
                           }
@@ -3804,15 +3862,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         {queuedTurns.length > 0 && (
           <div style={{
             flexShrink: 0,
-            width: CHAT_COMPOSER_WIDTH,
-            minWidth: CHAT_COMPOSER_MIN_WIDTH_STYLE,
-            margin: latestChangeSummary ? '0 auto 0 auto' : '0 auto 0 auto',
+            // Match the "changes" drawer's indent + tucks the bottom edge under
+            // the composer so it reads as a drawer pulled out from behind it.
+            width: `calc(${CHAT_COMPOSER_WIDTH} - 24px)`,
+            minWidth: `calc(${CHAT_COMPOSER_MIN_WIDTH_STYLE} - 24px)`,
+            margin: '0 auto -12px auto',
             border: `1px solid ${theme.chat.divider}`,
             borderTop: latestChangeSummary ? 'none' : `1px solid ${theme.chat.divider}`,
-            borderRadius: latestChangeSummary ? '0 0 18px 18px' : 18,
-            background: theme.surface.panelElevated,
+            borderBottom: 'none',
+            borderRadius: latestChangeSummary ? 0 : '14px 14px 0 0',
+            background: theme.surface.panelMuted,
             boxShadow: theme.shadow.panel,
             overflow: 'hidden',
+            position: 'relative',
+            zIndex: 0,
+            paddingBottom: 12,
           }}>
             {queuedTurns.map((turn, index) => (
               <div
@@ -3821,7 +3885,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
-                  padding: '16px 18px',
+                  padding: '6px 14px',
                   borderTop: index > 0 ? `1px solid ${theme.chat.divider}` : undefined,
                 }}
               >
@@ -4606,7 +4670,7 @@ function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Eleme
 
   useEffect(() => {
     if (thinking.done && expanded) {
-      const t = setTimeout(() => setExpanded(false), 800)
+      const t = setTimeout(() => setExpanded(false), 1200)
       return () => clearTimeout(t)
     }
   }, [thinking.done])
@@ -5039,15 +5103,11 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
           padding: '4px 10px 8px 10px',
           borderTop: `1px solid ${theme.chat.assistantBubbleBorder}`,
         }}>
-          <pre style={{
-            margin: 0, padding: 8, borderRadius: 6,
-            background: theme.surface.panelMuted, color: theme.chat.textSecondary,
-            fontSize: codePanelFontSize, lineHeight: fonts.monoLineHeight, fontFamily: fonts.mono, fontWeight: fonts.monoWeight,
-            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            maxHeight: 200, overflowY: 'auto',
-          }}>
-            {formatToolInput(block.input)}
-          </pre>
+          <ToolInputView
+            toolName={block.name}
+            input={block.input}
+            codePanelFontSize={codePanelFontSize}
+          />
           {block.summary && (
             <div style={{
               marginTop: 6, padding: '4px 0',
@@ -5069,6 +5129,291 @@ function formatToolInput(input: string): string {
   } catch {
     return input
   }
+}
+
+// Strip the "[CodeSurf memory guard] Older … truncated …" preamble that gets
+// prepended to stale tool inputs, returning { notice, rest } so the UI can
+// render a small badge instead of dumping the message inline.
+function splitMemoryGuard(raw: string): { notice: string | null; body: string } {
+  const trimmed = raw.trimStart()
+  const m = /^\[CodeSurf memory guard\][^\n]*\n\n?/i.exec(trimmed)
+  if (!m) return { notice: null, body: raw }
+  return { notice: m[0].trim(), body: trimmed.slice(m[0].length) }
+}
+
+function tryParseToolInput(input: string): unknown {
+  try { return JSON.parse(input) } catch { return null }
+}
+
+function getStr(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== 'object') return null
+  const v = (obj as Record<string, unknown>)[key]
+  return typeof v === 'string' ? v : null
+}
+
+function getNum(obj: unknown, key: string): number | null {
+  if (!obj || typeof obj !== 'object') return null
+  const v = (obj as Record<string, unknown>)[key]
+  return typeof v === 'number' ? v : null
+}
+
+function getBool(obj: unknown, key: string): boolean | null {
+  if (!obj || typeof obj !== 'object') return null
+  const v = (obj as Record<string, unknown>)[key]
+  return typeof v === 'boolean' ? v : null
+}
+
+function ToolInputView({ toolName, input, codePanelFontSize }: {
+  toolName: string
+  input: string
+  codePanelFontSize: number
+}): JSX.Element {
+  const fonts = useFonts()
+  const theme = useTheme()
+  const { notice, body } = splitMemoryGuard(input)
+  const parsed = tryParseToolInput(body)
+
+  const codeStyle: React.CSSProperties = {
+    margin: 0, padding: 8, borderRadius: 6,
+    background: theme.surface.panelMuted, color: theme.chat.textSecondary,
+    fontSize: codePanelFontSize, lineHeight: fonts.monoLineHeight,
+    fontFamily: fonts.mono, fontWeight: fonts.monoWeight,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    maxHeight: 240, overflowY: 'auto',
+  }
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 600, letterSpacing: 0.4,
+    color: theme.chat.muted, fontFamily: fonts.sans,
+    textTransform: 'uppercase', marginBottom: 3,
+  }
+  const pathStyle: React.CSSProperties = {
+    fontSize: codePanelFontSize, fontFamily: fonts.mono,
+    color: theme.chat.text, wordBreak: 'break-all', padding: '2px 0',
+  }
+  const diffBlockStyle = (kind: 'add' | 'del'): React.CSSProperties => ({
+    ...codeStyle,
+    background: kind === 'add'
+      ? `color-mix(in srgb, ${theme.status.success} 12%, ${theme.surface.panelMuted})`
+      : `color-mix(in srgb, ${theme.status.danger} 12%, ${theme.surface.panelMuted})`,
+    borderLeft: `3px solid ${kind === 'add' ? theme.status.success : theme.status.danger}`,
+  })
+
+  const noticeBanner = notice
+    ? (
+        <div style={{
+          fontSize: 10, color: theme.chat.muted, fontFamily: fonts.sans,
+          padding: '3px 8px', marginBottom: 6, borderRadius: 4,
+          border: `1px dashed ${theme.chat.divider}`,
+          background: 'transparent',
+        }}>
+          Older tool input truncated to save memory
+        </div>
+      )
+    : null
+
+  const renderKeyValue = (label: string, value: string, mono = true) => (
+    <div key={label} style={{ marginBottom: 6 }}>
+      <div style={labelStyle}>{label}</div>
+      <div style={mono ? pathStyle : { ...pathStyle, fontFamily: fonts.sans }}>{value}</div>
+    </div>
+  )
+
+  // --- Per-tool layouts ----------------------------------------------------
+  if (toolName === 'Edit' && parsed) {
+    const filePath = getStr(parsed, 'file_path')
+    const oldStr = getStr(parsed, 'old_string') ?? ''
+    const newStr = getStr(parsed, 'new_string') ?? ''
+    const replaceAll = getBool(parsed, 'replace_all')
+    return (
+      <>
+        {noticeBanner}
+        {filePath && renderKeyValue('File', filePath)}
+        {replaceAll && (
+          <div style={{ ...labelStyle, color: theme.status.warning, marginBottom: 4 }}>Replace all occurrences</div>
+        )}
+        <div style={labelStyle}>Old</div>
+        <pre style={diffBlockStyle('del')}>{oldStr}</pre>
+        <div style={{ ...labelStyle, marginTop: 6 }}>New</div>
+        <pre style={diffBlockStyle('add')}>{newStr}</pre>
+      </>
+    )
+  }
+
+  if (toolName === 'MultiEdit' && parsed) {
+    const filePath = getStr(parsed, 'file_path')
+    const edits = Array.isArray((parsed as Record<string, unknown>).edits)
+      ? ((parsed as Record<string, unknown>).edits as unknown[])
+      : []
+    return (
+      <>
+        {noticeBanner}
+        {filePath && renderKeyValue('File', filePath)}
+        {edits.map((edit, index) => {
+          const oldStr = getStr(edit, 'old_string') ?? ''
+          const newStr = getStr(edit, 'new_string') ?? ''
+          return (
+            <div key={index} style={{ marginTop: index > 0 ? 10 : 0 }}>
+              <div style={labelStyle}>Edit {index + 1} — Old</div>
+              <pre style={diffBlockStyle('del')}>{oldStr}</pre>
+              <div style={{ ...labelStyle, marginTop: 4 }}>Edit {index + 1} — New</div>
+              <pre style={diffBlockStyle('add')}>{newStr}</pre>
+            </div>
+          )
+        })}
+      </>
+    )
+  }
+
+  if (toolName === 'Write' && parsed) {
+    const filePath = getStr(parsed, 'file_path')
+    const content = getStr(parsed, 'content') ?? ''
+    return (
+      <>
+        {noticeBanner}
+        {filePath && renderKeyValue('File', filePath)}
+        <div style={labelStyle}>Content</div>
+        <pre style={codeStyle}>{content}</pre>
+      </>
+    )
+  }
+
+  if (toolName === 'Bash' && parsed) {
+    const command = getStr(parsed, 'command') ?? ''
+    const description = getStr(parsed, 'description')
+    const timeout = getNum(parsed, 'timeout')
+    return (
+      <>
+        {noticeBanner}
+        {description && renderKeyValue('Description', description, false)}
+        <div style={labelStyle}>Command</div>
+        <pre style={codeStyle}>{command}</pre>
+        {timeout != null && (
+          <div style={{ ...labelStyle, marginTop: 4 }}>Timeout: {timeout}ms</div>
+        )}
+      </>
+    )
+  }
+
+  if ((toolName === 'Read' || toolName === 'NotebookEdit') && parsed) {
+    const filePath = getStr(parsed, 'file_path') ?? getStr(parsed, 'notebook_path')
+    const offset = getNum(parsed, 'offset')
+    const limit = getNum(parsed, 'limit')
+    const pages = getStr(parsed, 'pages')
+    const newSource = getStr(parsed, 'new_source')
+    return (
+      <>
+        {noticeBanner}
+        {filePath && renderKeyValue('File', filePath)}
+        {(offset != null || limit != null) && (
+          <div style={pathStyle}>
+            {offset != null && <>offset: {offset}</>}
+            {offset != null && limit != null && ' · '}
+            {limit != null && <>limit: {limit}</>}
+          </div>
+        )}
+        {pages && renderKeyValue('Pages', pages)}
+        {newSource != null && (
+          <>
+            <div style={{ ...labelStyle, marginTop: 6 }}>New source</div>
+            <pre style={codeStyle}>{newSource}</pre>
+          </>
+        )}
+      </>
+    )
+  }
+
+  if ((toolName === 'Grep' || toolName === 'Glob') && parsed) {
+    const pattern = getStr(parsed, 'pattern') ?? ''
+    const path = getStr(parsed, 'path')
+    const glob = getStr(parsed, 'glob')
+    const ftype = getStr(parsed, 'type')
+    const outputMode = getStr(parsed, 'output_mode')
+    return (
+      <>
+        {noticeBanner}
+        <div style={labelStyle}>Pattern</div>
+        <pre style={codeStyle}>{pattern}</pre>
+        {path && renderKeyValue('Path', path)}
+        {glob && renderKeyValue('Glob', glob)}
+        {ftype && renderKeyValue('Type', ftype, false)}
+        {outputMode && renderKeyValue('Output mode', outputMode, false)}
+      </>
+    )
+  }
+
+  if (toolName === 'WebFetch' && parsed) {
+    const url = getStr(parsed, 'url') ?? ''
+    const prompt = getStr(parsed, 'prompt')
+    return (
+      <>
+        {noticeBanner}
+        {renderKeyValue('URL', url)}
+        {prompt && (
+          <>
+            <div style={labelStyle}>Prompt</div>
+            <pre style={codeStyle}>{prompt}</pre>
+          </>
+        )}
+      </>
+    )
+  }
+
+  if (toolName === 'WebSearch' && parsed) {
+    const query = getStr(parsed, 'query') ?? ''
+    return (
+      <>
+        {noticeBanner}
+        {renderKeyValue('Query', query, false)}
+      </>
+    )
+  }
+
+  if (toolName === 'TodoWrite' && parsed) {
+    const todos = Array.isArray((parsed as Record<string, unknown>).todos)
+      ? (parsed as Record<string, unknown>).todos as unknown[]
+      : []
+    return (
+      <>
+        {noticeBanner}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {todos.map((todo, i) => {
+            const content = getStr(todo, 'content') ?? ''
+            const status = getStr(todo, 'status') ?? 'pending'
+            const color = status === 'completed'
+              ? theme.status.success
+              : status === 'in_progress'
+                ? theme.status.warning
+                : theme.chat.muted
+            return (
+              <div key={i} style={{
+                display: 'flex', gap: 8, alignItems: 'flex-start',
+                fontSize: codePanelFontSize, fontFamily: fonts.sans, color: theme.chat.text,
+              }}>
+                <span style={{ color, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
+                  {status === 'completed' ? '✓' : status === 'in_progress' ? '▸' : '○'}
+                </span>
+                <span style={{ textDecoration: status === 'completed' ? 'line-through' : undefined, opacity: status === 'completed' ? 0.65 : 1 }}>
+                  {content}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+
+  // Fallback: unescape JSON strings so embedded newlines render as actual line
+  // breaks instead of literal "\n" sequences, and drop the memory-guard banner.
+  const prettyFallback = parsed != null
+    ? JSON.stringify(parsed, null, 2).replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\t/g, '\t')
+    : body
+  return (
+    <>
+      {noticeBanner}
+      <pre style={codeStyle}>{prettyFallback}</pre>
+    </>
+  )
 }
 
 // --- Toolbar sub-components ------------------------------------------------------

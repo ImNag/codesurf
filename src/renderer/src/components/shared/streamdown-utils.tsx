@@ -57,7 +57,7 @@ export function ensureShimmerStyles(): void {
 // Bump this version suffix whenever the injected CSS below changes so that
 // Vite HMR re-injects a fresh <style> tag instead of short-circuiting on the
 // stale one left behind from a previous build.
-const CODE_LAYOUT_STYLE_VERSION = 'v3'
+const CODE_LAYOUT_STYLE_VERSION = 'v4'
 const CODE_LAYOUT_STYLE_ID = `shared-streamdown-code-layout-${CODE_LAYOUT_STYLE_VERSION}`
 
 export function ensureCodeBlockLayoutStyles(): void {
@@ -68,6 +68,8 @@ export function ensureCodeBlockLayoutStyles(): void {
   })
   const style = document.createElement('style')
   style.id = CODE_LAYOUT_STYLE_ID
+  // Font size is CSS-based so it survives Shiki's async DOM replacement (which
+  // happens after usePatchCodeBlocks' useEffect runs and wipes inline styles).
   style.textContent = `
     /* Outer code-block: kill streamdown's intrinsic-size placeholder that
        leaves a huge empty gap before async Shiki layout finishes. */
@@ -76,30 +78,50 @@ export function ensureCodeBlockLayoutStyles(): void {
       flex-direction: column !important;
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
+      margin: 6px 0 !important;
+      border-radius: 6px !important;
     }
-    /* Inner body: flatten streamdown's default rounded border so we don't
-       get a box-inside-a-box, and keep horizontal scroll on long lines. */
+    /* Inner body: flatten streamdown's default rounded border, tighten padding,
+       and force a small monospace font so we don't get huge Shiki defaults. */
     [data-streamdown="code-block-body"] {
       overflow-x: auto !important;
       border: none !important;
       border-radius: 0 !important;
       min-width: 0;
+      padding: 6px 10px !important;
+      font-size: 11px !important;
+      line-height: 1.45 !important;
     }
     [data-streamdown="code-block-body"] pre {
       white-space: pre !important;
       overflow-x: visible !important;
       margin: 0 !important;
       min-width: 0;
+      padding: 0 !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
     }
     [data-streamdown="code-block-body"] pre > code {
       display: block;
       white-space: pre !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
     }
     /* Force each line-span onto its own row. Streamdown only adds a block
        className when lineNumbers is enabled; without that, bare spans render
        inline and collapse lines onto a single row. */
     [data-streamdown="code-block-body"] pre > code > span {
       display: block;
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
+    /* Compact header — Shiki's default is oversized. */
+    [data-streamdown="code-block-header"] {
+      height: 22px !important;
+      min-height: 22px !important;
+      font-size: 10px !important;
+      padding: 0 8px !important;
+      line-height: 22px !important;
     }
   `
   document.head.appendChild(style)
@@ -163,7 +185,9 @@ export function usePatchCodeBlocks(
     if (!el) return
     const { shellBackground, bodyBackground, headerBackground, headerColor } = tokens.code
     const { shellBackground: tableShellBackground, innerBackground: tableInnerBackground, headerBackground: tableHeaderBackground } = tokens.table
-    const fontSize = Math.max(10, fonts.size - 3)
+    // Keep JS path matching the CSS rules in ensureCodeBlockLayoutStyles so
+    // both paths converge on the same compact rendering.
+    const fontSize = 11
 
     // Code blocks
     const blocks = el.querySelectorAll<HTMLElement>('[data-streamdown="code-block"]')
@@ -188,13 +212,13 @@ export function usePatchCodeBlocks(
       }
       const body = block.querySelector<HTMLElement>('[data-streamdown="code-block-body"]')
       if (body) {
-        body.style.cssText = `padding:8px 10px!important;font-size:${fontSize}px!important;border:none!important;border-radius:0!important;background:${bodyBackground}!important;color:${theme.text.primary}!important`
+        body.style.cssText = `padding:6px 10px!important;font-size:${fontSize}px!important;line-height:1.45!important;border:none!important;border-radius:0!important;background:${bodyBackground}!important;color:${theme.text.primary}!important`
       }
       block.querySelectorAll<HTMLElement>('pre').forEach(pre => {
-        pre.style.cssText += `;font-size:${fontSize}px!important;line-height:1.5!important;margin:0!important;border-radius:0!important;white-space:pre!important;background:${bodyBackground}!important;color:${theme.text.primary}!important`
+        pre.style.cssText += `;font-size:${fontSize}px!important;line-height:1.45!important;margin:0!important;padding:0!important;border-radius:0!important;white-space:pre!important;background:${bodyBackground}!important;color:${theme.text.primary}!important`
       })
       block.querySelectorAll<HTMLElement>('pre > code').forEach(codeEl => {
-        codeEl.style.cssText += `;font-size:${fontSize}px!important;line-height:1.5!important;color:${theme.text.primary}!important;background:transparent!important`
+        codeEl.style.cssText += `;font-size:${fontSize}px!important;line-height:1.45!important;color:${theme.text.primary}!important;background:transparent!important`
         codeEl.querySelectorAll<HTMLElement>(':scope > span').forEach(line => {
           line.style.display = 'block'
         })

@@ -30,11 +30,13 @@ export interface ToolBlock {
 export interface ThinkingBlock {
   content: string
   done: boolean
+  id?: string
 }
 
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool'; toolId: string }
+  | { type: 'thinking'; thinkingId: string }
 
 export interface ChatMessage {
   id: string
@@ -43,6 +45,7 @@ export interface ChatMessage {
   timestamp: number
   isStreaming?: boolean
   thinking?: ThinkingBlock
+  thinkingBlocks?: ThinkingBlock[]
   toolBlocks?: ToolBlock[]
   contentBlocks?: ContentBlock[]
   cost?: number
