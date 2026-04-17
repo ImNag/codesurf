@@ -251,14 +251,18 @@ async function runSeed(workspacePath: string | null): Promise<{
          AND indexed_at < @now
     `)
 
-    // Count how many upserts actually mutated a row (new insert or real
-    // column change) so we only broadcast when the UI would see a difference.
+    // Figure out which rows are actually new vs just being refreshed. SQLite's
+    // INSERT..ON CONFLICT DO UPDATE counts every upsert as a "change" because
+    // we always bump updated_at/version, so we can't rely on rowcount alone.
+    const existingRows = db.prepare(
+      `SELECT entry_id FROM threads WHERE workspace_dir IS @workspace_dir AND deleted_at IS NULL`,
+    ).all({ workspace_dir: workspacePath }) as Array<{ entry_id: string }>
+    const existingIds = new Set(existingRows.map(r => r.entry_id))
+
     const seededIds = new Set<string>()
-    let upsertChanges = 0
     const txn = db.transaction((rows: ThreadRowForInsert[]) => {
       for (const row of rows) {
-        const info = upsert.run({ ...row, device_id: deviceId, now })
-        upsertChanges += info.changes
+        upsert.run({ ...row, device_id: deviceId, now })
         seededIds.add(row.entry_id)
       }
       const result = markStaleDeleted.run({ now, workspace_dir: workspacePath })
@@ -267,6 +271,12 @@ async function runSeed(workspacePath: string | null): Promise<{
 
     const rows = entries.map(e => entryToRow(e, workspacePath))
     const tombstoned = txn(rows) as unknown as number
+
+    // True diff: new inserts and actual tombstones. Pure refresh (same set of
+    // rows, same content signatures) must NOT broadcast — that's what causes
+    // the refetch ↔ reseed ping-pong loop between workspaces.
+    let newInserts = 0
+    for (const id of seededIds) if (!existingIds.has(id)) newInserts += 1
 
     const finishedAt = Date.now()
     state.lastSeedFinishedAt = finishedAt
@@ -284,11 +294,11 @@ async function runSeed(workspacePath: string | null): Promise<{
       tombstoned,
       durationMs: state.lastSeedDurationMs,
     })
-    // Only refresh the sidebar when something actually changed. Otherwise
-    // periodic reseeds would churn the UI every 15 min for no visible reason
-    // (and reset user pagination / scroll state).
-    const changed = upsertChanges > 0 || tombstoned > 0
+    // Only refresh the sidebar when inserts or tombstones actually happened.
+    const changed = newInserts > 0 || tombstoned > 0
     if (changed) {
+      // eslint-disable-next-line no-console
+      console.log(`[threads] broadcasting sessionsChanged(new=${newInserts}, tombstoned=${tombstoned}, ws=${workspacePath ?? '(none)'})`)
       // Sidebar subscribes to canvas:sessionsChanged; '*' is our wildcard
       // sentinel meaning "refresh every loaded workspace".
       broadcastToRenderer('canvas:sessionsChanged', { workspaceId: '*', workspacePath })
@@ -351,13 +361,11 @@ export function getIndexerStatus(): {
 // ─── Periodic refresh ──────────────────────────────────────────────────────
 
 function startPeriodicReseed(): void {
-  stopPeriodicReseed()
-  state.periodicTimer = setInterval(() => {
-    if (state.seedingInFlight) return
-    invalidateExternalSessionCache()
-    void seedThreadsIndex(state.workspacePath)
-  }, PERIODIC_RESEED_MS)
-  if (typeof state.periodicTimer.unref === 'function') state.periodicTimer.unref()
+  // No-op. The DB is the authoritative index; reseeds are event-driven
+  // (workspace switch, window focus forceRefresh, or manual threads:reindex).
+  // The previous periodic timer caused constant log churn and filesystem
+  // walks even when nothing had changed.
+  void invalidateExternalSessionCache
 }
 
 function stopPeriodicReseed(): void {
@@ -387,22 +395,60 @@ let initialised = false
 export function initThreadIndexerForWorkspace(workspacePath: string | null): void {
   initialised = true
   state.workspacePath = workspacePath
-  startPeriodicReseed()
-  // Seed only when we actually have a workspace. Boot often hits this before
-  // the daemon has resolved the active workspace — avoid wasting an 8s walk
-  // that we'd have to throw away the moment the real workspace arrives.
-  if (workspacePath) void seedThreadsIndex(workspacePath)
+  // Seed ONLY if the DB has zero rows for this workspace. If it's already
+  // populated from a prior launch, the sidebar reads from it instantly and
+  // no walk happens. The user triggers a refresh explicitly via focus (or
+  // a manual refresh action) when they suspect external changes.
+  if (!workspacePath) return
+  try {
+    const existing = getDb().prepare(
+      `SELECT COUNT(*) AS c FROM threads WHERE workspace_dir IS ? AND deleted_at IS NULL`,
+    ).get(workspacePath) as { c: number }
+    if (existing.c === 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[threads] DB empty for ${workspacePath} — running initial seed`)
+      void seedThreadsIndex(workspacePath)
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(`[threads] DB has ${existing.c} rows for ${workspacePath} — skipping seed`)
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[threads] init guard failed:', err)
+    void seedThreadsIndex(workspacePath)
+  }
 }
 
 export function isThreadIndexerActive(): boolean {
   return initialised
 }
 
-/** Ensure the indexer is running; used as a lazy-start hook from IPC. */
+/**
+ * Ensure the indexer has been initialised for some workspace. Called lazily
+ * from canvas:listSessions so the first-ever launch populates the DB.
+ *
+ * NEVER retargets / never triggers a reseed once the DB already has rows for
+ * this workspace. A stale workspace_path in the indexer state is harmless —
+ * read queries filter by the caller's workspacePath at SELECT time.
+ */
 export function ensureThreadIndexer(workspacePath: string | null): void {
-  if (!initialised) initThreadIndexerForWorkspace(workspacePath)
-  else if (state.workspacePath !== workspacePath) {
+  if (!initialised) {
     initThreadIndexerForWorkspace(workspacePath)
+    return
+  }
+  if (!workspacePath || state.workspacePath === workspacePath) return
+  // Different workspace queried for the first time — only run an initial seed
+  // if its rows aren't already in the DB. No cooldown, no ping-pong.
+  try {
+    const existing = getDb().prepare(
+      `SELECT COUNT(*) AS c FROM threads WHERE workspace_dir IS ? AND deleted_at IS NULL`,
+    ).get(workspacePath) as { c: number }
+    if (existing.c === 0) {
+      state.workspacePath = workspacePath
+      void seedThreadsIndex(workspacePath)
+    }
+  } catch {
+    /* ignore, DB read failures shouldn't block listSessions */
   }
 }
 

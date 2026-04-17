@@ -327,29 +327,13 @@ export function registerCanvasIPC(): void {
     }
 
     if (useIndex) {
-      // Fast path: read the external-source index from SQLite. First call
-      // for a workspace also kicks off a background (re)seed + watchers.
-      const indexerStartedAt = Date.now()
+      // Fast path: read the index from SQLite. Reseeding is NEVER triggered
+      // by sidebar refreshes — not even forceRefresh. The DB is populated on
+      // first creation (see ensureThreadIndexer → initial seed) and stays
+      // the source of truth. A manual reseed is only invoked via the
+      // threads:reindex IPC (exposed as window.electron.threads.reindex()).
       ensureThreadIndexer(workspacePath)
-
-      // If a force refresh is requested, reseed and wait for fresh data.
-      if (forceRefresh) {
-        await seedThreadsIndex(workspacePath)
-        const fresh = listThreadsFromDb(workspacePath)
-        console.log(`[threads] listSessions(force) returned ${fresh.length + localSessions.length} rows in ${Date.now() - indexerStartedAt}ms`)
-        return [...localSessions, ...fresh].sort((a, b) => b.updatedAt - a.updatedAt)
-      }
-
       const indexed = listThreadsFromDb(workspacePath)
-      const status = getIndexerStatus()
-      // If the DB is empty and no seed has ever completed, kick one off in
-      // the background. Do NOT await — the renderer will refresh via the
-      // wildcard canvas:sessionsChanged broadcast once the seed finishes.
-      if (indexed.length === 0 && status.lastSeedFinishedAt === 0 && !status.seedingInFlight) {
-        void seedThreadsIndex(workspacePath)
-      }
-      const elapsed = Date.now() - indexerStartedAt
-      console.log(`[threads] listSessions returned ${indexed.length + localSessions.length} rows in ${elapsed}ms (db=${indexed.length}, local=${localSessions.length}, seeding=${status.seedingInFlight}, lastSeedAt=${status.lastSeedFinishedAt}, ws=${workspacePath ?? 'null'})`)
       return [...localSessions, ...indexed].sort((a, b) => b.updatedAt - a.updatedAt)
     }
 
