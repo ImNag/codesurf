@@ -20,7 +20,7 @@ import { isRelayHostActive } from '../relay/registration'
 import { syncWorkspaceRelayParticipants } from '../relay/service'
 import { daemonClient } from '../daemon/client'
 import { readSettingsSync } from './workspace'
-import { ensureThreadIndexer, getIndexerStatus, listThreadsFromDb, seedThreadsIndex } from '../db/thread-indexer'
+import { ensureInitialIndex, getIndexerStatus, indexAllSources, listThreadsFromDb } from '../db/thread-indexer'
 import { getExternalSessionChatState } from '../session-sources'
 
 interface TileSessionSummary {
@@ -327,12 +327,13 @@ export function registerCanvasIPC(): void {
     }
 
     if (useIndex) {
-      // Fast path: read the index from SQLite. Reseeding is NEVER triggered
-      // by sidebar refreshes — not even forceRefresh. The DB is populated on
-      // first creation (see ensureThreadIndexer → initial seed) and stays
-      // the source of truth. A manual reseed is only invoked via the
-      // threads:reindex IPC (exposed as window.electron.threads.reindex()).
-      ensureThreadIndexer(workspacePath)
+      // Pure-read fast path. Never triggers a filesystem walk from here.
+      //
+      // The index is populated on first launch via ensureInitialIndex (kicked
+      // off from main/index.ts) and updated on demand via threads:reindex or
+      // automatically when the renderer calls forceRefresh (below).
+      if (forceRefresh) await indexAllSources()
+      else void ensureInitialIndex() // no-op after first populate
       const indexed = listThreadsFromDb(workspacePath)
       return [...localSessions, ...indexed].sort((a, b) => b.updatedAt - a.updatedAt)
     }
@@ -348,11 +349,10 @@ export function registerCanvasIPC(): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) } }
   })
 
-  ipcMain.handle('threads:reindex', async (_, workspaceId: string) => {
+  ipcMain.handle('threads:reindex', async () => {
     try {
-      const workspacePath = await getWorkspacePathById(workspaceId)
-      const result = await seedThreadsIndex(workspacePath)
-      return { ok: true, ...result }
+      await indexAllSources()
+      return { ok: true, ...getIndexerStatus() }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }

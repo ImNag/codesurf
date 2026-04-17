@@ -21,15 +21,17 @@ import { DB_BACKUPS_DIR, DB_DIR, DB_PATH, dbBackupPath } from './paths'
 import { runMigrations, type Migration } from './migrations'
 import { migration001Bootstrap } from './migrations/001_bootstrap'
 import { migration002Threads } from './migrations/002_threads'
+import { migration003ThreadIndex } from './migrations/003_thread_index'
 
 type DBHandle = ReturnType<typeof DatabaseCtor>
 
 const ALL_MIGRATIONS: Migration[] = [
   migration001Bootstrap,
   migration002Threads,
+  migration003ThreadIndex,
   // Future phases append here:
-  //   migration003Canvas,
-  //   migration004Kanban,
+  //   migration004Canvas,
+  //   migration005Kanban,
   //   ...
 ]
 

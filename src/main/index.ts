@@ -31,9 +31,7 @@ import { applyWindowAppearance, getWindowAppearanceOptions } from './windowAppea
 import { migrateLegacyStorage } from './migration'
 import { APP_ID, APP_NAME, CONTEX_HOME } from './paths'
 import { closeDb, getDb, getDbStatus } from './db'
-import { initThreadIndexerForWorkspace, stopThreadWatchers } from './db/thread-indexer'
-import { daemonClient as rootDaemonClient } from './daemon/client'
-import { extractWorkspacePrimaryPath } from './ipc/workspace'
+import { ensureInitialIndex } from './db/thread-indexer'
 import { stopAllRelayServices } from './relay/service'
 // browserTile BrowserView IPC was removed — renderer uses <webview> tag directly
 
@@ -267,20 +265,13 @@ app.whenReady().then(async () => {
     console.error('[db] Failed to initialise local database:', err)
   }
 
-  // Kick off the thread indexer in the background with whatever workspace the
-  // daemon currently considers active. The indexer seeds asynchronously so
-  // the UI can render immediately from the existing DB rows (or an empty set
-  // on the very first launch). Failures here must not block boot.
-  void (async () => {
-    try {
-      const active = await rootDaemonClient.getActiveWorkspace().catch(() => null)
-      const workspacePath = extractWorkspacePrimaryPath(active)
-      initThreadIndexerForWorkspace(workspacePath)
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[threads] Indexer init failed:', err)
-    }
-  })()
+  // Populate the thread index ONCE if the DB is empty. On every subsequent
+  // launch this is effectively a no-op (zero filesystem work). The scan runs
+  // in the background so it never blocks boot.
+  void ensureInitialIndex().catch(err => {
+    // eslint-disable-next-line no-console
+    console.warn('[threads] initial index failed:', err)
+  })
 
   // Init workspace dirs + register all IPC handlers
   await initWorkspaces()
@@ -696,7 +687,6 @@ app.on('before-quit', () => {
   stopAllCollabWatchers()
   extensionRegistry?.deactivateAll()
   stopAllRelayServices()
-  stopThreadWatchers()
   closeDb()
 })
 
