@@ -266,6 +266,382 @@ interface Props {
   connectedPeers?: DiscoveryPeer[]
 }
 
+// --- AskUserQuestion interactive form ------------------------------------------
+
+interface AskUserQuestionOption {
+  label: string
+  description?: string
+  preview?: string
+}
+interface AskUserQuestionItem {
+  question: string
+  header?: string
+  multiSelect?: boolean
+  options: AskUserQuestionOption[]
+}
+interface AskUserQuestionPayload {
+  questions: AskUserQuestionItem[]
+  metadata?: Record<string, unknown>
+}
+
+// Context provides the cardId so ToolBlockView (defined outside ChatTile) can
+// submit answers back to main via IPC without prop-drilling through groups.
+const AskUserQuestionContext = React.createContext<{ cardId: string } | null>(null)
+
+/**
+ * Parses a ToolBlock.input string (streamed JSON, potentially partial) and
+ * returns a fully-formed AskUserQuestion payload, or null if not yet parseable.
+ */
+function parseAskUserQuestionInput(input: string): AskUserQuestionPayload | null {
+  if (!input) return null
+  try {
+    const parsed = JSON.parse(input) as { questions?: unknown; metadata?: unknown }
+    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) return null
+    const questions: AskUserQuestionItem[] = []
+    for (const q of parsed.questions) {
+      if (!q || typeof q !== 'object') return null
+      const qq = q as Partial<AskUserQuestionItem>
+      if (typeof qq.question !== 'string' || !Array.isArray(qq.options) || qq.options.length < 2) return null
+      const options: AskUserQuestionOption[] = []
+      for (const opt of qq.options) {
+        if (!opt || typeof opt !== 'object' || typeof (opt as AskUserQuestionOption).label !== 'string') return null
+        options.push({
+          label: (opt as AskUserQuestionOption).label,
+          description: typeof (opt as AskUserQuestionOption).description === 'string' ? (opt as AskUserQuestionOption).description : undefined,
+          preview: typeof (opt as AskUserQuestionOption).preview === 'string' ? (opt as AskUserQuestionOption).preview : undefined,
+        })
+      }
+      questions.push({
+        question: qq.question,
+        header: typeof qq.header === 'string' ? qq.header : undefined,
+        multiSelect: qq.multiSelect === true,
+        options,
+      })
+    }
+    return { questions, metadata: (parsed.metadata as Record<string, unknown> | undefined) }
+  } catch {
+    return null
+  }
+}
+
+interface AskUserQuestionFormProps {
+  toolId: string
+  payload: AskUserQuestionPayload
+  onSubmitted: () => void
+}
+
+function AskUserQuestionForm({ toolId, payload, onSubmitted }: AskUserQuestionFormProps): JSX.Element {
+  const theme = useTheme()
+  const fonts = useFonts()
+  const ctx = React.useContext(AskUserQuestionContext)
+  // For single-select: Map<questionIndex, selectedLabel | '__other__'>
+  // For multi-select:  Map<questionIndex, Set<selectedLabel | '__other__'>>
+  const [singleChoice, setSingleChoice] = useState<Record<number, string>>({})
+  const [multiChoice, setMultiChoice] = useState<Record<number, Set<string>>>({})
+  const [otherText, setOtherText] = useState<Record<number, string>>({})
+  const [previewIdx, setPreviewIdx] = useState<Record<number, number | null>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const toggleMulti = useCallback((qIdx: number, label: string) => {
+    setMultiChoice(prev => {
+      const cur = new Set(prev[qIdx] ?? [])
+      if (cur.has(label)) cur.delete(label)
+      else cur.add(label)
+      return { ...prev, [qIdx]: cur }
+    })
+  }, [])
+
+  const allAnswered = useMemo(() => {
+    return payload.questions.every((q, idx) => {
+      if (q.multiSelect) {
+        const set = multiChoice[idx]
+        if (!set || set.size === 0) return false
+        if (set.has('__other__') && !(otherText[idx]?.trim())) return false
+        return true
+      } else {
+        const pick = singleChoice[idx]
+        if (!pick) return false
+        if (pick === '__other__' && !(otherText[idx]?.trim())) return false
+        return true
+      }
+    })
+  }, [payload.questions, singleChoice, multiChoice, otherText])
+
+  const handleSubmit = useCallback(async () => {
+    if (!ctx?.cardId) { setError('Chat context unavailable'); return }
+    if (!allAnswered || submitting) return
+    setSubmitting(true)
+    setError(null)
+    const answers: Record<string, string> = {}
+    const annotations: Record<string, { notes?: string; preview?: string }> = {}
+    payload.questions.forEach((q, idx) => {
+      const otherTxt = otherText[idx]?.trim() ?? ''
+      let labelOut: string
+      if (q.multiSelect) {
+        const set = multiChoice[idx] ?? new Set<string>()
+        const parts: string[] = []
+        for (const v of set) {
+          if (v === '__other__') parts.push(otherTxt)
+          else parts.push(v)
+        }
+        labelOut = parts.join(', ')
+      } else {
+        const pick = singleChoice[idx] ?? ''
+        labelOut = pick === '__other__' ? otherTxt : pick
+      }
+      answers[q.question] = labelOut
+      // If a preview option is focused, include it as annotation.
+      const pIdx = previewIdx[idx]
+      if (pIdx != null && q.options[pIdx]?.preview) {
+        annotations[q.question] = { preview: q.options[pIdx].preview }
+      }
+    })
+    try {
+      const res = await window.electron?.chat?.answerUserQuestion?.({
+        cardId: ctx.cardId,
+        toolId,
+        answers,
+        annotations: Object.keys(annotations).length > 0 ? annotations : undefined,
+      })
+      if (res && res.ok === false) {
+        setError(res.error ?? 'Failed to submit')
+        setSubmitting(false)
+        return
+      }
+      onSubmitted()
+    } catch (err) {
+      setError((err as Error).message || 'Failed to submit')
+      setSubmitting(false)
+    }
+  }, [ctx?.cardId, toolId, payload.questions, singleChoice, multiChoice, otherText, previewIdx, allAnswered, submitting, onSubmitted])
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 12,
+      padding: 12,
+      borderTop: `1px solid ${theme.chat.assistantBubbleBorder}`,
+      fontFamily: fonts.sans, fontSize: 12, color: theme.chat.text,
+    }}>
+      {payload.questions.map((q, qIdx) => {
+        const activePreview = previewIdx[qIdx] != null ? q.options[previewIdx[qIdx] as number]?.preview : null
+        return (
+          <div key={qIdx} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {q.header && (
+                <span style={{
+                  fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4,
+                  color: theme.chat.muted,
+                  background: theme.chat.assistantBubble,
+                  border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+                  padding: '2px 6px', borderRadius: 4,
+                }}>{q.header}</span>
+              )}
+              {q.multiSelect && (
+                <span style={{ fontSize: 9, color: theme.chat.muted }}>(choose any)</span>
+              )}
+            </div>
+            <div style={{ fontWeight: 500, fontSize: 13, lineHeight: 1.35 }}>{q.question}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+              {q.options.map((opt, oIdx) => {
+                const checked = q.multiSelect
+                  ? (multiChoice[qIdx]?.has(opt.label) ?? false)
+                  : singleChoice[qIdx] === opt.label
+                return (
+                  <label
+                    key={oIdx}
+                    onMouseEnter={() => { if (opt.preview) setPreviewIdx(p => ({ ...p, [qIdx]: oIdx })) }}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      border: `1px solid ${checked ? theme.accent.base : theme.chat.assistantBubbleBorder}`,
+                      background: checked ? theme.chat.assistantBubble : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type={q.multiSelect ? 'checkbox' : 'radio'}
+                      name={`ask-${toolId}-${qIdx}`}
+                      checked={checked}
+                      onChange={() => {
+                        if (q.multiSelect) toggleMulti(qIdx, opt.label)
+                        else setSingleChoice(prev => ({ ...prev, [qIdx]: opt.label }))
+                      }}
+                      style={{ marginTop: 2, accentColor: theme.accent.base }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                      <span style={{ fontWeight: 500, fontSize: 12 }}>{opt.label}</span>
+                      {opt.description && (
+                        <span style={{ fontSize: 11, color: theme.chat.muted, lineHeight: 1.35 }}>{opt.description}</span>
+                      )}
+                    </div>
+                  </label>
+                )
+              })}
+              {/* Auto-included "Other" freeform option */}
+              {(() => {
+                const otherChecked = q.multiSelect
+                  ? (multiChoice[qIdx]?.has('__other__') ?? false)
+                  : singleChoice[qIdx] === '__other__'
+                return (
+                  <label
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      border: `1px solid ${otherChecked ? theme.accent.base : theme.chat.assistantBubbleBorder}`,
+                      background: otherChecked ? theme.chat.assistantBubble : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type={q.multiSelect ? 'checkbox' : 'radio'}
+                      name={`ask-${toolId}-${qIdx}`}
+                      checked={otherChecked}
+                      onChange={() => {
+                        if (q.multiSelect) toggleMulti(qIdx, '__other__')
+                        else setSingleChoice(prev => ({ ...prev, [qIdx]: '__other__' }))
+                      }}
+                      style={{ marginTop: 2, accentColor: theme.accent.base }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
+                      <span style={{ fontWeight: 500, fontSize: 12 }}>Other…</span>
+                      <input
+                        type="text"
+                        placeholder="Type your own answer"
+                        value={otherText[qIdx] ?? ''}
+                        onFocus={() => {
+                          if (q.multiSelect) {
+                            if (!(multiChoice[qIdx]?.has('__other__'))) toggleMulti(qIdx, '__other__')
+                          } else {
+                            setSingleChoice(prev => ({ ...prev, [qIdx]: '__other__' }))
+                          }
+                        }}
+                        onChange={e => setOtherText(prev => ({ ...prev, [qIdx]: e.target.value }))}
+                        style={{
+                          background: theme.chat.input,
+                          color: theme.chat.text,
+                          border: `1px solid ${theme.chat.inputBorder}`,
+                          borderRadius: 4,
+                          padding: '4px 6px',
+                          fontSize: 12,
+                          fontFamily: fonts.sans,
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </label>
+                )
+              })()}
+            </div>
+            {activePreview && (
+              <pre style={{
+                background: theme.chat.input,
+                color: theme.chat.text,
+                border: `1px solid ${theme.chat.inputBorder}`,
+                borderRadius: 6,
+                padding: 8,
+                fontSize: 11,
+                fontFamily: fonts.mono,
+                whiteSpace: 'pre-wrap',
+                overflow: 'auto',
+                maxHeight: 180,
+                margin: 0,
+              }}>{activePreview}</pre>
+            )}
+          </div>
+        )
+      })}
+      {error && (
+        <div style={{ fontSize: 11, color: theme.status.danger }}>{error}</div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button
+          type="button"
+          disabled={!allAnswered || submitting}
+          onClick={handleSubmit}
+          style={{
+            background: allAnswered && !submitting ? theme.accent.base : theme.chat.assistantBubble,
+            color: allAnswered && !submitting ? theme.chat.input : theme.chat.muted,
+            border: `1px solid ${allAnswered && !submitting ? theme.accent.base : theme.chat.assistantBubbleBorder}`,
+            borderRadius: 6,
+            padding: '6px 14px',
+            fontSize: 12,
+            fontFamily: fonts.sans,
+            fontWeight: 500,
+            cursor: allAnswered && !submitting ? 'pointer' : 'not-allowed',
+            opacity: submitting ? 0.7 : 1,
+          }}
+        >
+          {submitting ? 'Sending…' : 'Submit answer'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Chip-shell wrapper around AskUserQuestionForm so the rendering matches the
+ * look of other tool blocks (bordered card with a header row).
+ */
+function AskUserQuestionChip({ block, payload }: { block: ToolBlock; payload: AskUserQuestionPayload }): JSX.Element {
+  const theme = useTheme()
+  const fonts = useFonts()
+  const [submitted, setSubmitted] = useState(false)
+  return (
+    <div
+      data-ask-user-question={block.id}
+      style={{
+        background: theme.chat.assistantBubble,
+        border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+        borderRadius: 10,
+        overflow: 'hidden',
+        alignSelf: 'stretch',
+        width: '100%',
+      }}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '8px 12px',
+        fontSize: 10.5,
+        fontFamily: fonts.sans,
+        color: theme.chat.muted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.6,
+      }}>
+        <MessageSquare size={11} />
+        <span>Question</span>
+        {submitted && (
+          <span style={{
+            marginLeft: 'auto',
+            display: 'flex', alignItems: 'center', gap: 4,
+            color: theme.status.success,
+            textTransform: 'none', letterSpacing: 0,
+            fontSize: 11,
+          }}>
+            <Check size={11} /> Answer sent
+          </span>
+        )}
+      </div>
+      {submitted ? (
+        <div style={{
+          padding: '0 12px 12px',
+          fontSize: 12, fontFamily: fonts.sans, color: theme.chat.muted,
+        }}>
+          Waiting for the agent to continue…
+        </div>
+      ) : (
+        <AskUserQuestionForm
+          toolId={block.id}
+          payload={payload}
+          onSubmitted={() => setSubmitted(true)}
+        />
+      )}
+    </div>
+  )
+}
+
 // --- Font defaults (used when no settings are provided) --------------------------
 
 // Use the canonical font stacks from shared/types.ts DEFAULT_FONTS
@@ -390,6 +766,14 @@ async function loadGitState(workspaceDir: string, force = false): Promise<Cached
 // Font context so sub-components can read settings-derived fonts without prop drilling
 const FontCtx = React.createContext({ sans: FONT_SANS, secondary: FONT_SANS, mono: FONT_MONO, size: FONT_SIZE_DEFAULT, monoSize: MONO_SIZE_DEFAULT, lineHeight: 1.5, weight: 400, monoLineHeight: 1.5, monoWeight: 400, secondarySize: 11, secondaryLineHeight: 1.4, secondaryWeight: 400 })
 function useFonts() { return React.useContext(FontCtx) }
+
+// Dispatch context — lets deeply-nested tool renderers (e.g. AskUserQuestion form)
+// send answers back into the chat as the next user turn.
+type ChatDispatchValue = {
+  sendAnswer: (text: string) => void | Promise<void>
+}
+const ChatDispatchCtx = React.createContext<ChatDispatchValue | null>(null)
+function useChatDispatch(): ChatDispatchValue | null { return React.useContext(ChatDispatchCtx) }
 
 function sanitizeToolOutputText(text: string | undefined): string | undefined {
   if (!text) return text
@@ -1174,7 +1558,7 @@ const ChatMessageContent = React.memo(({
                   gap: 8,
                   minWidth: 0,
                   maxWidth: '100%',
-                  borderRadius: 999,
+                  borderRadius: 12,
                   border: `1px solid ${chipBorder}`,
                   background: chipBackground,
                   color: chipText,
@@ -3062,8 +3446,16 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
   const fontCtxValue = useMemo(() => ({ sans: fontSans, secondary: fontSecondary, mono: fontMono, size: fontSize, monoSize, lineHeight: fontLineHeight, weight: fontWeight, monoLineHeight, monoWeight, secondarySize, secondaryLineHeight, secondaryWeight }), [fontSans, fontSecondary, fontMono, fontSize, monoSize, fontLineHeight, fontWeight, monoLineHeight, monoWeight, secondarySize, secondaryLineHeight, secondaryWeight])
 
+  const chatDispatchValue = useMemo<ChatDispatchValue>(() => ({
+    sendAnswer: async (text: string) => {
+      await dispatchMessageContent(text)
+    },
+  }), [dispatchMessageContent])
+
   return (
+    <ChatDispatchCtx.Provider value={chatDispatchValue}>
     <FontCtx.Provider value={fontCtxValue}>
+    <AskUserQuestionContext.Provider value={{ cardId: tileId }}>
     <div
       onDragOver={handleTileDragOver}
       onDragLeave={handleTileDragLeave}
@@ -3160,28 +3552,34 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                             if (tb && shouldRenderToolBlock(tb)) rawTools.push(tb)
                             i++
                           }
-                          // Build runs of consecutive same-name collapsible tools
+                          // Group same-name collapsible tools together, even when not
+                          // consecutive. Groups render at the first-occurrence position;
+                          // non-collapsible tools (running / file-changes) stay inline so
+                          // their narrative position isn't lost.
                           const toolGroup: JSX.Element[] = []
-                          let j = 0
-                          while (j < rawTools.length) {
-                            const tb = rawTools[j]
+                          const collapsibleByName = new Map<string, ToolBlock[]>()
+                          for (const tb of rawTools) {
+                            if (tb.status === 'done' && !(tb.fileChanges?.length)) {
+                              const bucket = collapsibleByName.get(tb.name)
+                              if (bucket) bucket.push(tb)
+                              else collapsibleByName.set(tb.name, [tb])
+                            }
+                          }
+                          const emittedNames = new Set<string>()
+                          for (const tb of rawTools) {
                             const canCollapse = tb.status === 'done' && !(tb.fileChanges?.length)
                             if (canCollapse) {
-                              // collect consecutive same-name collapsible tools
-                              const run: ToolBlock[] = [tb]
-                              while (j + 1 < rawTools.length && rawTools[j + 1].name === tb.name && rawTools[j + 1].status === 'done' && !(rawTools[j + 1].fileChanges?.length)) {
-                                j++
-                                run.push(rawTools[j])
-                              }
-                              if (run.length >= 3) {
-                                toolGroup.push(<CollapsedToolGroup key={`grp-${run[0].id}`} name={tb.name} blocks={run} />)
+                              if (emittedNames.has(tb.name)) continue
+                              emittedNames.add(tb.name)
+                              const bucket = collapsibleByName.get(tb.name) ?? [tb]
+                              if (bucket.length >= 3) {
+                                toolGroup.push(<CollapsedToolGroup key={`grp-${bucket[0].id}`} name={tb.name} blocks={bucket} />)
                               } else {
-                                run.forEach(b => toolGroup.push(<ToolBlockView key={b.id} block={b} />))
+                                bucket.forEach(b => toolGroup.push(<ToolBlockView key={b.id} block={b} />))
                               }
                             } else {
                               toolGroup.push(<ToolBlockView key={tb.id} block={tb} />)
                             }
-                            j++
                           }
                           if (toolGroup.length > 0) {
                             elements.push(
@@ -3219,25 +3617,29 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-start', alignContent: 'flex-start' }}>
                         {(() => {
                           const out: JSX.Element[] = []
-                          let j = 0
-                          while (j < visibleToolBlocks.length) {
-                            const tb = visibleToolBlocks[j]
+                          const collapsibleByName = new Map<string, ToolBlock[]>()
+                          for (const tb of visibleToolBlocks) {
+                            if (tb.status === 'done' && !(tb.fileChanges?.length)) {
+                              const bucket = collapsibleByName.get(tb.name)
+                              if (bucket) bucket.push(tb)
+                              else collapsibleByName.set(tb.name, [tb])
+                            }
+                          }
+                          const emittedNames = new Set<string>()
+                          for (const tb of visibleToolBlocks) {
                             const canCollapse = tb.status === 'done' && !(tb.fileChanges?.length)
                             if (canCollapse) {
-                              const run: ToolBlock[] = [tb]
-                              while (j + 1 < visibleToolBlocks.length && visibleToolBlocks[j + 1].name === tb.name && visibleToolBlocks[j + 1].status === 'done' && !(visibleToolBlocks[j + 1].fileChanges?.length)) {
-                                j++
-                                run.push(visibleToolBlocks[j])
-                              }
-                              if (run.length >= 3) {
-                                out.push(<CollapsedToolGroup key={`grp-${run[0].id}`} name={tb.name} blocks={run} />)
+                              if (emittedNames.has(tb.name)) continue
+                              emittedNames.add(tb.name)
+                              const bucket = collapsibleByName.get(tb.name) ?? [tb]
+                              if (bucket.length >= 3) {
+                                out.push(<CollapsedToolGroup key={`grp-${bucket[0].id}`} name={tb.name} blocks={bucket} />)
                               } else {
-                                run.forEach(b => out.push(<ToolBlockView key={b.id} block={b} />))
+                                bucket.forEach(b => out.push(<ToolBlockView key={b.id} block={b} />))
                               }
                             } else {
                               out.push(<ToolBlockView key={tb.id} block={tb} />)
                             }
-                            j++
                           }
                           return out
                         })()}
@@ -3288,16 +3690,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                   </div>
                 )}
 
-                {/* Shimmer bar while streaming */}
-                {msg.isStreaming && (
-                  <div style={{
-                    height: 2, marginTop: 1, width: '60%', borderRadius: 1,
-                    background: `linear-gradient(90deg, transparent 0%, ${theme.accent.soft} 30%, ${theme.accent.base}88 50%, ${theme.accent.soft} 70%, transparent 100%)`,
-                    backgroundSize: '200% 100%',
-                    animation: 'chat-shimmer 1.5s ease-in-out infinite',
-                    alignSelf: 'flex-start',
-                  }} />
-                )}
               </div>
           )})}
         </div>
@@ -4043,8 +4435,36 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               )}
             </div>
 
-            <div
-              title={activeProjectPathLabel}
+            <button
+              type="button"
+              title={executionTarget === 'cloud' ? activeProjectPathLabel : `${activeProjectPathLabel} — click to switch folder`}
+              disabled={executionTarget === 'cloud'}
+              onClick={async () => {
+                try {
+                  const newPath = await window.electron?.workspace?.openFolder?.()
+                  if (!newPath) return
+                  const previousPath = normalizedRepoRoot || ''
+                  if (newPath === previousPath) return
+                  if (workspaceId) {
+                    try {
+                      await window.electron?.workspace?.addProjectFolder?.(workspaceId, newPath)
+                    } catch (err) {
+                      console.warn('[ChatTile] addProjectFolder failed:', err)
+                    }
+                  }
+                  const switchMsg: ChatMessage = {
+                    id: `msg-folder-switch-${Date.now()}`,
+                    role: 'assistant',
+                    content: previousPath
+                      ? `Switched project folder from \`${previousPath}\` to \`${newPath}\`.`
+                      : `Switched project folder to \`${newPath}\`.`,
+                    timestamp: Date.now(),
+                  }
+                  setMessages(prev => [...prev, switchMsg])
+                } catch (err) {
+                  console.warn('[ChatTile] folder switch failed:', err)
+                }
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -4055,7 +4475,13 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 fontFamily: fontSans,
                 lineHeight: 1.2,
                 paddingLeft: 2,
+                background: 'transparent',
+                border: 'none',
+                cursor: executionTarget === 'cloud' ? 'default' : 'pointer',
+                textAlign: 'left',
               }}
+              onMouseEnter={e => { if (executionTarget !== 'cloud') e.currentTarget.style.color = theme.chat.text }}
+              onMouseLeave={e => { e.currentTarget.style.color = theme.chat.muted }}
             >
               <Folder size={12} strokeWidth={1.9} style={{ flexShrink: 0 }} />
               <span style={{
@@ -4066,7 +4492,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               }}>
                 {activeProjectPathLabel}
               </span>
-            </div>
+            </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -4158,7 +4584,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         </div>
       </div>
     </div>
+    </AskUserQuestionContext.Provider>
     </FontCtx.Provider>
+    </ChatDispatchCtx.Provider>
   )
 }
 
@@ -4307,11 +4735,28 @@ function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[
   )
 }
 
+
 function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const codePanelFontSize = Math.max(11, fonts.size - 1)
   const isFileChangeBlock = (block.fileChanges?.length ?? 0) > 0
+
+  // Intercept AskUserQuestion tool blocks: render an interactive form so the user
+  // can actually answer the question instead of seeing a raw JSON chip.
+  // Once submitted, the main process emits a tool_summary so `block.summary`
+  // is set, at which point we fall through to the normal chip rendering.
+  if (block.name === 'AskUserQuestion' && !block.summary) {
+    const askPayload = parseAskUserQuestionInput(block.input)
+    if (askPayload && askPayload.questions.length > 0) {
+      return (
+        <AskUserQuestionChip
+          block={block}
+          payload={askPayload}
+        />
+      )
+    }
+  }
   const fileChangeSummary = useMemo(() => {
     const fileChanges = block.fileChanges ?? []
     return {
@@ -4365,14 +4810,14 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
             display: 'flex',
             alignItems: 'center',
             minWidth: 0,
-            flex: 1,
+            flex: expanded || isFileChangeBlock ? 1 : '0 1 auto',
             overflow: 'hidden',
           }}>
             <ShimmerText baseColor={theme.chat.textSecondary} style={{
               fontSize: 10.5,
               fontFamily: fonts.sans,
               fontWeight: 500,
-              flex: '1 1 auto',
+              flex: '0 1 auto',
               minWidth: 0,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -4386,7 +4831,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
             display: 'flex',
             alignItems: 'center',
             minWidth: 0,
-            flex: 1,
+            flex: expanded || isFileChangeBlock ? 1 : '0 1 auto',
             overflow: 'hidden',
           }}>
             {isFileChangeBlock ? (
@@ -4614,15 +5059,6 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
         </div>
       )}
 
-      {/* Running shimmer bar */}
-      {isRunning && (
-        <div style={{
-          height: 2, width: '100%',
-          background: `linear-gradient(90deg, transparent 0%, ${theme.accent.soft} 30%, ${theme.accent.base}88 50%, ${theme.accent.soft} 70%, transparent 100%)`,
-          backgroundSize: '200% 100%',
-          animation: 'chat-shimmer 1.5s ease-in-out infinite',
-        }} />
-      )}
     </div>
   )
 }

@@ -71,6 +71,12 @@ interface ElectronAPI {
     onOpencodeModelsUpdated(cb: (payload: { models: Array<{ id: string; label: string; description?: string }>; source: string; error?: string }) => void): () => void
     openclawAgents(): Promise<{ agents: Array<{ id: string; label: string; description?: string }> }>
     selectFiles(): Promise<string[]>
+    answerUserQuestion(payload: {
+      cardId: string
+      toolId: string | null
+      answers: Record<string, string>
+      annotations?: Record<string, { notes?: string; preview?: string }>
+    }): Promise<{ ok: boolean; error?: string }>
   }
   shell?: {
     openExternal(url: string): Promise<void>

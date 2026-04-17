@@ -181,6 +181,12 @@ contextBridge.exposeInMainWorld('electron', {
     },
     openclawAgents: () => ipcRenderer.invoke('chat:openclawAgents'),
     selectFiles: () => ipcRenderer.invoke('chat:selectFiles') as Promise<string[]>,
+    answerUserQuestion: (payload: {
+      cardId: string
+      toolId: string | null
+      answers: Record<string, string>
+      annotations?: Record<string, { notes?: string; preview?: string }>
+    }) => ipcRenderer.invoke('chat:answerUserQuestion', payload) as Promise<{ ok: boolean; error?: string }>,
   },
 
   // Agent streaming (SSE/NDJSON parsers for Claude, Codex, Pi)
