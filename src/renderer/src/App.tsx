@@ -3635,17 +3635,13 @@ function App(): JSX.Element {
     ? `${theme.canvas.backgroundEffect}, ${canvasBackground}`
     : canvasBackground
   const sidebarPanelTop = 0
-  const sidebarFooterBottom = 0
+  const sidebarFooterBottom = 2
   const sidebarFooterLeft = 0
   const sidebarFooterHeight = 42
   const sidebarToFooterGap = 8
   const sidebarPanelBottomOffset = sidebarFooterBottom + sidebarFooterHeight - 12
-  // Panel bottom meets the footer/status-bar top flush. MainStatusBar's visible
-  // content is pushed down by translateY(5), so its apparent top sits at vh-37
-  // while its DOM box starts at vh-42 — setting the inset to sidebarFooterHeight
-  // (42) means the panel's bottom edge lands right at the footer top with no
-  // blank gap above the footer and no overlap with the status-bar's visible text.
-  const mainPanelBottomInset = sidebarFooterHeight
+  // 2px margin between the main panel's bottom edge and the footer top.
+  const mainPanelBottomInset = sidebarFooterHeight-6
   const mainStatusBarLeft = sidebarCollapsed ? 0 : sidebarWidth
   const openSidebarToolbarPadding = sidebarWidth + 16
   const openSidebarPillLeft = sidebarWidth - 5
@@ -3887,7 +3883,7 @@ function App(): JSX.Element {
         <div
           className="flex items-center flex-shrink-0"
           style={{
-            height: 38,
+            height: 38,            
             // @ts-ignore
             WebkitAppRegion: 'drag',
             paddingLeft: sidebarCollapsed ? 78 : sidebarWidth + 4,
@@ -5176,27 +5172,14 @@ function App(): JSX.Element {
             <div style={{
               position: 'absolute',
               top: 39,
-              left: sidebarCollapsed ? 2 : expandedLayoutLeft,
+              left: sidebarCollapsed ? 6 : expandedLayoutLeft,
               right: 6,
-              // Match the sidebar ("left panel") geometry: absolute wrapper reserves the
-              // bottom-inset so the whole frame sits clear of MainStatusBar, and an
-              // inner rounded bordered div draws the edge exactly as the sidebar does.
+              // Wrapper reserves geometry only; each LeafPanel draws its own
+              // 0.5px edge so splits appear as individually-rounded tiles with
+              // the app background visible in the 6px gutters between them.
               bottom: mainPanelBottomInset,
               zIndex: 50,
               transition: 'left 0.15s ease',
-            }}>
-            <div style={{
-              width: '100%',
-              height: '100%',
-              borderRadius: 12,
-              border: `0.5px solid ${theme.border.default}`,
-              overflow: 'hidden',
-              position: 'relative',
-              // Transparent interior so the 6px gutter between split leaves
-              // reveals the app background, letting each LeafPanel's own
-              // borderRadius render as visible rounded corners.
-              background: 'transparent',
-              boxSizing: 'border-box',
             }}>
             <Suspense fallback={null}>
               <LazyPanelLayout
@@ -5241,7 +5224,6 @@ function App(): JSX.Element {
                 onLaunchTemplate={handleLaunchTemplate}
               />
             </Suspense>
-            </div>
             </div>
           )}
 
