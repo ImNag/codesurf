@@ -12,8 +12,8 @@ import { dispatchOpenLink, findAnchorFromEventTarget } from '../utils/links'
 import {
   ShieldCheck, ChevronDown, AlertTriangle,
   Check, ArrowUp, ArrowDown, Square, MessageSquare, Bot,
-  Brain, ChevronRight, Clock, DollarSign,
-  FileText, Folder, GripVertical, Paperclip, Plus, Trash2, Wrench
+  Brain, ChevronRight, Clock, Cog, DollarSign,
+  FileText, Folder, GripVertical, Lock, Paperclip, Plus, Trash2, Wrench
 } from 'lucide-react'
 import { useMCPServers, type MCPServerEntry } from '../hooks/useMCPServers'
 import { useAppFonts } from '../FontContext'
@@ -960,6 +960,39 @@ async function buildRecentEditContext(messages: ChatMessage[], workspaceDir: str
 
   if (combined.length <= RECENT_EDIT_CONTEXT_MAX_CHARS) return combined
   return `${combined.slice(0, RECENT_EDIT_CONTEXT_MAX_CHARS - 1).trimEnd()}…`
+}
+
+/** Per-turn annotations ("block notes") the user has stuck onto earlier
+ *  messages, tool calls, or thinking blocks are pure UI state by default —
+ *  they never reach the model. This helper serialises them into a compact
+ *  markdown block that we append to the newest outgoing user message so the
+ *  agent can read them as guidance. Capped in size to avoid ballooning the
+ *  request, and silently returns null when there's nothing to send. */
+const BLOCK_NOTES_CONTEXT_MAX_CHARS = 4000
+function buildBlockNotesContext(messages: ChatMessage[]): string | null {
+  const lines: string[] = []
+  for (let turnIdx = 0; turnIdx < messages.length; turnIdx += 1) {
+    const msg = messages[turnIdx]
+    if (msg.note?.text) {
+      const snippet = (msg.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+      lines.push(`- [${msg.role} turn ${turnIdx + 1}${snippet ? `: "${snippet}${snippet.length >= 80 ? '…' : ''}"` : ''}] ${msg.note.text}`)
+    }
+    for (const tb of msg.toolBlocks ?? []) {
+      if (tb.note?.text) {
+        lines.push(`- [tool \`${tb.name}\`] ${tb.note.text}`)
+      }
+    }
+    for (const tk of msg.thinkingBlocks ?? []) {
+      if (tk.note?.text) {
+        const snippet = (tk.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+        lines.push(`- [thinking${snippet ? `: "${snippet}${snippet.length >= 80 ? '…' : ''}"` : ''}] ${tk.note.text}`)
+      }
+    }
+  }
+  if (lines.length === 0) return null
+  const body = 'User annotations on earlier turns (treat as durable guidance, not fresh requests):\n' + lines.join('\n')
+  if (body.length <= BLOCK_NOTES_CONTEXT_MAX_CHARS) return body
+  return `${body.slice(0, BLOCK_NOTES_CONTEXT_MAX_CHARS - 1).trimEnd()}…`
 }
 
 function splitMessageAttachmentPaths(text: string): {
@@ -3647,14 +3680,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
     try {
       const recentEditContext = await buildRecentEditContext(activeMessages, _workspaceDir, userBodyText)
+      const blockNotesContext = buildBlockNotesContext(activeMessages)
       const requestMessages = [...activeMessages, userMsg].map((message, index, allMessages) => {
         const isNewestUserMessage = index === allMessages.length - 1 && message.id === userMsg.id
-        if (!isNewestUserMessage || !recentEditContext) {
+        if (!isNewestUserMessage || (!recentEditContext && !blockNotesContext)) {
           return { role: message.role, content: message.content }
         }
+        // Both context blocks are appended to the newest user turn so they
+        // travel with the request the model is actually responding to, not
+        // as floating system noise earlier in the transcript.
+        const parts = [message.content]
+        if (recentEditContext) parts.push(`---\nRecent edit context:\n${recentEditContext}`)
+        if (blockNotesContext) parts.push(`---\n${blockNotesContext}`)
         return {
           role: message.role,
-          content: `${message.content}\n\n---\nRecent edit context:\n${recentEditContext}`.trim(),
+          content: parts.join('\n\n').trim(),
         }
       })
 
@@ -4469,6 +4509,13 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                       // Flush any trailing chip row (e.g. stream ended on a
                       // thinking or tool block without a subsequent text block).
                       flushChipRow()
+                      // Trailing status chip — lives below the last rendered
+                      // block while the message is streaming. The component
+                      // itself decides whether to show (hides during thinking,
+                      // honors the 2s show-delay) so we render unconditionally.
+                      if (msg.role === 'assistant' && msg.isStreaming) {
+                        elements.push(<WorkingChipView key={`working-${msg.id}`} message={msg} />)
+                      }
                       return elements
                     })()}
                   </>
@@ -4526,7 +4573,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 {!msg.isStreaming && msg.role === 'assistant' && msg.cost != null && (
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    fontSize: monoSize - 1, color: theme.chat.muted, fontFamily: fontMono,
+                    fontSize: monoSize - 2, color: theme.chat.subtle, fontFamily: fontMono,
                     padding: '0 4px',
                     marginTop: -5,
                   }}>
@@ -4542,7 +4589,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 {/* User message time footer */}
                 {!msg.isStreaming && msg.role === 'user' && (
                   <div style={{
-                    fontSize: monoSize - 1, color: theme.chat.muted, fontFamily: fontMono,
+                    fontSize: monoSize - 2, color: theme.chat.subtle, fontFamily: fontMono,
                     padding: '0 4px', textAlign: 'right',
                     marginTop: -5,
                   }}>
@@ -5247,31 +5294,39 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
             )}
           </div>
 
-          {/* Provider */}
-          <div ref={providerMenuRef} style={{ position: 'relative' }}>
-            <ToolbarPill
-              prefix={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
-              label={currentProviderEntry?.label ?? 'Provider'}
-              active={showProviderMenu}
-              onClick={() => toggleMenu('provider')}
-            />
-            {showProviderMenu && (
-              <MenuPortal anchorRef={providerMenuRef}>
-                <Dropdown>
-                  {providerEntries.map(entry => (
-                    <DropdownItem
-                      key={entry.id}
-                      icon={entry.icon}
-                      label={entry.label}
-                      sublabel={entry.description}
-                      active={provider === entry.id}
-                      onClick={() => handleProviderChange(entry.id)}
-                    />
-                  ))}
-                </Dropdown>
-              </MenuPortal>
-            )}
-          </div>
+          {/* Provider — shown only before the conversation starts. Different
+              CLI agents have incompatible session formats (Claude SDK session
+              resumption vs. Codex subprocess streams vs. OpenCode HTTP), so
+              swapping mid-conversation would break history continuity. The
+              current provider is still implicit in the Model pill's icon.
+              Clear the conversation to expose the picker again. */}
+          {messages.length === 0 && (
+            <div ref={providerMenuRef} style={{ position: 'relative' }}>
+              <ToolbarPill
+                prefix={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
+                label={currentProviderEntry?.label ?? 'Provider'}
+                active={showProviderMenu}
+                onClick={() => toggleMenu('provider')}
+                title="Choose the CLI agent (hidden once the conversation starts)"
+              />
+              {showProviderMenu && (
+                <MenuPortal anchorRef={providerMenuRef}>
+                  <Dropdown>
+                    {providerEntries.map(entry => (
+                      <DropdownItem
+                        key={entry.id}
+                        icon={entry.icon}
+                        label={entry.label}
+                        sublabel={entry.description}
+                        active={provider === entry.id}
+                        onClick={() => handleProviderChange(entry.id)}
+                      />
+                    ))}
+                  </Dropdown>
+                </MenuPortal>
+              )}
+            </div>
+          )}
 
           {/* Model */}
           <div ref={modelMenuRef} style={{ position: 'relative' }}>
@@ -5348,16 +5403,17 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               onMouseDown={e => e.preventDefault()}
               style={{
                 width: 28, height: 28, minWidth: 28, borderRadius: '50%',
-                background: theme.status.danger, border: 'none',
+                background: theme.text.primary, border: 'none',
                 cursor: 'pointer', display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
-                padding: 0, transition: 'background 0.15s', flexShrink: 0,
+                padding: 0, transition: 'opacity 0.15s', flexShrink: 0,
+                opacity: 0.92,
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = theme.status.dangerHover)}
-              onMouseLeave={e => (e.currentTarget.style.background = theme.status.danger)}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.92')}
               title="Stop generation"
             >
-              <Square size={10} fill="#fff" color="#fff" />
+              <Square size={10} fill={theme.chat.background} color={theme.chat.background} />
             </button>
           ) : (
             <button
@@ -5894,6 +5950,115 @@ const ThinkingBlockView = React.memo(function ThinkingBlockView({ thinking }: { 
           )}
         </div>
       )}
+    </div>
+  )
+})
+
+/**
+ * WorkingChipView — sibling to ThinkingBlockView, shown at the end of a
+ * streaming assistant message when the agent is "doing something" that isn't
+ * thinking and isn't producing text.
+ *
+ * Two states, picked automatically:
+ *   - A ToolBlock with `status: 'running'` exists → `Running {toolName}` chip
+ *     with a live-ticking elapsed counter measured from the tool's first-seen
+ *     running moment.
+ *   - No running tool, but the message has been streaming for ≥ 2s → generic
+ *     `Working for Ns` chip measured from message-stream start.
+ *
+ * Hidden whenever a thinking block is currently active — the ThinkingBlockView
+ * chip is already occupying that visual slot. Also hidden on non-streaming
+ * messages. The 2s grace keeps fast responses (< 2s, no tools) from flashing a
+ * chip the user never reads.
+ *
+ * Mirrors the ThinkingBlockView chip shell so the two read as one family.
+ */
+const WorkingChipView = React.memo(function WorkingChipView({ message }: { message: ChatMessage }): JSX.Element | null {
+  const theme = useTheme()
+  const fonts = useFonts()
+
+  const activeThinking = (message.thinkingBlocks ?? []).find(t => !t.done)
+  const activeTool = (() => {
+    const blocks = message.toolBlocks ?? []
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].status === 'running') return blocks[i]
+    }
+    return null
+  })()
+
+  // Remember when the current running tool was first observed so elapsed
+  // time reflects "since this tool started", not "since the chip mounted".
+  // Reset whenever the running tool id changes (or disappears).
+  const toolStartRef = useRef<{ id: string; at: number } | null>(null)
+  if (activeTool) {
+    if (!toolStartRef.current || toolStartRef.current.id !== activeTool.id) {
+      toolStartRef.current = { id: activeTool.id, at: Date.now() }
+    }
+  } else if (toolStartRef.current) {
+    toolStartRef.current = null
+  }
+
+  // Remember when the streaming message first mounted so the generic
+  // "Working for Ns" timer can honor the 2s show-delay.
+  const msgStartRef = useRef<number | null>(null)
+  if (message.isStreaming && msgStartRef.current == null) {
+    msgStartRef.current = Date.now()
+  } else if (!message.isStreaming) {
+    msgStartRef.current = null
+  }
+
+  // One timer ticks everything. 250ms is smooth enough for seconds display.
+  const [, setTick] = useState(0)
+  const isActive = Boolean(message.isStreaming && !activeThinking)
+  useEffect(() => {
+    if (!isActive) return
+    const id = setInterval(() => setTick(t => (t + 1) % 1_000_000), 250)
+    return () => clearInterval(id)
+  }, [isActive])
+
+  if (!message.isStreaming) return null
+  if (activeThinking) return null
+
+  const now = Date.now()
+  const toolElapsed = activeTool && toolStartRef.current
+    ? Math.max(0, Math.floor((now - toolStartRef.current.at) / 1000))
+    : 0
+  const msgElapsed = msgStartRef.current
+    ? Math.max(0, Math.floor((now - msgStartRef.current) / 1000))
+    : 0
+
+  if (!activeTool && msgElapsed < 2) return null
+
+  const label = activeTool
+    ? `Running ${activeTool.name} · ${toolElapsed}s`
+    : `Working for ${msgElapsed}s`
+
+  return (
+    <div style={{
+      background: theme.chat.assistantBubble,
+      border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+      borderRadius: 8,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 5,
+      padding: '0 8px',
+      minHeight: 22,
+      boxSizing: 'border-box',
+      color: theme.accent.hover,
+      fontSize: 10.5,
+      fontFamily: fonts.sans,
+      fontWeight: 500,
+      lineHeight: 1,
+      width: 'fit-content',
+    }}>
+      <Cog size={11} style={{
+        opacity: 0.9,
+        flexShrink: 0,
+        animation: 'chat-spin 2.4s linear infinite',
+      }} />
+      <ShimmerText baseColor={theme.accent.hover} style={{ fontSize: 10.5, fontWeight: 500, lineHeight: 1 }}>
+        {label}
+      </ShimmerText>
     </div>
   )
 })
@@ -6687,26 +6852,34 @@ function ToolbarBtn({ icon, tooltip, color, onClick }: {
   )
 }
 
-function ToolbarPill({ prefix, label, color, active, onClick }: {
-  prefix?: React.ReactNode; label: string; color?: string; active: boolean; onClick: () => void
+function ToolbarPill({ prefix, label, color, active, onClick, disabled, title }: {
+  prefix?: React.ReactNode
+  label: string
+  color?: string
+  active: boolean
+  onClick: () => void
+  disabled?: boolean
+  title?: string
 }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [h, setH] = useState(false)
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      title={title}
       style={{
         display: 'flex', alignItems: 'center', gap: 4,
-        background: active ? theme.surface.hover : (h ? theme.surface.panelMuted : 'transparent'),
+        background: !disabled && active ? theme.surface.hover : (!disabled && h ? theme.surface.panelMuted : 'transparent'),
         border: 'none',
-        borderRadius: 6, padding: '4px 9px', cursor: 'pointer',
+        borderRadius: 6, padding: '4px 9px', cursor: disabled ? 'not-allowed' : 'pointer',
         fontSize: TOOLBAR_TEXT_SIZE, fontFamily: fonts.sans,
-        color: color ?? (h ? theme.chat.text : theme.chat.textSecondary),
+        color: color ?? (disabled ? theme.chat.muted : h ? theme.chat.text : theme.chat.textSecondary),
         transition: 'color 0.1s, background 0.1s',
         whiteSpace: 'nowrap',
         maxWidth: 180,
         overflow: 'hidden',
+        opacity: disabled ? 0.6 : 1,
         ...NON_SELECTABLE_UI_STYLE,
       }}
       onMouseEnter={() => setH(true)}
@@ -6714,7 +6887,9 @@ function ToolbarPill({ prefix, label, color, active, onClick }: {
     >
       {prefix && <span style={{ display: 'flex', opacity: 0.8 }}>{prefix}</span>}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-      <ChevronDown size={TOOLBAR_CHEVRON_SIZE} style={{ marginLeft: 1, opacity: 0.4, flexShrink: 0 }} />
+      {disabled
+        ? <Lock size={TOOLBAR_CHEVRON_SIZE - 1} style={{ marginLeft: 1, opacity: 0.55, flexShrink: 0 }} />
+        : <ChevronDown size={TOOLBAR_CHEVRON_SIZE} style={{ marginLeft: 1, opacity: 0.4, flexShrink: 0 }} />}
     </button>
   )
 }

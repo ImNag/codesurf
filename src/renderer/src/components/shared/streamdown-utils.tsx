@@ -57,7 +57,7 @@ export function ensureShimmerStyles(): void {
 // Bump this version suffix whenever the injected CSS below changes so that
 // Vite HMR re-injects a fresh <style> tag instead of short-circuiting on the
 // stale one left behind from a previous build.
-const CODE_LAYOUT_STYLE_VERSION = 'v6'
+const CODE_LAYOUT_STYLE_VERSION = 'v7'
 const CODE_LAYOUT_STYLE_ID = `shared-streamdown-code-layout-${CODE_LAYOUT_STYLE_VERSION}`
 
 export function ensureCodeBlockLayoutStyles(): void {
@@ -173,6 +173,62 @@ export function ensureCodeBlockLayoutStyles(): void {
       margin: 0 !important;
       padding: 0 !important;
     }
+
+    /* Tables — nuke streamdown's default bg-sidebar / bg-background /
+       border-border so tables render transparently and conform to whatever
+       theme the host app uses. JS path in usePatchCodeBlocks still applies
+       theme-aware border-color + cell typography. */
+    [data-streamdown="table-wrapper"] {
+      background: transparent !important;
+      border: none !important;
+      border-radius: 0 !important;
+      padding: 0 !important;
+      margin: 8px 0 !important;
+      gap: 0 !important;
+    }
+    [data-streamdown="table-wrapper"] > div:has(> [data-streamdown="table"]) {
+      background: transparent !important;
+      border: none !important;
+      border-radius: 0 !important;
+      overflow-x: auto !important;
+    }
+    [data-streamdown="table"] {
+      background: transparent !important;
+      border: none !important;
+      width: 100% !important;
+      border-collapse: collapse !important;
+      font-variant-numeric: tabular-nums !important;
+    }
+    [data-streamdown="table-header"] {
+      background: transparent !important;
+    }
+    /* Override streamdown's baked-in \`divide-y divide-border\` Tailwind
+       classes: zero the top-border divide, add a themed bottom-border on
+       every row instead. --chat-table-border is set on ChatMarkdown root. */
+    [data-streamdown="table-row"] {
+      border-top: 0 !important;
+      border-bottom: 1px solid var(--chat-table-border, transparent) !important;
+    }
+    [data-streamdown="table-header-cell"] {
+      background: transparent !important;
+      border: none !important;
+      padding: 7px 12px !important;
+      text-align: left !important;
+      font-weight: 600 !important;
+      font-size: 10.5px !important;
+      letter-spacing: 0.5px !important;
+      text-transform: uppercase !important;
+      vertical-align: middle !important;
+    }
+    [data-streamdown="table-body"] {
+      background: transparent !important;
+    }
+    [data-streamdown="table-cell"] {
+      background: transparent !important;
+      border: none !important;
+      padding: 8px 12px !important;
+      vertical-align: middle !important;
+    }
   `
   document.head.appendChild(style)
 }
@@ -234,7 +290,6 @@ export function usePatchCodeBlocks(
     const el = ref.current
     if (!el) return
     const { shellBackground, bodyBackground, headerBackground, headerColor } = tokens.code
-    const { shellBackground: tableShellBackground, innerBackground: tableInnerBackground, headerBackground: tableHeaderBackground } = tokens.table
     // Keep JS path matching the CSS rules in ensureCodeBlockLayoutStyles so
     // both paths converge on the same compact rendering.
     const fontSize = 11
@@ -290,34 +345,40 @@ export function usePatchCodeBlocks(
       })
     })
 
-    // Tables
+    // Tables — tidy styling: no per-cell grid, row underlines only.
+    // Header: uppercase + muted + thead underline. Cells: tabular-nums, full
+    // width, rounded outer container only. Matches the "data table" look the
+    // rest of the app uses (PlanCard, DiffView gutters).
     const tables = el.querySelectorAll<HTMLElement>('[data-streamdown="table-wrapper"]')
     tables.forEach(wrapper => {
       wrapper.style.cssText = `margin:8px 0!important;padding:0!important;gap:0!important;border-radius:8px!important;overflow:hidden!important;border:none!important;background:transparent!important;color:${theme.text.primary}!important`
 
       const scroller = wrapper.querySelector<HTMLElement>('[data-streamdown="table"]')?.parentElement
       if (scroller) {
-        scroller.style.cssText = `border:1px solid ${theme.border.subtle}!important;border-radius:8px!important;overflow:auto!important;background:${tableInnerBackground}!important`
+        scroller.style.cssText = `border:none!important;border-radius:0!important;overflow:auto!important;background:transparent!important`
       }
 
       const table = wrapper.querySelector<HTMLElement>('[data-streamdown="table"]')
       if (table) {
-        table.style.cssText = `width:100%!important;border-collapse:collapse!important;background:${tableInnerBackground}!important;color:${theme.text.primary}!important`
+        table.style.cssText = `width:100%!important;border-collapse:collapse!important;background:transparent!important;color:${theme.text.primary}!important;font-variant-numeric:tabular-nums!important`
       }
 
       const thead = wrapper.querySelector<HTMLElement>('[data-streamdown="table-header"]')
       if (thead) {
-        thead.style.cssText = `background:${tableHeaderBackground}!important;color:${theme.text.primary}!important`
+        thead.style.cssText = `background:transparent!important;color:${theme.text.muted}!important;border-bottom:1px solid ${theme.border.subtle}!important`
       }
 
-      wrapper.querySelectorAll<HTMLElement>('[data-streamdown="table-row"]').forEach(row => {
-        row.style.borderColor = theme.border.subtle
+      const rows = wrapper.querySelectorAll<HTMLElement>('[data-streamdown="table-row"]')
+      rows.forEach(row => {
+        // Row underlines give structure without the heavy outer card.
+        // Every row gets a bottom border so the table reads as bounded.
+        row.style.cssText = `border:none!important;border-bottom:1px solid ${theme.border.subtle}!important`
       })
       wrapper.querySelectorAll<HTMLElement>('[data-streamdown="table-header-cell"]').forEach(cell => {
-        cell.style.cssText = `background:${tableHeaderBackground}!important;color:${theme.text.primary}!important;border:1px solid ${theme.border.subtle}!important;padding:8px 10px!important`
+        cell.style.cssText = `background:transparent!important;color:${theme.text.muted}!important;border:none!important;padding:7px 12px!important;text-align:left!important;font-weight:600!important;font-size:10.5px!important;letter-spacing:0.5px!important;text-transform:uppercase!important;vertical-align:middle!important`
       })
       wrapper.querySelectorAll<HTMLElement>('[data-streamdown="table-cell"]').forEach(cell => {
-        cell.style.cssText = `background:${tableInnerBackground}!important;color:${theme.text.primary}!important;border:1px solid ${theme.border.subtle}!important;padding:8px 10px!important`
+        cell.style.cssText = `background:transparent!important;color:${theme.text.primary}!important;border:none!important;padding:8px 12px!important;vertical-align:middle!important`
       })
     })
   }, [fonts.size, ref, theme.border.default, theme.border.subtle, theme.text.primary, tokens])
@@ -393,6 +454,7 @@ export const ChatMarkdown = React.memo(({ text, isStreaming, className }: {
         overflow: 'hidden',
         ['--chat-link-color' as string]: theme.accent.base,
         ['--chat-link-hover-color' as string]: theme.accent.hover,
+        ['--chat-table-border' as string]: theme.border.subtle,
       }}
     >
       <ChatStreamdown text={text} isStreaming={isStreaming} className={className} />

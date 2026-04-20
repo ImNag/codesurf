@@ -366,8 +366,7 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
                 fontSize: 10, color: isActive ? theme.text.primary : theme.text.muted,
                 background: 'transparent',
                 border: '1px solid transparent',
-                borderBottom: `1px solid ${isActive ? theme.accent.base : 'transparent'}`,
-                marginBottom: 3,
+                marginBottom: 0,
                 borderRadius: 0,
                 transition: 'color 0.15s, border-color 0.15s',
                 flexShrink: 0, maxWidth: 200,
@@ -386,7 +385,18 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
                 }
               }}
             >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flex: 1,
+                  textDecorationLine: isActive ? 'underline' : 'none',
+                  textDecorationColor: isActive ? theme.accent.base : 'transparent',
+                  textDecorationThickness: 1,
+                  textUnderlineOffset: 5,
+                }}
+              >
                 {tab.label}
               </span>
               <span

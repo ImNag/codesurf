@@ -102,11 +102,22 @@ export function SidebarMenuPortal({ anchorRef, children }: { anchorRef: React.Re
   )
 }
 
-export function SidebarItem({ label, icon, active, muted, onClick, onContextMenu, indent = 0, extra, extraAlwaysVisible = false, extraWidth, title }: {
+export function SidebarItem({ label, icon, active, muted, emphasize, onClick, onContextMenu, indent = 0, extra, extraAlwaysVisible = false, extraWidth, title }: {
   label: string
   icon?: React.ReactNode
   active?: boolean
   muted?: boolean
+  /**
+   * Subtle "you are here" marker, independent of `active` (which is loud: bg +
+   * accent color). Three states:
+   *   - `true`  → bold label (primary color)
+   *   - `false` → slightly subdued label (text.muted)
+   *   - `undefined` → no effect
+   *
+   * Used by the session list so the currently focused chat reads heavier than
+   * its siblings without lighting up like a folder selection.
+   */
+  emphasize?: boolean
   onClick: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   indent?: number
@@ -119,6 +130,20 @@ export function SidebarItem({ label, icon, active, muted, onClick, onContextMenu
   const theme = useTheme()
   const fonts = useAppFonts()
   const [hovered, setHovered] = useState(false)
+  const labelWeight = active
+    ? Math.min(900, fonts.weight + 100)
+    : emphasize === true
+      ? Math.min(900, fonts.weight + 100)
+      : fonts.weight
+  const labelColor = active
+    ? theme.accent.base
+    : muted
+      ? theme.text.disabled
+      : emphasize === true
+        ? theme.text.primary
+        : emphasize === false
+          ? theme.text.muted
+          : theme.text.secondary
   return (
     <div
       title={title}
@@ -137,8 +162,8 @@ export function SidebarItem({ label, icon, active, muted, onClick, onContextMenu
     >
       {icon && <span style={{ color: active ? theme.accent.base : muted ? theme.text.disabled : theme.text.muted, flexShrink: 0, display: 'flex', alignItems: 'center' }}>{icon}</span>}
       <span style={{
-        fontSize: fonts.size, fontWeight: active ? Math.min(900, fonts.weight + 100) : fonts.weight, lineHeight: fonts.lineHeight,
-        color: active ? theme.accent.base : muted ? theme.text.disabled : theme.text.secondary,
+        fontSize: fonts.size, fontWeight: labelWeight, lineHeight: fonts.lineHeight,
+        color: labelColor,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>
         {label}

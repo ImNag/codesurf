@@ -46,6 +46,12 @@ interface Props {
   onToggleCollapse: () => void
   onScrollMetricsChange?: (metrics: { hasOverflow: boolean; topRatio: number; thumbRatio: number }) => void
   showFooter?: boolean
+  /**
+   * Tile id of the currently focused chat, or null when the focus isn't on a
+   * chat. Used to emphasize the matching session row in the thread list so
+   * the user can see "you are here" without clicking around.
+   */
+  activeChatTileId?: string | null
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
@@ -55,7 +61,8 @@ export function Sidebar({
   onNewTerminal, onNewKanban, onNewBrowser, onNewChat, onNewFiles, onOpenSettings,
   onOpenSessionInChat, onOpenSessionInApp,
   extensionTiles, extensionEntries, onAddExtensionTile, pinnedExtensionIds, onTogglePinnedExtension,
-  collapsed, width, onWidthChange, minWidth = 270, maxWidth = 520, onResizeStateChange, onToggleCollapse: _onToggleCollapse, onScrollMetricsChange, showFooter = true
+  collapsed, width, onWidthChange, minWidth = 270, maxWidth = 520, onResizeStateChange, onToggleCollapse: _onToggleCollapse, onScrollMetricsChange, showFooter = true,
+  activeChatTileId = null,
 }: Props): React.JSX.Element {
   const fonts = useAppFonts()
   const theme = useTheme()
@@ -890,6 +897,11 @@ const visibleSessions = useMemo(() => {
                       indent={Math.max(1, session.displayIndent + 1)}
                       extraWidth={24}
                       title={`${session.title}\n${session.sourceLabel}${session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}`}
+                      emphasize={
+                        activeChatTileId
+                          ? session.tileId === activeChatTileId
+                          : undefined
+                      }
                       onClick={() => {
                         if (session.tileId && openTileIdSet.has(session.tileId)) {
                           onFocusTile(session.tileId)

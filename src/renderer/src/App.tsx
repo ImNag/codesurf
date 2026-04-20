@@ -1453,6 +1453,26 @@ function App(): JSX.Element {
     return extensionTiles.filter(ext => pinned.has(ext.extId) || pinned.has(ext.type))
   }, [settings.extensionsDisabled, settings.pinnedExtensionIds, extensionTiles])
 
+  // "You are here" signal for the sidebar's session list. Looks at the current
+  // focus: the fullscreen/expanded tile first, then the active panel's active
+  // tab, then the selected canvas tile. Only reports the id if that tile is a
+  // chat — otherwise the highlight stays off.
+  const activeChatTileId = useMemo(() => {
+    const candidates: (string | null)[] = []
+    if (expandedTileId) candidates.push(expandedTileId)
+    if (panelLayout && activePanelId) {
+      const leaf = findLeafById(panelLayout, activePanelId)
+      if (leaf?.activeTab) candidates.push(leaf.activeTab)
+    }
+    if (selectedTileId) candidates.push(selectedTileId)
+    for (const id of candidates) {
+      if (!id) continue
+      const tile = tiles.find(t => t.id === id)
+      if (tile?.type === 'chat') return tile.id
+    }
+    return null
+  }, [expandedTileId, panelLayout, activePanelId, selectedTileId, tiles])
+
   // ─── Tile creation ────────────────────────────────────────────────────────
   const addTile = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }, initialOptions?: { hideTitlebar?: boolean; hideNavbar?: boolean; launchBin?: string; launchArgs?: string[] }) => {
     const center = pos ?? viewportCenter()
@@ -3767,6 +3787,7 @@ function App(): JSX.Element {
                 workspace={workspace}
                 workspaces={workspaces}
                 tiles={tiles}
+                activeChatTileId={activeChatTileId}
                 onSwitchWorkspace={handleSwitchWorkspace}
                 onDeleteWorkspace={handleDeleteWorkspace}
                 onNewWorkspace={handleNewWorkspace}
@@ -3905,8 +3926,7 @@ function App(): JSX.Element {
                     height: '100%',
                     padding: '0 2px 0 0',
                     gap: 2,
-                    borderBottom: isActive ? `1px solid ${theme.accent.base}` : '1px solid transparent',
-                    marginBottom: 5,
+                    marginBottom: 2,
                     paddingTop: 4,
                     color: isActive ? theme.text.primary : theme.text.muted,
                     transition: 'color 0.12s ease, border-color 0.12s ease',
@@ -3940,6 +3960,10 @@ function App(): JSX.Element {
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
+                        textDecorationLine: isActive ? 'underline' : 'none',
+                        textDecorationColor: isActive ? theme.accent.base : 'transparent',
+                        textDecorationThickness: 1,
+                        textUnderlineOffset: 5,
                       }}
                     >
                       {ws.name}
@@ -3993,8 +4017,7 @@ function App(): JSX.Element {
                   minWidth: 0,
                   height: '100%',
                   padding: '0 2px',
-                  borderBottom: `1px solid ${theme.accent.base}`,
-                  marginBottom: 5,
+                  marginBottom: 2,
                   paddingTop: 4,
                   color: theme.text.primary,
                   fontSize: appFonts.size,
@@ -4007,6 +4030,10 @@ function App(): JSX.Element {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    textDecorationLine: 'underline',
+                    textDecorationColor: theme.accent.base,
+                    textDecorationThickness: 1,
+                    textUnderlineOffset: 5,
                   }}
                 >
                   {workspaceTitleFallback}
@@ -4024,7 +4051,6 @@ function App(): JSX.Element {
                   height: '100%',
                   padding: '0 2px 0 0',
                   gap: 2,
-                  borderBottom: `1px solid ${theme.accent.base}`,
                   marginBottom: 5,
                   paddingTop: 4,
                   color: theme.text.primary,
@@ -4056,6 +4082,10 @@ function App(): JSX.Element {
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      textDecorationLine: 'underline',
+                      textDecorationColor: theme.accent.base,
+                      textDecorationThickness: 1,
+                      textUnderlineOffset: 5,
                     }}
                   >
                     NEW WORKSPACE
