@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
+import { applyProjectContextPolicy } from './project-context.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -815,7 +816,11 @@ export function createChatJobManager({ homeDir }) {
 
   async function startJob(request) {
     const id = randomUUID()
-    const workspaceDir = await ensureProvisionedWorkspace(homeDir, request.projectContext ?? { workspaceDir: request.workspaceDir })
+    const effectiveProjectContext = applyProjectContextPolicy({
+      executionTarget: request?.executionTarget,
+      projectContext: request?.projectContext ?? { workspaceDir: request?.workspaceDir },
+    })
+    const workspaceDir = await ensureProvisionedWorkspace(homeDir, effectiveProjectContext)
     const initialPrompt = extractTaskLabelFromRequest(request)
     const metadata = {
       id,
