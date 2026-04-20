@@ -1256,6 +1256,12 @@ function tileSessionSummaryPath(workspaceId, tileId) {
   return join(workspaceContexDir(workspaceId), `tile-session-${tileId}.json`)
 }
 
+function runtimeSessionStatePath(workspaceId, tileId) {
+  assertSafeId(workspaceId)
+  assertSafeId(tileId)
+  return join(workspaceContexDir(workspaceId), `runtime-session-${tileId}.json`)
+}
+
 function truncateSessionText(text, length = SESSION_TEXT_LIMIT) {
   if (!text) return null
   const normalized = String(text).replace(/\s+/g, ' ').trim()
@@ -1315,8 +1321,69 @@ function extractTileSessionSummary(tileId, state) {
   }
 }
 
+function extractRuntimeSessionSummary(tileId, state) {
+  if (!state || typeof state !== 'object') return null
+  const record = state
+  const messages = Array.isArray(record.messages) ? record.messages : []
+  const provider = typeof record.provider === 'string' && record.provider.trim()
+    ? record.provider
+    : 'claude'
+  const model = typeof record.model === 'string' ? record.model : ''
+  const sessionId = typeof record.sessionId === 'string' ? record.sessionId : null
+  const jobId = typeof record.jobId === 'string' ? record.jobId : null
+  const executionTarget = record.executionTarget === 'cloud' ? 'cloud' : 'local'
+  const cloudHostId = typeof record.cloudHostId === 'string' ? record.cloudHostId : null
+  const isStreaming = record.isStreaming === true
+
+  let lastMessage = null
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (!message || typeof message !== 'object') continue
+    const text = truncateSessionText(typeof message.content === 'string' ? message.content : null)
+    if (text) {
+      lastMessage = text
+      break
+    }
+  }
+
+  const title = typeof record.title === 'string' && record.title.trim()
+    ? record.title.trim()
+    : extractSessionTitle(messages, provider) ?? sessionTitleFromText(lastMessage, provider)
+
+  return {
+    version: 1,
+    tileId,
+    sessionId,
+    provider,
+    model,
+    jobId,
+    executionTarget,
+    cloudHostId,
+    isStreaming,
+    messageCount: messages.length,
+    lastMessage,
+    title,
+    updatedAt: Number(record.updatedAt ?? Date.now()),
+  }
+}
+
 function pathExists(filePath) {
   return existsSync(filePath)
+}
+
+function upsertRuntimeSessionState(workspaceId, tileId, state) {
+  assertSafeId(workspaceId)
+  assertSafeId(tileId)
+  if (!state || typeof state !== 'object') return { ok: false, error: 'state is required' }
+  const summary = extractRuntimeSessionSummary(tileId, state)
+  if (!summary) return { ok: false, error: 'state did not contain a valid session payload' }
+  const nextState = {
+    ...state,
+    updatedAt: summary.updatedAt,
+    title: summary.title,
+  }
+  atomicWriteJson(runtimeSessionStatePath(workspaceId, tileId), nextState)
+  return { ok: true, summary }
 }
 
 function moveFileToDeleted(filePath) {
@@ -1473,6 +1540,43 @@ function renameExternalSession(codesurfHome, workspacePath, sessionEntryId, titl
 function listLocalWorkspaceSessions(workspaceId) {
   const dotDir = workspaceContexDir(workspaceId)
   const entries = []
+  const runtimeTileIds = new Set()
+
+  // Scan daemon-owned runtime chat sessions first so they take precedence over
+  // renderer tile-state fallbacks for the same tile.
+  if (existsSync(dotDir)) {
+    for (const name of readDirNames(dotDir)) {
+      if (!name.startsWith('runtime-session-') || !name.endsWith('.json')) continue
+
+      const filePath = join(dotDir, name)
+      const tileId = name.replace('runtime-session-', '').replace('.json', '')
+      const state = readJsonFile(filePath, null)
+      const summary = extractRuntimeSessionSummary(tileId, state)
+      if (!summary) continue
+      runtimeTileIds.add(tileId)
+
+      entries.push(applyLocalSessionTitleOverride(workspaceId, {
+        id: `codesurf-runtime:${tileId}`,
+        source: 'codesurf',
+        scope: 'workspace',
+        tileId,
+        sessionId: summary.sessionId ?? null,
+        provider: summary.provider ?? 'claude',
+        model: summary.model ?? '',
+        messageCount: Number(summary.messageCount ?? 0),
+        lastMessage: summary.lastMessage ?? null,
+        updatedAt: Number(summary.updatedAt ?? Date.now()),
+        title: summary.title ?? sessionTitleFromText(summary.lastMessage ?? null, summary.provider ?? 'claude'),
+        filePath,
+        projectPath: resolveWorkspaceProjectPath(workspaceId, null),
+        sourceLabel: 'CodeSurf',
+        sourceDetail: `${summary.provider ?? 'Agent'} runtime`,
+        canOpenInChat: true,
+        canOpenInApp: false,
+        nestingLevel: 0,
+      }))
+    }
+  }
   
   // Scan tile sessions
   if (existsSync(dotDir)) {
@@ -1481,6 +1585,7 @@ function listLocalWorkspaceSessions(workspaceId) {
 
       const filePath = join(dotDir, name)
       const tileId = name.replace('tile-state-', '').replace('.json', '')
+      if (runtimeTileIds.has(tileId)) continue
       const summaryPath = tileSessionSummaryPath(workspaceId, tileId)
 
       let summary = readJsonFile(summaryPath, null)
@@ -1576,6 +1681,10 @@ function listLocalWorkspaceSessions(workspaceId) {
 
 function getLocalSessionState(workspaceId, sessionEntryId) {
   const normalizedId = String(sessionEntryId)
+  if (normalizedId.startsWith('codesurf-runtime:')) {
+    const tileId = normalizedId.replace('codesurf-runtime:', '')
+    return readJsonFile(runtimeSessionStatePath(workspaceId, tileId), null)
+  }
   if (normalizedId.startsWith('codesurf-tile:')) {
     const tileId = normalizedId.replace('codesurf-tile:tile-state-', '').replace('.json', '')
     return readJsonFile(tileStatePath(workspaceId, tileId), null)
@@ -1589,6 +1698,15 @@ function getLocalSessionState(workspaceId, sessionEntryId) {
 
 function deleteLocalSession(workspaceId, sessionEntryId) {
   const normalizedId = String(sessionEntryId)
+  if (normalizedId.startsWith('codesurf-runtime:')) {
+    const tileId = normalizedId.replace('codesurf-runtime:', '')
+    const filePath = runtimeSessionStatePath(workspaceId, tileId)
+    if (!pathExists(filePath)) return { ok: false, error: 'Session file missing' }
+
+    moveFileToDeleted(filePath)
+    deleteLocalSessionTitleOverride(workspaceId, sessionEntryId)
+    return { ok: true }
+  }
   if (normalizedId.startsWith('codesurf-tile:')) {
     const tileId = normalizedId.replace('codesurf-tile:tile-state-', '').replace('.json', '')
     const filePath = tileStatePath(workspaceId, tileId)
@@ -1623,6 +1741,12 @@ function deleteLocalSession(workspaceId, sessionEntryId) {
 
 function renameLocalSession(workspaceId, sessionEntryId, title) {
   const normalizedId = String(sessionEntryId)
+  if (normalizedId.startsWith('codesurf-runtime:')) {
+    const tileId = normalizedId.replace('codesurf-runtime:', '')
+    const filePath = runtimeSessionStatePath(workspaceId, tileId)
+    if (!pathExists(filePath)) return { ok: false, error: 'Session file missing' }
+    return setLocalSessionTitleOverride(workspaceId, sessionEntryId, title)
+  }
   if (normalizedId.startsWith('codesurf-tile:')) {
     const tileId = normalizedId.replace('codesurf-tile:tile-state-', '').replace('.json', '')
     const filePath = tileStatePath(workspaceId, tileId)
@@ -2117,6 +2241,18 @@ const server = createServer(async (req, res) => {
         return
       }
       sendJson(res, 200, listLocalWorkspaceSessions(workspaceId))
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/session/runtime/upsert') {
+      const body = await parseRequestBody(req)
+      const workspaceId = String(body?.workspaceId ?? '').trim()
+      const cardId = String(body?.cardId ?? '').trim()
+      if (!workspaceId || !cardId || !body?.state || typeof body.state !== 'object') {
+        sendJson(res, 400, { error: 'workspaceId, cardId, and state are required' })
+        return
+      }
+      sendJson(res, 200, upsertRuntimeSessionState(workspaceId, cardId, body.state))
       return
     }
 

@@ -128,6 +128,11 @@ export const daemonClient = {
   listLocalSessions(workspaceId: string): Promise<AggregatedSessionEntry[]> {
     return daemonRequest(`/session/local/list?workspaceId=${encodeURIComponent(workspaceId)}`)
   },
+  upsertRuntimeSession(workspaceId: string, cardId: string, state: unknown): Promise<{ ok: boolean; summary?: unknown; error?: string }> {
+    return daemonRequest('/session/runtime/upsert', {
+      body: { workspaceId, cardId, state },
+    })
+  },
   listExternalSessions(workspacePath: string | null, force = false): Promise<AggregatedSessionEntry[]> {
     const normalizedPath = String(workspacePath ?? '').trim()
     const query = new URLSearchParams()

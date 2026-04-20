@@ -118,6 +118,34 @@ function sendStream(cardId: string, event: Record<string, unknown>): void {
   })
 }
 
+interface RuntimeChatSessionState {
+  provider: string
+  model: string
+  sessionId: string | null
+  jobId: string | null
+  jobSequence: number
+  executionTarget: 'local' | 'cloud'
+  cloudHostId: string | null
+  isStreaming: boolean
+  messages: ChatMessage[]
+}
+
+function cloneChatMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map(message => ({
+    role: message.role,
+    content: String(message.content ?? ''),
+  }))
+}
+
+async function upsertRuntimeSessionState(req: ChatRequest, state: RuntimeChatSessionState): Promise<void> {
+  if (!req.workspaceId) return
+  try {
+    await daemonClient.upsertRuntimeSession(req.workspaceId, req.cardId, state)
+  } catch (error) {
+    log('upsertRuntimeSession error', req.cardId, error)
+  }
+}
+
 // Active Claude SDK queries
 const activeQueries = new Map<string, Query>()
 // Live permission mode per card, so mid-thread mode switches (e.g. Default -> Bypass)
@@ -1042,6 +1070,19 @@ function chatClaude(req: ChatRequest): void {
   }
 
   const existingSessionId = sessionIds.get(req.cardId)
+  const runtimeMessages = cloneChatMessages(req.messages)
+  const runtimeSession: RuntimeChatSessionState = {
+    provider: req.provider,
+    model: req.model,
+    sessionId: existingSessionId ?? req.sessionId ?? null,
+    jobId: req.jobId ?? null,
+    jobSequence: typeof req.jobSequence === 'number' ? req.jobSequence : 0,
+    executionTarget: req.executionTarget === 'cloud' ? 'cloud' : 'local',
+    cloudHostId: req.cloudHostId ?? null,
+    isStreaming: true,
+    messages: runtimeMessages,
+  }
+  void upsertRuntimeSessionState(req, runtimeSession)
   log('chatClaude starting', {
     model: req.model,
     prompt: lastUserMsg.content.slice(0, 100),
@@ -1306,6 +1347,7 @@ function chatClaude(req: ChatRequest): void {
     // Consume the async generator in the background
     ;(async () => {
       let capturedSessionId = false
+      let assistantText = ''
       // Track streamed text per content_block index so we can fall back to the
       // assembled `assistant` message for any text the partial stream missed.
       // Key format: `${turn}:${index}` — we bump `turn` on each assistant message.
@@ -1320,6 +1362,8 @@ function chatClaude(req: ChatRequest): void {
             if (sid) {
               log('captured session_id:', sid.slice(0, 8))
               sessionIds.set(req.cardId, sid)
+              runtimeSession.sessionId = sid
+              void upsertRuntimeSessionState(req, runtimeSession)
               sendStream(req.cardId, { type: 'session', sessionId: sid })
               capturedSessionId = true
             }
@@ -1332,6 +1376,7 @@ function chatClaude(req: ChatRequest): void {
               if (evt.delta?.type === 'text_delta' && evt.delta.text) {
                 const key = `${streamTurn}:${evt.index ?? 0}`
                 streamedTextByIndex.set(key, (streamedTextByIndex.get(key) ?? '') + evt.delta.text)
+                assistantText += evt.delta.text
                 sendStream(req.cardId, { type: 'text', text: evt.delta.text })
               } else if (evt.delta?.type === 'thinking_delta' && evt.delta.thinking) {
                 sendStream(req.cardId, { type: 'thinking', text: evt.delta.thinking, thinkingId: currentThinkingId })
@@ -1418,6 +1463,18 @@ function chatClaude(req: ChatRequest): void {
             })
           } else if (msg.type === 'result') {
             const result = msg as any
+            if (!assistantText && typeof result.result === 'string' && result.result.trim()) {
+              assistantText = result.result
+            }
+            if (assistantText.trim()) {
+              runtimeSession.messages = [
+                ...runtimeMessages,
+                { role: 'assistant', content: assistantText },
+              ]
+            }
+            runtimeSession.sessionId = result.session_id ?? runtimeSession.sessionId
+            runtimeSession.isStreaming = false
+            void upsertRuntimeSessionState(req, runtimeSession)
             sendStream(req.cardId, {
               type: 'done',
               cost: result.total_cost_usd,
@@ -1435,11 +1492,27 @@ function chatClaude(req: ChatRequest): void {
 
         // Generator finished -- ensure done is sent
         if (activeQueries.has(req.cardId)) {
-          sendStream(req.cardId, { type: 'done' })
+          if (assistantText.trim()) {
+            runtimeSession.messages = [
+              ...runtimeMessages,
+              { role: 'assistant', content: assistantText },
+            ]
+          }
+          runtimeSession.isStreaming = false
+          void upsertRuntimeSessionState(req, runtimeSession)
+          sendStream(req.cardId, { type: 'done', sessionId: runtimeSession.sessionId ?? undefined })
           activeQueries.delete(req.cardId)
         }
       } catch (err: any) {
         log('generator error:', err.message ?? String(err))
+        if (assistantText.trim()) {
+          runtimeSession.messages = [
+            ...runtimeMessages,
+            { role: 'assistant', content: assistantText },
+          ]
+        }
+        runtimeSession.isStreaming = false
+        void upsertRuntimeSessionState(req, runtimeSession)
         sendStream(req.cardId, { type: 'error', error: err.message ?? String(err) })
         activeQueries.delete(req.cardId)
       }
@@ -1779,6 +1852,19 @@ function chatCodex(req: ChatRequest): void {
 
   const codexBin = getAgentPath('codex') || 'codex'
   const shellPath = getShellEnvPath()
+  const runtimeMessages = cloneChatMessages(req.messages)
+  const runtimeSession: RuntimeChatSessionState = {
+    provider: req.provider,
+    model: req.model,
+    sessionId: req.sessionId ?? sessionIds.get(req.cardId) ?? null,
+    jobId: req.jobId ?? null,
+    jobSequence: typeof req.jobSequence === 'number' ? req.jobSequence : 0,
+    executionTarget: req.executionTarget === 'cloud' ? 'cloud' : 'local',
+    cloudHostId: req.cloudHostId ?? null,
+    isStreaming: true,
+    messages: runtimeMessages,
+  }
+  void upsertRuntimeSessionState(req, runtimeSession)
   const args = ['exec', '--json', '--model', req.model, '--dangerously-bypass-approvals-and-sandbox']
   if (req.workspaceDir) {
     args.push('--skip-git-repo-check', '-C', req.workspaceDir)
@@ -1796,6 +1882,7 @@ function chatCodex(req: ChatRequest): void {
   const pendingSnapshots = new Map<string, CodexFileSnapshot>()
   const aggregatedFileChanges = new Map<string, StreamToolFileChange>()
   const exploreEntries: StreamToolCommandEntry[] = []
+  let assistantText = ''
   let editsStarted = false
   let exploreStarted = false
   let pendingStdout = ''
@@ -1806,6 +1893,8 @@ function chatCodex(req: ChatRequest): void {
 
     if (evt.type === 'thread.started' && typeof evt.thread_id === 'string') {
       sessionIds.set(req.cardId, evt.thread_id)
+      runtimeSession.sessionId = evt.thread_id
+      void upsertRuntimeSessionState(req, runtimeSession)
       sendStream(req.cardId, { type: 'session', sessionId: evt.thread_id })
       return
     }
@@ -1833,6 +1922,7 @@ function chatCodex(req: ChatRequest): void {
     if (!item || typeof item !== 'object') return
 
     if (item.type === 'agent_message' && typeof item.text === 'string' && item.text) {
+      assistantText += item.text
       sendStream(req.cardId, { type: 'text', text: item.text })
       return
     }
@@ -1911,23 +2001,44 @@ function chatCodex(req: ChatRequest): void {
         try {
           await handleCodexJsonEvent(JSON.parse(pendingStdout.trim()))
         } catch {
+          assistantText += pendingStdout
           sendStream(req.cardId, { type: 'text', text: pendingStdout })
         }
       }
+      if (assistantText.trim()) {
+        runtimeSession.messages = [
+          ...runtimeMessages,
+          { role: 'assistant', content: assistantText },
+        ]
+      }
+      runtimeSession.sessionId = sessionIds.get(req.cardId) ?? runtimeSession.sessionId
+      runtimeSession.isStreaming = false
+      void upsertRuntimeSessionState(req, runtimeSession)
       if (code !== 0 && stderrBuf.trim()) {
         sendStream(req.cardId, { type: 'error', error: stderrBuf.trim() })
       }
-      sendStream(req.cardId, { type: 'done', sessionId: sessionIds.get(req.cardId) })
+      sendStream(req.cardId, { type: 'done', sessionId: runtimeSession.sessionId ?? undefined })
     }).catch(() => {
+      if (assistantText.trim()) {
+        runtimeSession.messages = [
+          ...runtimeMessages,
+          { role: 'assistant', content: assistantText },
+        ]
+      }
+      runtimeSession.sessionId = sessionIds.get(req.cardId) ?? runtimeSession.sessionId
+      runtimeSession.isStreaming = false
+      void upsertRuntimeSessionState(req, runtimeSession)
       if (code !== 0 && stderrBuf.trim()) {
         sendStream(req.cardId, { type: 'error', error: stderrBuf.trim() })
       }
-      sendStream(req.cardId, { type: 'done', sessionId: sessionIds.get(req.cardId) })
+      sendStream(req.cardId, { type: 'done', sessionId: runtimeSession.sessionId ?? undefined })
     })
   })
 
   proc.on('error', (err) => {
     activeProcesses.delete(req.cardId)
+    runtimeSession.isStreaming = false
+    void upsertRuntimeSessionState(req, runtimeSession)
     sendStream(req.cardId, { type: 'error', error: err.message.includes('ENOENT')
       ? 'Codex CLI not found. Install: npm install -g @openai/codex'
       : err.message })
