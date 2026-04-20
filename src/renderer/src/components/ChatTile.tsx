@@ -19,6 +19,7 @@ import { useMCPServers, type MCPServerEntry } from '../hooks/useMCPServers'
 import { useAppFonts } from '../FontContext'
 import { useTheme } from '../ThemeContext'
 import { ensureShimmerStyles, ShimmerText, WorkingDots, ChatMarkdown } from './shared/streamdown-utils'
+import { DiffView } from './chat/DiffView'
 import {
   type BuiltinProvider, type ModelOption, type ModeOption, type ThinkingOption,
   DEFAULT_MODELS, DEFAULT_PROVIDER_ID, PROVIDER_MODES, EXTENSION_PROVIDER_MODE,
@@ -29,7 +30,10 @@ import { stripCapabilityPrefix, getAllNodeTools } from '../../../shared/nodeTool
 import type { ToolBlock, ThinkingBlock, ContentBlock, ChatMessage, BlockNote } from '../../../shared/chat-types'
 import { BlockNoteAffordance } from './chat/BlockNoteAffordance'
 import { getChatTileRuntimeState, setChatTileRuntimeState, reviveChatTileRuntimeState, isChatTileRuntimeStateDisposed } from './chatTileRuntimeState'
-import { setTileTodos, clearTileTodos, type TileTodoItem } from '../state/tileTodosStore'
+import { setTileTodos, clearTileTodos, useTileTodos, type TileTodoItem } from '../state/tileTodosStore'
+import { PlanCard } from './chat/PlanCard'
+import { PlanPane } from './chat/PlanPane'
+import { PlanChip } from './chat/PlanChip'
 import { JSXPreview, JSXPreviewContent, JSXPreviewError } from './ai-elements/JSXPreview'
 
 const CHAT_SLASH_COMMANDS = [
@@ -2112,6 +2116,20 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [dictationText, setDictationText] = useState('')
   const recognitionRef = useRef<any>(null)
 
+  // Plan pane (right-docked inline plan panel). Subscribes to the per-tile
+  // todos store so the pane, the composer chip, and the transcript's inline
+  // PlanCard all share one source of truth (latest TodoWrite block).
+  const planTodos = useTileTodos(tileId)
+  const [isPlanOpen, setIsPlanOpen] = useState(false)
+  // Auto-close when the plan goes away (conversation cleared / new chat).
+  useEffect(() => {
+    if (!planTodos || planTodos.length === 0) setIsPlanOpen(false)
+  }, [planTodos])
+  const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null)
+  useEffect(() => {
+    if (planTodos && planTodos.length > 0) setPlanUpdatedAt(Date.now())
+  }, [planTodos])
+
   // Autocomplete state
   const [acType, setAcType] = useState<'slash' | 'mention' | null>(null)
   const [acQuery, setAcQuery] = useState('')
@@ -2835,7 +2853,20 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   // Set of attachment paths the model has actually loaded (via Read-style
   // tools). Drives the confirmation tick on attachment chips — must stay
   // authoritative: only paths demonstrably consumed by the model appear here.
-  const readAttachmentPaths = useMemo(() => collectModelReadPaths(messages), [messages])
+  //
+  // Keyed on the sorted content of the set so the Set identity is stable
+  // across streaming ticks that don't add a new Read tool call. This is
+  // load-bearing: ChatMessageContent receives this prop and is React.memo'd;
+  // a fresh Set every token would break memo for every completed block on
+  // every single token, causing a full message re-render storm.
+  const readPathsSnapshot = useMemo(
+    () => [...collectModelReadPaths(messages)].sort().join('\u0000'),
+    [messages],
+  )
+  const readAttachmentPaths = useMemo(
+    () => new Set(readPathsSnapshot ? readPathsSnapshot.split('\u0000') : []),
+    [readPathsSnapshot],
+  )
   const estimatedContextTokens = useMemo(() => {
     const totalChars = messages.reduce((sum, message) => sum + estimateMessageChars(message), 0) + input.length
     const conversationTokens = Math.max(0, Math.round(totalChars / 4))
@@ -4020,6 +4051,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       }}
     >
 
+      {/* Horizontal split: [transcript + composer column] | [plan pane] */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'row',
+        minHeight: 0,
+        minWidth: 0,
+      }}>
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        minWidth: 0,
+      }}>
 
       {/* Messages */}
       <div
@@ -5619,6 +5665,16 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               )}
             </div>
 
+            {/* Plan / Tasks chip — only visible when the agent has emitted a
+                TodoWrite block. Toggles the right-docked PlanPane. */}
+            {planTodos && planTodos.length > 0 && (
+              <PlanChip
+                todos={planTodos}
+                active={isPlanOpen}
+                onClick={() => setIsPlanOpen(v => !v)}
+              />
+            )}
+
             {/* Context indicator sits in a 28×28 hit-box so its centre-line
                 aligns with the Stop/Send button in the primary toolbar above
                 (both buttons are now 28px wide with matching 8px container
@@ -5688,6 +5744,15 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         </div>
         </div>
       </div>
+      </div>
+      {isPlanOpen && planTodos && planTodos.length > 0 && (
+        <PlanPane
+          todos={planTodos}
+          updatedAt={planUpdatedAt}
+          onClose={() => setIsPlanOpen(false)}
+        />
+      )}
+      </div>
     </div>
     </AskUserQuestionContext.Provider>
     </FontCtx.Provider>
@@ -5697,7 +5762,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
 // --- Rich message sub-components -------------------------------------------------
 
-function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Element {
+const ThinkingBlockView = React.memo(function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -5831,13 +5896,13 @@ function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Eleme
       )}
     </div>
   )
-}
+})
 
 /**
  * Collapses a mixed-name run of completed tool blocks into a single
  * "Called N tools" chip that expands horizontally to reveal the originals.
  */
-function MixedToolGroup({ blocks }: { blocks: ToolBlock[] }): JSX.Element {
+const MixedToolGroup = React.memo(function MixedToolGroup({ blocks }: { blocks: ToolBlock[] }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -5880,7 +5945,7 @@ function MixedToolGroup({ blocks }: { blocks: ToolBlock[] }): JSX.Element {
       {expanded && blocks.map(b => <ToolBlockView key={b.id} block={b} />)}
     </div>
   )
-}
+})
 
 /** Collapses consecutive same-name completed tool chips into "Read x6" style. */
 /**
@@ -5916,7 +5981,7 @@ function getGroupedToolLabel(name: string, count: number): string {
   }
 }
 
-function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[] }): JSX.Element {
+const CollapsedToolGroup = React.memo(function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[] }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -5963,10 +6028,10 @@ function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[
       )}
     </div>
   )
-}
+})
 
 
-function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
+const ToolBlockView = React.memo(function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const codePanelFontSize = Math.max(11, fonts.size - 1)
@@ -5996,7 +6061,18 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
     }
   }, [block.fileChanges])
   const [expanded, setExpanded] = useState(isFileChangeBlock)
-  const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({})
+  // For file-change blocks default the per-file diff panels to open: the
+  // whole reason we're showing a file-change block is the diff itself. For
+  // regular tool blocks (Bash output, etc.) default to closed — users click
+  // to drill in.
+  const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>(() => {
+    if (!isFileChangeBlock) return {}
+    const map: Record<string, boolean> = {}
+    block.fileChanges?.forEach((change, index) => {
+      map[`${change.path}:${index}`] = true
+    })
+    return map
+  })
   const isRunning = block.status === 'running'
   const hasNestedData = (block.fileChanges?.length ?? 0) > 0 || (block.commandEntries?.length ?? 0) > 0
 
@@ -6187,41 +6263,12 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                       }} />
                     </button>
                     {isExpanded && (
-                      <div style={{
-                        borderTop: `1px solid ${theme.chat.assistantBubbleBorder}`,
-                        maxHeight: isFileChangeBlock ? 360 : 280,
-                        overflowY: 'auto',
-                        background: theme.chat.background,
-                      }}>
-                        <pre style={{
-                          margin: 0,
-                          padding: '10px 12px',
-                          fontSize: codePanelFontSize,
-                          lineHeight: fonts.monoLineHeight,
-                          fontFamily: fonts.mono,
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                        }}>
-                          {change.diff.split('\n').map((line, lineIndex) => {
-                            let color = theme.chat.textSecondary
-                            let background = 'transparent'
-                            if (line.startsWith('+')) {
-                              color = theme.status.success
-                              background = 'rgba(63, 185, 80, 0.12)'
-                            } else if (line.startsWith('-')) {
-                              color = theme.status.danger
-                              background = 'rgba(248, 81, 73, 0.12)'
-                            } else if (line.startsWith('@@')) {
-                              color = theme.accent.base
-                            }
-
-                            return (
-                              <div key={lineIndex} style={{ color, background, padding: background === 'transparent' ? 0 : '0 4px', borderRadius: 4 }}>
-                                {line || ' '}
-                              </div>
-                            )
-                          })}
-                        </pre>
+                      <div style={{ borderTop: `1px solid ${theme.chat.assistantBubbleBorder}` }}>
+                        <DiffView
+                          diff={change.diff}
+                          path={change.path}
+                          fontSize={codePanelFontSize}
+                        />
                       </div>
                     )}
                   </div>
@@ -6295,7 +6342,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
 
     </div>
   )
-}
+})
 
 function formatToolInput(input: string): string {
   try {
@@ -6548,36 +6595,21 @@ function ToolInputView({ toolName, input, codePanelFontSize }: {
   }
 
   if (toolName === 'TodoWrite' && parsed) {
-    const todos = Array.isArray((parsed as Record<string, unknown>).todos)
+    const todosRaw = Array.isArray((parsed as Record<string, unknown>).todos)
       ? (parsed as Record<string, unknown>).todos as unknown[]
       : []
+    const normalized: TileTodoItem[] = []
+    for (const t of todosRaw) {
+      const content = getStr(t, 'content') ?? ''
+      if (!content) continue
+      const status = (getStr(t, 'status') ?? 'pending') as TileTodoItem['status']
+      const activeForm = getStr(t, 'activeForm') ?? undefined
+      normalized.push({ content, status, activeForm })
+    }
     return (
       <>
         {noticeBanner}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {todos.map((todo, i) => {
-            const content = getStr(todo, 'content') ?? ''
-            const status = getStr(todo, 'status') ?? 'pending'
-            const color = status === 'completed'
-              ? theme.status.success
-              : status === 'in_progress'
-                ? theme.status.warning
-                : theme.chat.muted
-            return (
-              <div key={i} style={{
-                display: 'flex', gap: 8, alignItems: 'flex-start',
-                fontSize: codePanelFontSize, fontFamily: fonts.sans, color: theme.chat.text,
-              }}>
-                <span style={{ color, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
-                  {status === 'completed' ? '✓' : status === 'in_progress' ? '▸' : '○'}
-                </span>
-                <span style={{ textDecoration: status === 'completed' ? 'line-through' : undefined, opacity: status === 'completed' ? 0.65 : 1 }}>
-                  {content}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+        <PlanCard todos={normalized} variant="inline" />
       </>
     )
   }
