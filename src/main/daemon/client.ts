@@ -188,6 +188,32 @@ export const daemonClient = {
   }> {
     return daemonRequest(`/memory/load?workspaceId=${encodeURIComponent(workspaceId)}&executionTarget=${encodeURIComponent(executionTarget)}`)
   },
+  expandFileReferences(payload: {
+    message: string
+    workspaceId?: string | null
+    workspaceDir?: string | null
+    executionTarget?: 'local' | 'cloud'
+  }): Promise<{
+    changed: boolean
+    message: string
+    references: Array<{
+      source: string
+      displayPath: string
+      byteCount: number
+      truncated: boolean
+    }>
+    summaryText?: string
+    inputText?: string
+  }> {
+    return daemonRequest('/file-references/expand', {
+      body: {
+        message: payload.message,
+        workspaceId: String(payload.workspaceId ?? '').trim() || null,
+        workspaceDir: String(payload.workspaceDir ?? '').trim() || null,
+        executionTarget: payload.executionTarget === 'cloud' ? 'cloud' : 'local',
+      },
+    })
+  },
   listExternalSessions(workspacePath: string | null, force = false): Promise<AggregatedSessionEntry[]> {
     const normalizedPath = String(workspacePath ?? '').trim()
     const query = new URLSearchParams()

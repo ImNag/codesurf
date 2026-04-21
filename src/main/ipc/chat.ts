@@ -81,6 +81,7 @@ interface ChatRequest {
   provider: string
   model: string
   messages: ChatMessage[]
+  expandedMessages?: ChatMessage[]
   mode?: string
   thinking?: string
   workspaceDir?: string
@@ -136,6 +137,68 @@ function cloneChatMessages(messages: ChatMessage[]): ChatMessage[] {
     role: message.role,
     content: String(message.content ?? ''),
   }))
+}
+
+function getPreparedMessages(req: ChatRequest): ChatMessage[] {
+  return Array.isArray(req.expandedMessages) && req.expandedMessages.length > 0
+    ? req.expandedMessages
+    : req.messages
+}
+
+function mayContainFileReferences(text: string): boolean {
+  return text.includes('@') || text.includes('Attached file paths:')
+}
+
+async function expandLatestUserFileReferences(req: ChatRequest): Promise<{
+  request: ChatRequest
+  expansion: Awaited<ReturnType<typeof daemonClient.expandFileReferences>> | null
+}> {
+  if (!req.workspaceId && !req.workspaceDir) {
+    return { request: req, expansion: null }
+  }
+
+  const preparedMessages = getPreparedMessages(req)
+  let lastUserIndex = -1
+  for (let index = preparedMessages.length - 1; index >= 0; index -= 1) {
+    if (preparedMessages[index]?.role === 'user') {
+      lastUserIndex = index
+      break
+    }
+  }
+
+  if (lastUserIndex < 0) {
+    return { request: req, expansion: null }
+  }
+
+  const lastUserMessage = preparedMessages[lastUserIndex]
+  if (!mayContainFileReferences(String(lastUserMessage?.content ?? ''))) {
+    return { request: req, expansion: null }
+  }
+
+  const expansion = await daemonClient.expandFileReferences({
+    message: lastUserMessage.content,
+    workspaceId: req.workspaceId ?? null,
+    workspaceDir: req.workspaceDir ?? null,
+    executionTarget: req.executionTarget === 'cloud' ? 'cloud' : 'local',
+  })
+
+  if (!expansion.changed) {
+    return { request: req, expansion: null }
+  }
+
+  const expandedMessages = cloneChatMessages(preparedMessages)
+  expandedMessages[lastUserIndex] = {
+    ...expandedMessages[lastUserIndex],
+    content: expansion.message,
+  }
+
+  return {
+    request: {
+      ...req,
+      expandedMessages,
+    },
+    expansion,
+  }
 }
 
 function buildRuntimeSessionEntryId(req: ChatRequest): string {
@@ -640,6 +703,21 @@ function emitMemoryContextLoaded(cardId: string, context: Awaited<ReturnType<typ
   sendStream(cardId, { type: 'tool_summary', toolId, toolName: 'Workspace Instructions', text: summary })
 }
 
+function emitFileReferenceExpansion(
+  cardId: string,
+  expansion: Awaited<ReturnType<typeof daemonClient.expandFileReferences>> | null | undefined,
+): void {
+  const summary = String(expansion?.summaryText ?? '').trim()
+  if (!summary) return
+  const toolId = `codesurf-file-refs-${Date.now()}`
+  sendStream(cardId, { type: 'tool_start', toolId, toolName: 'Workspace File References' })
+  const input = String(expansion?.inputText ?? '').trim()
+  if (input) {
+    sendStream(cardId, { type: 'tool_input', toolId, text: input })
+  }
+  sendStream(cardId, { type: 'tool_summary', toolId, toolName: 'Workspace File References', text: summary })
+}
+
 async function loadRuntimeMemoryContext(req: ChatRequest): Promise<Awaited<ReturnType<typeof daemonClient.loadMemoryContext>> | null> {
   if (!req.workspaceId) return null
   return await daemonClient.loadMemoryContext(
@@ -810,6 +888,7 @@ async function sendChatToDaemon(req: ChatRequest, host: ExecutionHostRecord): Pr
     body: {
       request: {
         ...req,
+        messages: getPreparedMessages(req),
         projectContext,
       },
     },
@@ -900,7 +979,7 @@ function chatLocalProxy(req: ChatRequest): void {
       model: req.model,
       stream: true,
       max_tokens: 4096,
-      messages: req.messages.map(message => ({
+      messages: getPreparedMessages(req).map(message => ({
         role: message.role,
         content: message.content,
       })),
@@ -1212,7 +1291,7 @@ async function fetchOpenCodeModels(): Promise<Array<{ id: string; label: string;
 // --- Claude via Agent SDK --------------------------------------------------------
 
 function chatClaude(req: ChatRequest): void {
-  const lastUserMsg = [...req.messages].reverse().find(m => m.role === 'user')
+  const lastUserMsg = [...getPreparedMessages(req)].reverse().find(m => m.role === 'user')
   if (!lastUserMsg) {
     sendStream(req.cardId, { type: 'error', error: 'No user message' })
     return
@@ -1998,7 +2077,7 @@ async function summarizeCodexFileChanges(
 }
 
 function chatCodex(req: ChatRequest): void {
-  const lastUserMsg = [...req.messages].reverse().find(m => m.role === 'user')
+  const lastUserMsg = [...getPreparedMessages(req)].reverse().find(m => m.role === 'user')
   if (!lastUserMsg) {
     sendStream(req.cardId, { type: 'error', error: 'No user message' })
     return
@@ -2238,7 +2317,7 @@ async function getOrCreateOpencodeClient(): Promise<{ client: any; url: string }
 }
 
 function chatOpencode(req: ChatRequest): void {
-  const lastUserMsg = [...req.messages].reverse().find(m => m.role === 'user')
+  const lastUserMsg = [...getPreparedMessages(req)].reverse().find(m => m.role === 'user')
   if (!lastUserMsg) {
     sendStream(req.cardId, { type: 'error', error: 'No user message' })
     return
@@ -2649,7 +2728,7 @@ function extractOpenClawTextPayload(payload: any): string {
 }
 
 function chatOpenclaw(req: ChatRequest): void {
-  const lastUserMsg = [...req.messages].reverse().find(m => m.role === 'user')
+  const lastUserMsg = [...getPreparedMessages(req)].reverse().find(m => m.role === 'user')
   if (!lastUserMsg) {
     sendStream(req.cardId, { type: 'error', error: 'No user message' })
     return
@@ -2782,7 +2861,7 @@ function resolveHermesBinary(): string | null {
 }
 
 function chatHermes(req: ChatRequest): void {
-  const lastUserMsg = [...req.messages].reverse().find(m => m.role === 'user')
+  const lastUserMsg = [...getPreparedMessages(req)].reverse().find(m => m.role === 'user')
   if (!lastUserMsg) {
     sendStream(req.cardId, { type: 'error', error: 'No user message' })
     return
@@ -2953,6 +3032,23 @@ export function registerChatIPC(): void {
       ? { ...effectiveRequest, memoryPrompt }
       : effectiveRequest
 
+    let requestWithFileReferences: ChatRequest = requestWithMemory
+    let fileReferenceExpansion: Awaited<ReturnType<typeof daemonClient.expandFileReferences>> | null = null
+    try {
+      const expanded = await expandLatestUserFileReferences(requestWithMemory)
+      requestWithFileReferences = expanded.request
+      fileReferenceExpansion = expanded.expansion
+    } catch (error) {
+      sendStream(req.cardId, {
+        type: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      })
+      sendStream(req.cardId, { type: 'done' })
+      return { ok: false }
+    }
+
+    emitFileReferenceExpansion(req.cardId, fileReferenceExpansion)
+
     if (daemonHost) {
       log('chat execution route', {
         cardId: req.cardId,
@@ -2965,7 +3061,7 @@ export function registerChatIPC(): void {
         hostId: daemonHost.id,
         hostType: daemonHost.type,
       })
-      return await sendChatToDaemon(requestWithMemory, daemonHost)
+      return await sendChatToDaemon(requestWithFileReferences, daemonHost)
     }
 
     emitMemoryContextLoaded(req.cardId, memoryContext)
@@ -2989,18 +3085,18 @@ export function registerChatIPC(): void {
       backend: 'runtime',
     })
 
-    switch (requestWithMemory.provider) {
-      case 'claude': chatClaude(requestWithMemory); break
-      case 'codex': chatCodex(requestWithMemory); break
-      case 'opencode': chatOpencode(requestWithMemory); break
-      case 'openclaw': chatOpenclaw(requestWithMemory); break
-      case 'hermes': chatHermes(requestWithMemory); break
+    switch (requestWithFileReferences.provider) {
+      case 'claude': chatClaude(requestWithFileReferences); break
+      case 'codex': chatCodex(requestWithFileReferences); break
+      case 'opencode': chatOpencode(requestWithFileReferences); break
+      case 'openclaw': chatOpenclaw(requestWithFileReferences); break
+      case 'hermes': chatHermes(requestWithFileReferences); break
       default:
-        if (requestWithMemory.providerTransport?.type === 'local-proxy') {
-          chatLocalProxy(requestWithMemory)
+        if (requestWithFileReferences.providerTransport?.type === 'local-proxy') {
+          chatLocalProxy(requestWithFileReferences)
         } else {
-          sendStream(requestWithMemory.cardId, { type: 'error', error: `Unsupported provider: ${requestWithMemory.provider}` })
-          sendStream(requestWithMemory.cardId, { type: 'done' })
+          sendStream(requestWithFileReferences.cardId, { type: 'error', error: `Unsupported provider: ${requestWithFileReferences.provider}` })
+          sendStream(requestWithFileReferences.cardId, { type: 'done' })
         }
     }
 
