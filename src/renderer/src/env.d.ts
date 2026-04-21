@@ -126,6 +126,8 @@ interface ElectronAPI {
     getSessionState(workspaceId: string, sessionEntryId: string): Promise<any>
     deleteSession(workspaceId: string, sessionEntryId: string): Promise<{ ok: boolean; error?: string }>
     renameSession(workspaceId: string, sessionEntryId: string, title: string): Promise<{ ok: boolean; error?: string; title?: string }>
+    listCheckpoints(workspaceId: string, sessionEntryId: string): Promise<Array<{ id: string; sessionEntryId: string; createdAt: string; restoredAt?: string | null; label: string; reason?: string | null; fileCount: number; files: string[] }>>
+    restoreCheckpoint(workspaceId: string, checkpointId: string, sessionEntryId?: string): Promise<{ ok: boolean; checkpoint?: { id: string }; filesRestored?: number; filesDeleted?: number; error?: string }>
   }
   kanban?: {
     load(workspaceId: string, tileId: string): Promise<{ columns: Array<{ id: string; title: string }>; cards: import('./components/KanbanCard').KanbanCardData[] } | null>

@@ -406,6 +406,22 @@ export function registerCanvasIPC(): void {
     return result
   })
 
+  ipcMain.handle('canvas:listCheckpoints', async (_, workspaceId: string, sessionEntryId: string) => {
+    assertSafeWorkspaceArtifactId(workspaceId)
+    if (!sessionEntryId.startsWith('codesurf-runtime:')) return []
+    return await daemonClient.listCheckpoints(workspaceId, sessionEntryId).catch(() => [])
+  })
+
+  ipcMain.handle('canvas:restoreCheckpoint', async (_, workspaceId: string, checkpointId: string, sessionEntryId?: string) => {
+    assertSafeWorkspaceArtifactId(workspaceId)
+    const result = await daemonClient.restoreCheckpoint(workspaceId, checkpointId, sessionEntryId ?? null).catch(error => ({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+    if (result.ok) broadcastSessionsChangedNow(workspaceId)
+    return result
+  })
+
   ipcMain.handle('canvas:deleteTileArtifacts', async (_, workspaceId: string, tileId: string) => {
     const storageIds = await ensureWorkspaceStorageMigrated(workspaceId)
     await Promise.all(storageIds.flatMap(storageId => [

@@ -122,6 +122,8 @@ contextBridge.exposeInMainWorld('electron', {
     getSessionState: (workspaceId: string, sessionEntryId: string) => ipcRenderer.invoke('canvas:getSessionState', workspaceId, sessionEntryId),
     deleteSession: (workspaceId: string, sessionEntryId: string) => ipcRenderer.invoke('canvas:deleteSession', workspaceId, sessionEntryId),
     renameSession: (workspaceId: string, sessionEntryId: string, title: string) => ipcRenderer.invoke('canvas:renameSession', workspaceId, sessionEntryId, title),
+    listCheckpoints: (workspaceId: string, sessionEntryId: string) => ipcRenderer.invoke('canvas:listCheckpoints', workspaceId, sessionEntryId),
+    restoreCheckpoint: (workspaceId: string, checkpointId: string, sessionEntryId?: string) => ipcRenderer.invoke('canvas:restoreCheckpoint', workspaceId, checkpointId, sessionEntryId),
     queuedMessages: {
       append: (event: unknown) => ipcRenderer.invoke('canvas:queuedMessages:append', event),
       listActive: () => ipcRenderer.invoke('canvas:queuedMessages:listActive'),

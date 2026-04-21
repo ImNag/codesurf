@@ -167,6 +167,20 @@ function extractAnthropicCheckpointPaths(toolName: string, input: Record<string,
   return []
 }
 
+function emitCheckpointSaved(
+  req: ChatRequest,
+  toolName: string,
+  filePaths: string[],
+  checkpointId: string,
+): void {
+  const displayPaths = filePaths.slice(0, 2).map(filePath => getDisplayPath(filePath, req.workspaceDir))
+  const suffix = filePaths.length > 2 ? ` +${filePaths.length - 2} more` : ''
+  const summary = `Saved checkpoint before ${toolName}${displayPaths.length > 0 ? ` for ${displayPaths.join(', ')}${suffix}` : ''}`
+  const toolId = `codesurf-checkpoint-${checkpointId}`
+  sendStream(req.cardId, { type: 'tool_start', toolId, toolName: 'Checkpoint saved' })
+  sendStream(req.cardId, { type: 'tool_summary', toolId, toolName: 'Checkpoint saved', text: summary })
+}
+
 async function createRuntimeCheckpoint(
   req: ChatRequest,
   toolName: string,
@@ -192,6 +206,9 @@ async function createRuntimeCheckpoint(
     })
     if (!response.ok) {
       return { ok: false, error: response.error ?? `Failed to create checkpoint for ${toolName}` }
+    }
+    if (response.checkpoint?.id) {
+      emitCheckpointSaved(req, toolName, filePaths, response.checkpoint.id)
     }
     return { ok: true, checkpointId: response.checkpoint?.id }
   } catch (error) {
@@ -596,14 +613,31 @@ function buildCodexPrompt(
   return preamble ? `${preamble}\n\n## User Request\n${userText}` : userText
 }
 
-async function loadRuntimeMemoryPrompt(req: ChatRequest): Promise<string | undefined> {
-  if (!req.workspaceId) return undefined
-  const context = await daemonClient.loadMemoryContext(
+function summarizeMemoryContext(context: Awaited<ReturnType<typeof daemonClient.loadMemoryContext>> | null | undefined): string | undefined {
+  if (!context) return undefined
+  const sections = Array.isArray(context.sections)
+    ? context.sections.filter(section => context.includedBuckets.includes(section.bucket))
+    : []
+  if (sections.length === 0) return undefined
+  const paths = sections.slice(0, 3).map(section => section.displayPath)
+  const suffix = sections.length > 3 ? ` +${sections.length - 3} more` : ''
+  return `Loaded ${sections.length} instruction section${sections.length === 1 ? '' : 's'} (${context.includedBuckets.join(', ')}): ${paths.join(', ')}${suffix}`
+}
+
+function emitMemoryContextLoaded(cardId: string, context: Awaited<ReturnType<typeof daemonClient.loadMemoryContext>> | null | undefined): void {
+  const summary = summarizeMemoryContext(context)
+  if (!summary) return
+  const toolId = `codesurf-memory-${Date.now()}`
+  sendStream(cardId, { type: 'tool_start', toolId, toolName: 'Workspace Instructions' })
+  sendStream(cardId, { type: 'tool_summary', toolId, toolName: 'Workspace Instructions', text: summary })
+}
+
+async function loadRuntimeMemoryContext(req: ChatRequest): Promise<Awaited<ReturnType<typeof daemonClient.loadMemoryContext>> | null> {
+  if (!req.workspaceId) return null
+  return await daemonClient.loadMemoryContext(
     req.workspaceId,
     req.executionTarget === 'cloud' ? 'cloud' : 'local',
   )
-  const prompt = String(context?.prompt ?? '').trim()
-  return prompt || undefined
 }
 
 async function selectChatExecutionHost(req: ChatRequest): Promise<ExecutionHostRecord | null> {
@@ -2895,8 +2929,10 @@ export function registerChatIPC(): void {
     }
 
     let memoryPrompt: string | undefined
+    let memoryContext: Awaited<ReturnType<typeof daemonClient.loadMemoryContext>> | null = null
     try {
-      memoryPrompt = await loadRuntimeMemoryPrompt(effectiveRequest)
+      memoryContext = await loadRuntimeMemoryContext(effectiveRequest)
+      memoryPrompt = String(memoryContext?.prompt ?? '').trim() || undefined
     } catch (error) {
       sendStream(req.cardId, {
         type: 'error',
@@ -2923,6 +2959,8 @@ export function registerChatIPC(): void {
       })
       return await sendChatToDaemon(requestWithMemory, daemonHost)
     }
+
+    emitMemoryContextLoaded(req.cardId, memoryContext)
 
     if (requestedRunMode === 'background') {
       sendStream(req.cardId, {

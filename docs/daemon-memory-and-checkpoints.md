@@ -17,6 +17,7 @@ These systems are designed so local runtime chat, local daemon chat, and remote 
 
 - `c95b4ce` — daemon checkpoints / rewind primitives
 - `29621a0` — daemon memory loader
+- `0946c08` — architecture docs for memory/checkpoints and UI manifestation
 
 ## High-level split
 
@@ -259,12 +260,20 @@ That is the next checkpoint follow-up, not a new architecture direction.
 
 Do not introduce new dedicated memory/checkpoint React surface areas.
 
-These systems should manifest through existing chat UI primitives:
+These systems manifest through existing UI primitives:
 
 - existing tool/status chips in `ChatTile`
 - existing `ToolBlockView` / grouped tool chips
 - existing file-change rendering
 - existing workspace/customisation file editing flows
+- existing session row tooltip/context-menu affordances in `Sidebar`
+
+Implemented now:
+
+- memory loading emits a normal `Workspace Instructions` tool chip at the start of local and daemon-backed chat turns
+- checkpoint creation emits a normal `Checkpoint saved` tool chip before risky local runtime edits
+- runtime session rows expose checkpoint count through their existing tooltip text
+- runtime session context menus expose `Restore Latest Checkpoint`
 
 See `docs/chat-ui-manifest.md` for the renderer-specific mapping.
 

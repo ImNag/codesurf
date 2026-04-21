@@ -260,4 +260,10 @@ test('daemon checkpoints create, list, and restore runtime session snapshots', a
   assert.equal(response.payload.checkpoints.count, 1)
   assert.equal(response.payload.checkpoints.latestCheckpointId, checkpointId)
   assert.equal(response.payload.checkpoints.lastRestoredCheckpointId, checkpointId)
+
+  response = await daemon.request(`/session/local/list?workspaceId=${encodeURIComponent(workspaceId)}`)
+  assert.equal(response.status, 200)
+  const restoredRuntimeEntry = response.payload.find(entry => entry.id === 'codesurf-runtime:chat-123')
+  assert.ok(restoredRuntimeEntry)
+  assert.equal(restoredRuntimeEntry.checkpointCount, 1)
 })

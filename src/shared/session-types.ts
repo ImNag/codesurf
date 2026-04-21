@@ -17,6 +17,7 @@ export interface AggregatedSessionEntry {
   projectPath?: string | null
   sourceLabel: string
   sourceDetail?: string
+  checkpointCount?: number
   canOpenInChat?: boolean
   canOpenInApp?: boolean
   resumeBin?: string

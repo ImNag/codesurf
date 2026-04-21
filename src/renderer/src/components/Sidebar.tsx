@@ -311,6 +311,33 @@ export function Sidebar({
     if (session.canOpenInApp) {
       items.push({ label: `Open in ${session.sourceLabel}`, action: () => onOpenSessionInApp(session) })
     }
+    if (session.id.startsWith('codesurf-runtime:') && (session.checkpointCount ?? 0) > 0) {
+      items.push({
+        label: session.checkpointCount === 1 ? 'Restore Latest Checkpoint' : `Restore Latest Checkpoint (${session.checkpointCount})`,
+        action: () => {
+          const confirmed = window.confirm(`Restore the latest checkpoint for "${session.title}"?`)
+          if (!confirmed) return
+          void window.electron.canvas.listCheckpoints(session.workspaceId, session.id)
+            .then(checkpoints => {
+              const latest = checkpoints[0]
+              if (!latest) return null
+              return window.electron.canvas.restoreCheckpoint(session.workspaceId, latest.id, session.id)
+            })
+            .then(async result => {
+              if (!result?.ok) {
+                if (result?.error) window.alert(result.error)
+                return
+              }
+              const workspaceEntry = workspaceById.get(session.workspaceId)
+              if (workspaceEntry) await loadWorkspaceSessions(workspaceEntry, true)
+              if (session.canOpenInChat !== false) await onOpenSessionInChat(session)
+            })
+            .catch(error => {
+              window.alert(error instanceof Error ? error.message : String(error))
+            })
+        },
+      })
+    }
     if (session.filePath) {
       items.push({ label: 'Open Raw File', action: () => onOpenFile(session.filePath!) })
     }
@@ -936,7 +963,7 @@ const visibleSessions = useMemo(() => {
                       icon={SESSION_SOURCE_ICONS[session.source]}
                       indent={Math.max(1, session.displayIndent + 1)}
                       extraWidth={24}
-                      title={`${session.title}\n${session.sourceLabel}${session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}`}
+                      title={`${session.title}\n${session.sourceLabel}${session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}${(session.checkpointCount ?? 0) > 0 ? ` · ${session.checkpointCount} checkpoint${session.checkpointCount === 1 ? '' : 's'}` : ''}`}
                       emphasize={
                         activeChatTileId
                           ? session.tileId === activeChatTileId

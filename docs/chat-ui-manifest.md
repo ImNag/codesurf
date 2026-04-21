@@ -73,21 +73,21 @@ What is already true today:
 
 - AGENTS memory is now loaded daemon-side
 - the resulting prompt is injected into local runtime and daemon chat paths
-- there is no dedicated visible memory badge or panel yet
+- the start of a chat turn now emits a normal existing chat tool chip labeled `Workspace Instructions`
 - AGENTS files themselves are discoverable/editable via `CustomisationTile`
 
 ### Correct UI manifestation
 
 Use the existing chat tool/status chip model.
 
-Recommended manifestation:
+Implemented manifestation:
 
-- emit a normal tool/status event into the chat stream when workspace instructions are loaded
-- render it through existing `ToolBlockView`
-- summary text should include:
+- memory loading now appears as a normal tool/status chip in `ChatTile`
+- it renders through existing `ToolBlockView`
+- its summary text reports:
+  - how many sections were loaded
   - which buckets were included
-  - which files/sections contributed
-  - whether execution is local or cloud-safe filtered
+  - a short list of contributing files
 
 That gives the user an inspectable "what context was loaded" trace without creating any new component family.
 
@@ -106,33 +106,30 @@ Do not create:
 What is already true today:
 
 - checkpoints are daemon-owned
-- local runtime Claude/Codex create checkpoints before risky file edits
+- local runtime Claude/Codex create checkpoints before risky edits
 - checkpoint records can be listed/restored through daemon APIs
 - runtime session state now carries checkpoint metadata
-- there is no dedicated rewind button in the renderer yet
+- checkpoint saves now appear as normal existing chat tool chips
+- session rows expose checkpoint count in their existing tooltip text
+- runtime session context menus can restore the latest checkpoint without adding a new component family
 
 ### Correct UI manifestation
 
 Again, use the existing chat tool/status chips and existing session/file-change surfaces.
 
-Recommended manifestation:
+Implemented manifestation:
 
-- checkpoint save should appear as a normal operational chip in the message stream
-- checkpoint restore should appear as a normal operational chip in the message stream
+- checkpoint save appears as a normal operational chip in the message stream
 - file changes after checkpointed edits continue using existing file-change chips/diff expanders
-- session/history surfaces can later reuse existing list-row patterns to show checkpoint count or latest checkpoint timestamp
+- session/history rows reuse their existing tooltip and context-menu surfaces for checkpoint count and latest-restore action
 
 ### Rewind / restore affordance
 
-When rewind is surfaced, do not create a standalone checkpoint UI framework.
+Rewind is surfaced through an existing UI surface:
 
-Use one of these existing surfaces:
+- runtime session context menu entry: `Restore Latest Checkpoint`
 
-- action button on an existing chat tool block
-- action in the existing message action row / history row
-- action in the existing session/history list item
-
-The actual restore work remains daemon-side. The renderer only needs to invoke the restore API and then refresh state.
+The actual restore work remains daemon-side. The renderer only invokes the restore API, refreshes session state, and reopens the restored session in chat using existing flows.
 
 ## Concrete renderer mapping
 

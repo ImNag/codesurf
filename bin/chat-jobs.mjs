@@ -396,6 +396,21 @@ function joinPromptSections(...sections) {
   return normalized.length > 0 ? normalized.join('\n\n') : undefined
 }
 
+function summarizeMemoryContext(memoryContext, instructionPrompt) {
+  if (String(instructionPrompt ?? '').trim()) {
+    if (Array.isArray(memoryContext?.sections) && Array.isArray(memoryContext?.includedBuckets)) {
+      const visibleSections = memoryContext.sections.filter(section => memoryContext.includedBuckets.includes(section.bucket))
+      if (visibleSections.length > 0) {
+        const paths = visibleSections.slice(0, 3).map(section => section.displayPath)
+        const suffix = visibleSections.length > 3 ? ` +${visibleSections.length - 3} more` : ''
+        return `Loaded ${visibleSections.length} instruction section${visibleSections.length === 1 ? '' : 's'} (${memoryContext.includedBuckets.join(', ')}): ${paths.join(', ')}${suffix}`
+      }
+    }
+    return 'Loaded workspace instructions for this run.'
+  }
+  return undefined
+}
+
 function buildClaudeAgentPrompt(peers, asyncExecution, instructionPrompt) {
   const peerPrompt = buildClaudeSystemPrompt(peers)
   const asyncPrompt = buildAsyncExecutionPrompt(asyncExecution)
@@ -816,6 +831,20 @@ export function createChatJobManager({ homeDir }) {
         executionTarget: request.executionTarget ?? 'local',
       })
       const instructionPrompt = String(request.memoryPrompt ?? '').trim() || buildMemoryPrompt(memoryContext)
+      const memorySummary = summarizeMemoryContext(memoryContext, instructionPrompt)
+      if (memorySummary) {
+        await appendEvent(job.id, {
+          type: 'tool_start',
+          toolId: 'codesurf-memory-context',
+          toolName: 'Workspace Instructions',
+        })
+        await appendEvent(job.id, {
+          type: 'tool_summary',
+          toolId: 'codesurf-memory-context',
+          toolName: 'Workspace Instructions',
+          text: memorySummary,
+        })
+      }
 
       if (request.provider === 'claude') {
         await runClaudeJob(job, request, workspaceDir, instructionPrompt)
