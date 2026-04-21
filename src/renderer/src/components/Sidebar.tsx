@@ -1049,6 +1049,73 @@ const visibleSessions = useMemo(() => {
                       }}
                       extra={
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          {(session.checkpointCount ?? 0) > 0 && (
+                            <>
+                              <div
+                                title={`${session.checkpointCount} checkpoint${session.checkpointCount === 1 ? '' : 's'} available`}
+                                style={{
+                                  minWidth: 18,
+                                  height: 18,
+                                  padding: '0 6px',
+                                  borderRadius: 999,
+                                  border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+                                  background: theme.chat.assistantBubble,
+                                  color: theme.text.secondary,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  lineHeight: 1,
+                                  boxSizing: 'border-box',
+                                }}
+                              >
+                                {session.checkpointCount}
+                              </div>
+                              <button
+                                title="Restore latest checkpoint"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  const confirmed = window.confirm(`Restore the latest checkpoint for "${session.title}"?`)
+                                  if (!confirmed) return
+                                  void window.electron.canvas.listCheckpoints(session.workspaceId, session.id)
+                                    .then(checkpoints => {
+                                      const latest = checkpoints[0]
+                                      if (!latest) return null
+                                      return window.electron.canvas.restoreCheckpoint(session.workspaceId, latest.id, session.id)
+                                    })
+                                    .then(async result => {
+                                      if (!result?.ok) {
+                                        if (result?.error) window.alert(result.error)
+                                        return
+                                      }
+                                      const workspaceEntry = workspaceById.get(session.workspaceId)
+                                      if (workspaceEntry) await loadWorkspaceSessions(workspaceEntry, true)
+                                      if (session.canOpenInChat !== false) await onOpenSessionInChat(session)
+                                    })
+                                    .catch(error => {
+                                      window.alert(error instanceof Error ? error.message : String(error))
+                                    })
+                                }}
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  borderRadius: 4,
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: theme.text.disabled,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
+                                  <path d="M3.1 4.1V1.9m0 0h2.3m-2.3 0 2 2m1.9-1.1a4.8 4.8 0 1 1-2.7 8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
                           <button
                             title={pendingDeleteSessionId === session.id ? 'Click again to confirm delete' : 'Delete session'}
                             onClick={e => {
