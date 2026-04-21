@@ -1,11 +1,11 @@
-import { promises as fs } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { constants as fsConstants, promises as fs } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
 
 export async function loadInstructionContext({ homeDir, workspaceDir, executionTarget = 'local' } = {}) {
   const sections = []
 
   for (const candidate of instructionCandidates({ homeDir, workspaceDir, executionTarget })) {
-    const content = await readInstructionFile(candidate.path)
+    const content = await readInstructionFile(candidate)
     if (!content) continue
     sections.push({
       scope: candidate.scope,
@@ -50,6 +50,7 @@ function instructionCandidates({ homeDir, workspaceDir, executionTarget }) {
       scope: 'user',
       displayPath: '~/.codesurf/AGENTS.md',
       path: join(normalizedHome, '.codesurf', 'AGENTS.md'),
+      disallowSymlink: false,
     })
   }
 
@@ -58,11 +59,15 @@ function instructionCandidates({ homeDir, workspaceDir, executionTarget }) {
       scope: 'workspace',
       displayPath: 'AGENTS.md',
       path: join(normalizedWorkspace, 'AGENTS.md'),
+      rootPath: normalizedWorkspace,
+      disallowSymlink: true,
     })
     candidates.push({
       scope: 'workspace-local',
       displayPath: '.codesurf/AGENTS.md',
       path: join(normalizedWorkspace, '.codesurf', 'AGENTS.md'),
+      rootPath: normalizedWorkspace,
+      disallowSymlink: true,
     })
   }
 
@@ -86,13 +91,54 @@ function normalizeDir(value) {
   return text ? resolve(text) : null
 }
 
-async function readInstructionFile(filePath) {
+async function readInstructionFile(candidate) {
+  let handle = null
+
   try {
-    const raw = await fs.readFile(filePath, 'utf8')
+    const resolvedRootPath = candidate.rootPath
+      ? await fs.realpath(candidate.rootPath)
+      : null
+    const openFlags = candidate.disallowSymlink && Number.isInteger(fsConstants.O_NOFOLLOW)
+      ? (fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW)
+      : 'r'
+
+    handle = await fs.open(candidate.path, openFlags)
+
+    if (resolvedRootPath) {
+      const openedStat = await handle.stat()
+      const resolvedCandidatePath = await fs.realpath(candidate.path)
+      if (!isWithinRoot(resolvedCandidatePath, resolvedRootPath)) {
+        throw new Error(`Instruction file ${candidate.displayPath} resolves outside the workspace root`)
+      }
+      const currentStat = await fs.stat(resolvedCandidatePath)
+      if (openedStat.dev !== currentStat.dev || openedStat.ino !== currentStat.ino) {
+        throw new Error(`Instruction file ${candidate.displayPath} changed during validation`)
+      }
+    }
+
+    const raw = await handle.readFile({ encoding: 'utf8' })
     return normalizeInstructionContent(raw)
-  } catch {
-    return null
+  } catch (error) {
+    if (error?.code === 'ENOENT' && handle == null) {
+      return null
+    }
+    if (candidate.disallowSymlink && error?.code === 'ELOOP') {
+      throw new Error(`Instruction file ${candidate.displayPath} must not be a symlink`)
+    }
+    if (error instanceof Error && /(must not be a symlink|outside the workspace root|changed during validation)/i.test(error.message)) {
+      throw error
+    }
+    throw new Error(`Failed to read instruction file ${candidate.displayPath}: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    await handle?.close().catch(() => {})
   }
+}
+
+function isWithinRoot(candidatePath, rootPath) {
+  const normalizedRoot = resolve(rootPath)
+  const normalizedCandidate = resolve(candidatePath)
+  const rootWithSeparator = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(rootWithSeparator)
 }
 
 function normalizeInstructionContent(value) {

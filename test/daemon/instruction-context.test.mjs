@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildInstructionPrompt, loadInstructionContext } from '../../bin/instruction-context.mjs'
@@ -87,4 +87,64 @@ test('instruction prompt is omitted when no non-empty instruction files exist', 
 
   assert.deepEqual(context.sections, [])
   assert.equal(buildInstructionPrompt(context), undefined)
+})
+
+test('workspace instruction files must not follow symlinks outside the workspace root', async t => {
+  const fixture = await makeFixture()
+  t.after(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  const escapedPath = join(fixture.root, 'escaped-secret.txt')
+  await writeFile(escapedPath, 'Do not leak this file', 'utf8')
+  await symlink(escapedPath, join(fixture.workspaceDir, 'AGENTS.md'))
+
+  await assert.rejects(
+    loadInstructionContext({
+      homeDir: fixture.homeDir,
+      workspaceDir: fixture.workspaceDir,
+      executionTarget: 'local',
+    }),
+    /outside the workspace root|symlink/i,
+  )
+})
+
+test('workspace instruction files must not escape through symlinked parent directories', async t => {
+  const fixture = await makeFixture()
+  t.after(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  const escapedDir = join(fixture.root, 'escaped-dir')
+  await mkdir(escapedDir, { recursive: true })
+  await writeFile(join(escapedDir, 'AGENTS.md'), 'Leaked through parent symlink', 'utf8')
+  await rm(join(fixture.workspaceDir, '.codesurf'), { recursive: true, force: true })
+  await symlink(escapedDir, join(fixture.workspaceDir, '.codesurf'))
+
+  await assert.rejects(
+    loadInstructionContext({
+      homeDir: fixture.homeDir,
+      workspaceDir: fixture.workspaceDir,
+      executionTarget: 'local',
+    }),
+    /outside the workspace root|symlink/i,
+  )
+})
+
+test('unexpected instruction file read errors are surfaced instead of silently ignored', async t => {
+  const fixture = await makeFixture()
+  t.after(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  await mkdir(join(fixture.workspaceDir, '.codesurf', 'AGENTS.md'), { recursive: true })
+
+  await assert.rejects(
+    loadInstructionContext({
+      homeDir: fixture.homeDir,
+      workspaceDir: fixture.workspaceDir,
+      executionTarget: 'local',
+    }),
+    /AGENTS\.md|EISDIR/i,
+  )
 })

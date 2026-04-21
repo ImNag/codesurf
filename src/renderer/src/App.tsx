@@ -3832,11 +3832,13 @@ function App(): JSX.Element {
         <div style={{
           width: '100%',
           height: '100%',
-          background: theme.surface.sidebarOverlay,
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
+          background: expandedTileId
+            ? 'transparent'
+            : `color-mix(in srgb, ${theme.surface.app.includes('gradient') ? theme.surface.panelMuted : theme.surface.app} 60%, transparent)`,
+          backdropFilter: 'blur(2px)',
+          WebkitBackdropFilter: 'blur(2px)',
           borderRadius: 12,
-          border: `0.5px solid ${theme.border.default}`,
+          border: 'none',
           paddingTop: 8,
           overflow: 'hidden',
           display: 'flex',
