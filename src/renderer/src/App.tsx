@@ -13,7 +13,7 @@ import { DEFAULT_THEME_ID, getThemeById, resolveEffectiveThemeId, registerCustom
 import type { PanelNode } from './components/PanelLayout'
 import { createLeaf, removeTileFromTree, addTabToLeaf, getAllTileIds, splitLeaf, closeOthersInLeaf, closeToRightInLeaf, findLeafById } from './components/PanelLayout'
 import { basename, getDroppedPaths, toFileUrl, isMediaFile } from './utils/dnd'
-import { CODESURF_OPEN_LINK_EVENT, stripLocalPathLocation, type CodeSurfOpenLinkDetail } from './utils/links'
+import { CODESURF_OPEN_LINK_EVENT, normalizeLocalPathCandidate, type CodeSurfOpenLinkDetail } from './utils/links'
 import { disposeChatTileRuntimeState, getChatTileRuntimeState, setChatTileRuntimeState } from './components/chatTileRuntimeState'
 import { disposeMediaTile } from './components/MediaTile'
 import { MainStatusBar } from './components/MainStatusBar'
@@ -138,20 +138,7 @@ function toBrowserTileUrl(filePath: string): string {
 }
 
 function hrefToLocalPath(href: string): string | null {
-  const trimmed = String(href ?? '').trim()
-  if (!trimmed) return null
-
-  if (trimmed.startsWith('/')) return stripLocalPathLocation(trimmed)
-
-  if (trimmed.startsWith('file://')) {
-    try {
-      return stripLocalPathLocation(decodeURIComponent(new URL(trimmed).pathname))
-    } catch {
-      return null
-    }
-  }
-
-  return null
+  return normalizeLocalPathCandidate(href)
 }
 
 function withAlpha(color: string, alpha: number): string {
@@ -2524,10 +2511,10 @@ function App(): JSX.Element {
       thinking: 'adaptive',
       agentMode: false,
       autoAgentMode: false,
-      preserveSessionSummary: true,
       linkedSessionEntryId: session.id.startsWith('codesurf-runtime:') || session.id.startsWith('codesurf-tile:') || session.id.startsWith('codesurf-job:')
         ? null
         : session.id,
+      preserveSessionSummary: !(session.id.startsWith('codesurf-runtime:') || session.id.startsWith('codesurf-tile:') || session.id.startsWith('codesurf-job:')),
       sessionId: typeof state.sessionId === 'string' || state.sessionId === null ? state.sessionId : session.sessionId,
       jobId: typeof state.jobId === 'string' || state.jobId === null ? state.jobId : null,
       jobSequence: typeof state.jobSequence === 'number' ? state.jobSequence : 0,

@@ -74,6 +74,10 @@ export function getProjectDisplayLabel(project: { name: string; path: string }):
   const pathLabel = basename(normalizedPath)
   const nameLabel = project.name?.trim() || ''
   const looksGenerated = /^ws-\d{6,}$/.test(pathLabel)
+  // A user-renamed project carries a `name` that no longer matches the
+  // folder basename — respect it over the path. Otherwise default to the
+  // folder basename, which reads more naturally than a generated id.
+  if (nameLabel && nameLabel.toLowerCase() !== pathLabel.toLowerCase()) return nameLabel
   if (pathLabel && !looksGenerated) return pathLabel
   return nameLabel || pathLabel || 'Project'
 }
@@ -247,6 +251,22 @@ export const SESSION_SOURCE_ICONS: Record<string, React.JSX.Element> = {
   opencode: <OpenCodeIcon size={14} />,
 }
 
-export function getSessionAgentIcon(session: SessionEntry): React.JSX.Element {
+export function SpinnerIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }): React.JSX.Element {
+  return (
+    <span
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: size, height: size }}
+      aria-label="Thread is active"
+    >
+      <svg width={size} height={size} viewBox="0 0 16 16" style={{ animation: 'cs-sidebar-spin 0.9s linear infinite' }}>
+        <circle cx="8" cy="8" r="6" stroke={color} strokeOpacity={0.25} strokeWidth="1.6" fill="none" />
+        <path d="M14 8a6 6 0 00-6-6" stroke={color} strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      </svg>
+      <style>{`@keyframes cs-sidebar-spin { to { transform: rotate(360deg); } }`}</style>
+    </span>
+  )
+}
+
+export function getSessionAgentIcon(session: SessionEntry, opts?: { streaming?: boolean }): React.JSX.Element {
+  if (opts?.streaming) return <SpinnerIcon size={14} />
   return SESSION_SOURCE_ICONS[getSessionAgentKey(session)] ?? SESSION_SOURCE_ICONS[session.source] ?? <CodeSurfIcon size={14} />
 }

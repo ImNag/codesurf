@@ -1,6 +1,6 @@
 import React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Cpu, Activity } from 'lucide-react'
+import { Cpu, Activity, ArrowUpRight, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useAppFonts } from '../FontContext'
 import { useTheme } from '../ThemeContext'
 import { Tooltip } from './Tooltip'
@@ -90,12 +90,47 @@ function formatRelativeTime(value: string | null): string {
   return `${days}d ago`
 }
 
-function statusTone(theme: ReturnType<typeof useTheme>, status: string): string {
-  if (status === 'running' || status === 'starting' || status === 'queued' || status === 'reconnecting') return theme.status.success
-  if (status === 'completed') return theme.text.secondary
-  if (status === 'cancelled') return theme.status.warning
-  if (status === 'failed' || status === 'lost') return theme.status.danger
-  return theme.text.disabled
+function statusBadgeTheme(theme: ReturnType<typeof useTheme>, status: string): { color: string; background: string; border: string } {
+  if (status === 'running' || status === 'starting' || status === 'queued' || status === 'reconnecting') {
+    return {
+      color: theme.status.success,
+      background: `${theme.status.success}18`,
+      border: `${theme.status.success}33`,
+    }
+  }
+  if (status === 'completed') {
+    return {
+      color: theme.text.secondary,
+      background: theme.surface.panelMuted,
+      border: theme.border.subtle,
+    }
+  }
+  if (status === 'cancelled') {
+    return {
+      color: theme.status.warning,
+      background: `${theme.status.warning}18`,
+      border: `${theme.status.warning}33`,
+    }
+  }
+  if (status === 'failed' || status === 'lost') {
+    return {
+      color: theme.status.danger,
+      background: `${theme.status.danger}18`,
+      border: `${theme.status.danger}33`,
+    }
+  }
+  return {
+    color: theme.text.disabled,
+    background: theme.surface.panelMuted,
+    border: theme.border.subtle,
+  }
+}
+
+function formatTaskError(error: string | null): string | null {
+  if (!error) return null
+  const compact = error.replace(/\s+/g, ' ').trim()
+  if (!compact) return null
+  return compact.length > 140 ? `${compact.slice(0, 137)}...` : compact
 }
 
 function jobGroupKey(job: DaemonSummary['jobs']['recent'][number]): string {
@@ -152,6 +187,7 @@ export function MainStatusBar({ onOpenDaemonTask, health = 'compact' }: MainStat
   const [daemon, setDaemon] = useState<DaemonStatus | null>(null)
   const [daemonSummary, setDaemonSummary] = useState<DaemonSummary | null>(null)
   const [showDaemonSummary, setShowDaemonSummary] = useState(false)
+  const [daemonRestarting, setDaemonRestarting] = useState(false)
   const daemonRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -281,6 +317,18 @@ export function MainStatusBar({ onOpenDaemonTask, health = 'compact' }: MainStat
   const daemonStatusTextColor = daemon?.running && daemonActiveJobCount > 0
     ? theme.text.primary
     : daemonColor
+  const daemonFailedJobCount = daemonSummary?.jobs.failed ?? 0
+  const daemonCompletedJobCount = daemonSummary?.jobs.completed ?? 0
+  const daemonTotalJobCount = daemonSummary?.jobs.total ?? 0
+  const daemonSummaryLine = daemonSummary?.running
+    ? [
+        `${daemonActiveJobCount} active`,
+        daemonBackgroundJobCount > 0 ? `${daemonBackgroundJobCount} bg` : null,
+        daemonFailedJobCount > 0 ? `${daemonFailedJobCount} failed` : null,
+        daemonCompletedJobCount > 0 ? `${daemonCompletedJobCount} done` : null,
+        daemonTotalJobCount > 0 && daemonActiveJobCount === 0 && daemonFailedJobCount === 0 && daemonCompletedJobCount === 0 ? `${daemonTotalJobCount} jobs` : null,
+      ].filter(Boolean).join(' · ')
+    : 'No active daemon connection'
   const daemonTitle = daemon?.running
     ? `CodeSurf daemon ${daemonActiveJobCount > 0 ? 'active' : 'ready'}${daemonBackgroundJobCount > 0 ? ` - ${daemonBackgroundJobCount} background task${daemonBackgroundJobCount === 1 ? '' : 's'}` : ''} - PID ${daemon.info?.pid ?? 'unknown'} - port ${daemon.info?.port ?? 'unknown'}`
     : 'CodeSurf daemon offline'
@@ -379,144 +427,278 @@ export function MainStatusBar({ onOpenDaemonTask, health = 'compact' }: MainStat
                 position: 'absolute',
                 right: 0,
                 bottom: 'calc(100% + 10px)',
-                width: 340,
-                maxWidth: 'min(340px, calc(100vw - 40px))',
+                width: 360,
+                maxWidth: 'min(360px, calc(100vw - 24px))',
                 background: theme.surface.panel,
                 border: `1px solid ${theme.border.default}`,
-                borderRadius: 14,
+                borderRadius: 16,
                 boxShadow: theme.mode === 'light'
                   ? '0 18px 40px rgba(0,0,0,0.12)'
                   : '0 18px 40px rgba(0,0,0,0.45)',
-                padding: '12px 14px',
+                padding: 12,
                 pointerEvents: 'auto',
                 zIndex: 5,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                  <span style={{ fontSize: fonts.secondarySize, fontWeight: 700, color: theme.text.primary }}>
-                    {daemonActiveJobCount > 0 ? 'Active tasks' : 'Daemon summary'}
-                  </span>
-                  <span style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled }}>
-                    {daemonSummary?.running
-                      ? `PID ${daemonSummary.info?.pid ?? '—'} · port ${daemonSummary.info?.port ?? '—'}`
-                      : 'Daemon offline'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.electron.system.daemonSummary().then(setDaemonSummary).catch(() => {})
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: theme.text.muted,
-                    cursor: 'pointer',
-                    fontSize: Math.max(10, fonts.secondarySize - 1),
-                    padding: 0,
-                  }}
-                >
-                  Refresh
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8, marginBottom: 12 }}>
-                {[
-                  { label: 'Active', value: daemonSummary?.jobs.active ?? 0, color: theme.status.success },
-                  { label: 'Bg', value: daemonSummary?.jobs.backgroundActive ?? 0, color: theme.accent.base },
-                  { label: 'Done', value: daemonSummary?.jobs.completed ?? 0, color: theme.text.secondary },
-                  { label: 'Failed', value: daemonSummary?.jobs.failed ?? 0, color: theme.status.danger },
-                  { label: 'Total', value: daemonSummary?.jobs.total ?? 0, color: theme.text.primary },
-                ].map(item => (
-                  <div
-                    key={item.label}
-                    style={{
-                      background: theme.surface.panelMuted,
-                      border: `1px solid ${theme.border.subtle}`,
-                      borderRadius: 10,
-                      padding: '8px 10px',
-                      minWidth: 0,
-                    }}
-                  >
-                    <div style={{ fontSize: Math.max(9, fonts.secondarySize - 2), color: theme.text.disabled, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                      {item.label}
-                    </div>
-                    <div style={{ marginTop: 4, fontSize: fonts.secondarySize, fontWeight: 700, color: item.color }}>
-                      {item.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                  Tasks
-                </div>
-                {summarizedTasks.length ? summarizedTasks.map(job => (
-                  <button
-                    type="button"
-                    key={job.id}
-                    onClick={() => {
-                      onOpenDaemonTask?.(job)
-                      setShowDaemonSummary(false)
-                    }}
-                    style={{
-                      background: theme.surface.panelMuted,
-                      border: `1px solid ${theme.border.subtle}`,
-                      borderRadius: 10,
-                      padding: '8px 10px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 4,
-                      width: '100%',
-                      textAlign: 'left',
-                      cursor: onOpenDaemonTask ? 'pointer' : 'default',
-                      appearance: 'none',
-                      font: 'inherit',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span
                         style={{
-                          fontSize: fonts.secondarySize,
-                          color: theme.text.primary,
-                          fontWeight: 600,
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          fontSize: Math.max(9, fonts.secondarySize - 2),
+                          color: daemonSummary?.running ? theme.status.success : theme.status.danger,
+                          background: daemonSummary?.running ? `${theme.status.success}14` : `${theme.status.danger}12`,
+                          border: `1px solid ${daemonSummary?.running ? `${theme.status.success}26` : `${theme.status.danger}24`}`,
+                          borderRadius: 999,
+                          padding: '2px 7px',
+                          letterSpacing: 0.55,
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
                         }}
-                        title={job.taskLabel ?? job.id}
                       >
-                        {job.taskLabel ?? `${job.provider ?? 'Unknown'} task`}
-                      </span>
-                      <span style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: statusTone(theme, job.status), textTransform: 'capitalize' }}>
-                        {job.status}
+                        {daemonSummary?.running ? 'Live' : 'Offline'}
                       </span>
                     </div>
-                    <div style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled }}>
-                      {[job.provider, job.model].filter(Boolean).join(' · ') || 'Unknown provider'}
-                    </div>
-                    <div style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled }}>
-                      {job.workspaceDir ?? 'No workspace'} · {formatRelativeTime(job.updatedAt ?? job.requestedAt)}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.text.disabled }}>
-                        {job.runCount > 1 ? `${job.runCount} runs` : '1 run'}
-                      </span>
-                      <span style={{ fontSize: Math.max(10, fonts.secondarySize - 1), color: theme.accent.base }}>
-                        Open task
-                      </span>
-                    </div>
-                  </button>
-                )) : (
+                    <span style={{ fontSize: Math.max(9, fonts.secondarySize - 2), color: theme.text.disabled, fontFamily: fonts.mono }}>
+                      {daemonSummary?.running
+                        ? `PID ${daemonSummary.info?.pid ?? '—'} · port ${daemonSummary.info?.port ?? '—'}`
+                        : 'No active daemon connection'}
+                    </span>
+                    <span style={{ fontSize: Math.max(9, fonts.secondarySize - 2), color: theme.text.muted }}>
+                      {daemonSummaryLine}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (daemonRestarting) return
+                        setDaemonRestarting(true)
+                        window.electron.system.restartDaemon()
+                          .then(next => {
+                            setDaemon(next)
+                            return window.electron.system.daemonSummary()
+                          })
+                          .then(setDaemonSummary)
+                          .catch(() => {})
+                          .finally(() => setDaemonRestarting(false))
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 24,
+                        height: 24,
+                        borderRadius: 999,
+                        background: theme.surface.panelElevated,
+                        border: `1px solid ${theme.border.subtle}`,
+                        color: theme.text.muted,
+                        cursor: daemonRestarting ? 'wait' : 'pointer',
+                        flexShrink: 0,
+                        opacity: daemonRestarting ? 0.6 : 1,
+                      }}
+                      title="Restart daemon"
+                    >
+                      <RotateCcw size={11} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.electron.system.daemonSummary().then(setDaemonSummary).catch(() => {})
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 24,
+                        height: 24,
+                        borderRadius: 999,
+                        background: theme.surface.panelElevated,
+                        border: `1px solid ${theme.border.subtle}`,
+                        color: theme.text.muted,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                      title="Refresh daemon summary"
+                    >
+                      <RefreshCw size={11} strokeWidth={2} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: Math.max(9, fonts.secondarySize - 2), color: theme.text.disabled, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                    Recent tasks
+                  </div>
                   <div
                     style={{
+                      fontSize: Math.max(9, fonts.secondarySize - 2),
+                      color: theme.text.muted,
                       background: theme.surface.panelMuted,
                       border: `1px solid ${theme.border.subtle}`,
-                      borderRadius: 10,
-                      padding: '10px 12px',
+                      borderRadius: 999,
+                      padding: '2px 7px',
+                    }}
+                  >
+                    {summarizedTasks.length}
+                  </div>
+                </div>
+                {summarizedTasks.length ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto', paddingRight: 2 }}>
+                    {summarizedTasks.map(job => {
+                      const badge = statusBadgeTheme(theme, job.status)
+                      const errorPreview = formatTaskError(job.error)
+                      return (
+                        <button
+                          type="button"
+                          key={job.id}
+                          onClick={() => {
+                            onOpenDaemonTask?.(job)
+                            setShowDaemonSummary(false)
+                          }}
+                          style={{
+                            position: 'relative',
+                            background: theme.surface.panelElevated,
+                            border: `1px solid ${theme.border.subtle}`,
+                            borderRadius: 12,
+                            padding: '10px 10px 10px 12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 6,
+                            width: '100%',
+                            textAlign: 'left',
+                            cursor: onOpenDaemonTask ? 'pointer' : 'default',
+                            appearance: 'none',
+                            font: 'inherit',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 3,
+                              background: badge.color,
+                            }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
+                                <span
+                                style={{
+                                  fontSize: fonts.secondarySize,
+                                  color: theme.text.primary,
+                                  fontWeight: 650,
+                                  minWidth: 0,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={job.taskLabel ?? job.id}
+                              >
+                                {job.taskLabel ?? `${job.provider ?? 'Unknown'} task`}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    fontSize: Math.max(9, fonts.secondarySize - 2),
+                                    color: badge.color,
+                                    background: badge.background,
+                                    border: `1px solid ${badge.border}`,
+                                    borderRadius: 999,
+                                    padding: '2px 7px',
+                                    textTransform: 'capitalize',
+                                  }}
+                                >
+                                  {job.status}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: Math.max(9, fonts.secondarySize - 2),
+                                    color: theme.text.muted,
+                                    background: theme.surface.panelMuted,
+                                    border: `1px solid ${theme.border.subtle}`,
+                                    borderRadius: 999,
+                                    padding: '2px 7px',
+                                  }}
+                                >
+                                  {[job.provider, job.model].filter(Boolean).join(' · ') || 'Unknown provider'}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: theme.accent.base, flexShrink: 0 }}>
+                              <span style={{ fontSize: Math.max(9, fonts.secondarySize - 2), fontWeight: 600 }}>
+                                Open
+                              </span>
+                              <ArrowUpRight size={13} strokeWidth={2} />
+                              </div>
+                            </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span
+                              style={{
+                                fontSize: Math.max(9, fonts.secondarySize - 2),
+                                color: theme.text.muted,
+                                background: theme.surface.panelMuted,
+                                border: `1px solid ${theme.border.subtle}`,
+                                borderRadius: 999,
+                                padding: '2px 7px',
+                              }}
+                            >
+                              {job.runCount > 1 ? `${job.runCount} runs` : '1 run'}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: Math.max(9, fonts.secondarySize - 2),
+                                color: theme.text.muted,
+                                background: theme.surface.panelMuted,
+                                border: `1px solid ${theme.border.subtle}`,
+                                borderRadius: 999,
+                                padding: '2px 7px',
+                              }}
+                            >
+                              {formatRelativeTime(job.updatedAt ?? job.requestedAt)}
+                            </span>
+                          </div>
+
+                          {errorPreview && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: 8,
+                                fontSize: Math.max(9, fonts.secondarySize - 2),
+                                color: theme.text.secondary,
+                                background: `${theme.status.danger}0d`,
+                                border: `1px solid ${theme.status.danger}22`,
+                                borderRadius: 10,
+                                padding: '7px 8px',
+                              }}
+                              title={job.error ?? undefined}
+                            >
+                              <TriangleAlert size={13} strokeWidth={2} style={{ color: theme.status.danger, flexShrink: 0, marginTop: 1 }} />
+                              <span style={{ minWidth: 0 }}>{errorPreview}</span>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: theme.surface.panelElevated,
+                      border: `1px solid ${theme.border.subtle}`,
+                      borderRadius: 12,
+                      padding: '14px 12px',
                       fontSize: fonts.secondarySize,
                       color: theme.text.disabled,
                     }}

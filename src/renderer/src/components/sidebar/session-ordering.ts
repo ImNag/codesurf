@@ -23,18 +23,12 @@ export function isSessionActive(session: SessionEntry, activeState: ActiveSessio
       )
 }
 
-export function applySessionPromotions<T extends SessionEntry>(sessions: T[], promotedAtById: Record<string, number>): T[] {
-  let changed = false
-  const next = sessions.map(session => {
-    const promotedAt = promotedAtById[session.id]
-    if (!Number.isFinite(promotedAt) || promotedAt <= session.updatedAt) return session
-    changed = true
-    return {
-      ...session,
-      updatedAt: promotedAt,
-    }
-  })
-  return changed ? next : sessions
+export function applySessionPromotions<T extends SessionEntry>(sessions: T[], _promotedAtById: Record<string, number>): T[] {
+  // Promotion is a sort hint only — it must not mutate `updatedAt`, which
+  // drives the sidebar's relative-time label. `compareSessionsWithSelectionPriority`
+  // already uses `promotedAtById` as the primary sort key, so we just pass
+  // sessions through unchanged and let the comparator handle ordering.
+  return sessions
 }
 
 export function compareSessionsWithSelectionPriority(

@@ -26,4 +26,4 @@ export interface SessionProjectGroup {
 export type ThreadOrganizeMode = 'project' | 'chronological'
 export type ThreadSortMode = 'updated' | 'title'
 
-export const SESSION_PAGE_SIZE = 10
+export const SESSION_PAGE_SIZE = 50

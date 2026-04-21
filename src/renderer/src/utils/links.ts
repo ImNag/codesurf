@@ -34,22 +34,29 @@ export function stripLocalPathLocation(value: string): string {
   return value
 }
 
-export function normalizeOpenableHref(rawHref: string): string | null {
-  const trimmed = String(rawHref ?? '').trim()
+export function normalizeLocalPathCandidate(rawValue: string): string | null {
+  const trimmed = String(rawValue ?? '').trim()
   if (!trimmed) return null
 
   if (trimmed.startsWith('file://')) {
     try {
-      const decoded = decodeURIComponent(new URL(trimmed).pathname)
-      return toFileUrl(stripLocalPathLocation(decoded))
+      return stripLocalPathLocation(decodeURIComponent(new URL(trimmed).pathname))
     } catch {
-      return trimmed
+      return null
     }
   }
 
-  if (trimmed.startsWith('/')) {
-    return toFileUrl(stripLocalPathLocation(trimmed))
-  }
+  if (!trimmed.startsWith('/')) return null
+  if (/[\r\n]/.test(trimmed)) return null
+  return stripLocalPathLocation(trimmed)
+}
+
+export function normalizeOpenableHref(rawHref: string): string | null {
+  const trimmed = String(rawHref ?? '').trim()
+  if (!trimmed) return null
+
+  const localPath = normalizeLocalPathCandidate(trimmed)
+  if (localPath) return toFileUrl(localPath)
 
   return trimmed
 }

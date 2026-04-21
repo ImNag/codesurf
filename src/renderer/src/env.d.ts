@@ -17,6 +17,8 @@ interface ElectronAPI {
     createFromFolder(folderPath: string): Promise<Workspace>
     addProjectFolder(workspaceId: string, folderPath: string): Promise<Workspace | null>
     removeProjectFolder(workspaceId: string, folderPath: string): Promise<Workspace | null>
+    renameProject(args: { projectId?: string; projectPath?: string; name: string }): Promise<{ ok: boolean; error?: string; project?: ProjectRecord }>
+    createProjectWorktree(args: { projectId?: string; projectPath?: string; name: string; branch?: string }): Promise<{ ok: boolean; error?: string; project?: ProjectRecord; path?: string; branch?: string }>
     openFolder(): Promise<string | null>
     setActive(id: string): Promise<void>
     getActive(): Promise<Workspace | null>

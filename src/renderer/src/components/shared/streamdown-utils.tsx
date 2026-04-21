@@ -10,7 +10,7 @@ import 'streamdown/styles.css'
 import { useTheme } from '../../ThemeContext'
 import { useAppFonts } from '../../FontContext'
 import { useThemeTokens } from '../../theme-tokens'
-import { dispatchOpenLink, findAnchorFromEventTarget } from '../../utils/links'
+import { dispatchOpenLink, findAnchorFromEventTarget, normalizeLocalPathCandidate } from '../../utils/links'
 
 // --- Streamdown plugins (singleton) ------------------------------------------------
 export const streamdownPlugins = { code }
@@ -57,7 +57,7 @@ export function ensureShimmerStyles(): void {
 // Bump this version suffix whenever the injected CSS below changes so that
 // Vite HMR re-injects a fresh <style> tag instead of short-circuiting on the
 // stale one left behind from a previous build.
-const CODE_LAYOUT_STYLE_VERSION = 'v10'
+const CODE_LAYOUT_STYLE_VERSION = 'v11'
 const CODE_LAYOUT_STYLE_ID = `shared-streamdown-code-layout-${CODE_LAYOUT_STYLE_VERSION}`
 
 export function ensureCodeBlockLayoutStyles(): void {
@@ -285,6 +285,15 @@ export function ensureCodeBlockLayoutStyles(): void {
       font-size: 0.92em !important;
       font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace !important;
     }
+    .chat-md.chat-md--path-mod :not(pre) > code[data-codesurf-local-path] {
+      cursor: pointer !important;
+    }
+    .chat-md.chat-md--path-mod :not(pre) > code[data-codesurf-local-path]:hover {
+      background: var(--chat-path-hover-bg, rgba(59, 130, 246, 0.12)) !important;
+      border-color: var(--chat-path-hover-border, rgba(59, 130, 246, 0.4)) !important;
+      color: var(--chat-path-hover-color, inherit) !important;
+      box-shadow: 0 0 0 1px var(--chat-path-hover-border, rgba(59, 130, 246, 0.4)) !important;
+    }
   `
   document.head.appendChild(style)
 }
@@ -469,6 +478,74 @@ export function useLinkClickHandler(ref: React.RefObject<HTMLElement | null>): v
   }, [ref])
 }
 
+export function useModifierPathOpenHandler(ref: React.RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+
+    const syncAnnotatedPaths = () => {
+      const inlineCode = root.querySelectorAll<HTMLElement>('code')
+      inlineCode.forEach(node => {
+        if (node.closest('pre')) return
+        const normalizedPath = normalizeLocalPathCandidate(node.textContent ?? '')
+        if (normalizedPath) {
+          node.dataset.codesurfLocalPath = normalizedPath
+          node.setAttribute('title', 'Cmd/Ctrl+click to open')
+        } else {
+          delete node.dataset.codesurfLocalPath
+          if (node.getAttribute('title') === 'Cmd/Ctrl+click to open') {
+            node.removeAttribute('title')
+          }
+        }
+      })
+    }
+
+    const syncModifierState = (event?: KeyboardEvent | MouseEvent) => {
+      const modifierActive = Boolean(event ? (event.metaKey || event.ctrlKey) : false)
+      root.classList.toggle('chat-md--path-mod', modifierActive)
+    }
+
+    syncAnnotatedPaths()
+
+    const observer = new MutationObserver(() => {
+      syncAnnotatedPaths()
+    })
+    observer.observe(root, { childList: true, subtree: true, characterData: true })
+
+    const handleKeyDown = (event: KeyboardEvent) => syncModifierState(event)
+    const handleKeyUp = (event: KeyboardEvent) => syncModifierState(event)
+    const handleMouseMove = (event: MouseEvent) => syncModifierState(event)
+    const clearModifierState = () => root.classList.remove('chat-md--path-mod')
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest<HTMLElement>('code[data-codesurf-local-path]') : null
+      if (!target) return
+      if (!(event.metaKey || event.ctrlKey)) return
+      const localPath = target.dataset.codesurfLocalPath
+      if (!localPath) return
+      if (!dispatchOpenLink(localPath)) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keyup', handleKeyUp, true)
+    window.addEventListener('mousemove', handleMouseMove, true)
+    window.addEventListener('blur', clearModifierState)
+    root.addEventListener('mouseleave', clearModifierState)
+    root.addEventListener('click', handleClick, true)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('keyup', handleKeyUp, true)
+      window.removeEventListener('mousemove', handleMouseMove, true)
+      window.removeEventListener('blur', clearModifierState)
+      root.removeEventListener('mouseleave', clearModifierState)
+      root.removeEventListener('click', handleClick, true)
+    }
+  }, [ref])
+}
+
 // --- ChatMarkdown component -------------------------------------------------------
 // Renders markdown content with Streamdown, applying theme patches for code blocks and tables.
 function ChatStreamdown({ text, isStreaming, className }: {
@@ -506,10 +583,12 @@ export const ChatMarkdown = React.memo(({ text, isStreaming, className }: {
   }, [])
   usePatchCodeBlocks(ref, theme, fonts)
   useLinkClickHandler(ref)
+  useModifierPathOpenHandler(ref)
 
   return (
     <div
       ref={ref}
+      className="chat-md"
       style={{
         minWidth: 0,
         maxWidth: '100%',
@@ -530,6 +609,9 @@ export const ChatMarkdown = React.memo(({ text, isStreaming, className }: {
         ['--chat-code-inline-bg' as string]: tokens.code.inlineBackground,
         ['--chat-code-inline-color' as string]: tokens.code.inlineColor,
         ['--chat-code-inline-border' as string]: tokens.code.inlineBorderColor,
+        ['--chat-path-hover-bg' as string]: `${theme.accent.base}18`,
+        ['--chat-path-hover-border' as string]: `${theme.accent.base}66`,
+        ['--chat-path-hover-color' as string]: theme.text.primary,
       }}
     >
       <ChatStreamdown text={text} isStreaming={isStreaming} className={className} />

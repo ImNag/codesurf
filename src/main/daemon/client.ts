@@ -119,6 +119,12 @@ export const daemonClient = {
   removeProjectFolder(workspaceId: string, folderPath: string): Promise<Workspace | null> {
     return daemonRequest('/workspace/remove-project-folder', { body: { workspaceId, folderPath } })
   },
+  renameProject(args: { projectId?: string; projectPath?: string; name: string }): Promise<{ ok: boolean; error?: string; project?: { id: string; name: string; path: string } }> {
+    return daemonRequest('/workspace/project/rename', { body: args })
+  },
+  createProjectWorktree(args: { projectId?: string; projectPath?: string; name: string; branch?: string }): Promise<{ ok: boolean; error?: string; project?: { id: string; name: string; path: string }; path?: string; branch?: string }> {
+    return daemonRequest('/workspace/project/worktree', { body: args })
+  },
   setActiveWorkspace(id: string): Promise<{ ok: true }> {
     return daemonRequest('/workspace/set-active', { body: { id } })
   },

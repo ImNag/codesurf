@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useMemo, useCallback, useSyncExternalStore } from 'react'
+import { getChatStreamingSnapshot, subscribeChatStreaming } from './chatStreamingStore'
+import { getChatMessageSentSnapshot, subscribeChatMessageSent } from './chatMessageSentStore'
 import { Pin } from 'lucide-react'
 import type { ProjectRecord, Workspace, TileState } from '../../../shared/types'
 import { useAppFonts } from '../FontContext'
@@ -9,6 +11,7 @@ import {
   SESSION_ACTION_BUTTON_SIZE,
   SESSION_ACTION_ICON_SIZE,
   SESSION_ROW_EXTRA_WIDTH,
+  formatSessionSidebarRelativeTime,
   getSessionArchiveActionLabel,
 } from './sidebar/session-actions'
 import { SectionHeader, SidebarItem, SidebarMenuPortal, ThreadMenuItem, ThreadMenuSectionLabel } from './sidebar/ui'
@@ -92,6 +95,7 @@ export function Sidebar({
   const [extSearch, setExtSearch] = useState('')
   const [projectSearch, setProjectSearch] = useState('')
   const [sessionCtx, setSessionCtx] = useState<{ x: number; y: number; session: SessionEntry } | null>(null)
+  const [projectCtx, setProjectCtx] = useState<{ x: number; y: number; group: SessionProjectGroup } | null>(null)
   const [sessions, setSessions] = useState<SessionEntry[]>([])
   const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
@@ -218,16 +222,28 @@ export function Sidebar({
     })
   }, [sessions])
 
+  // Streaming session/tile ids published by ChatTile — used to swap the row
+  // icon for a spinner while the thread is actively streaming. Read-only: we
+  // no longer use streaming as a promotion trigger because it fires for any
+  // stream start (resume, tool-call continuation, auto-continue), not just a
+  // user submit.
+  const streamingSnapshot = useSyncExternalStore(subscribeChatStreaming, getChatStreamingSnapshot, getChatStreamingSnapshot)
+
+  // Explicit "user hit send" signal from ChatTile. Promote only when the seq
+  // advances — opening, focusing, or resuming a thread does not publish here.
+  const sentSnapshot = useSyncExternalStore(subscribeChatMessageSent, getChatMessageSentSnapshot, getChatMessageSentSnapshot)
+  const lastPromotedSeqRef = useRef(0)
   useEffect(() => {
-    const activeSession = sessions.find(session => isSessionActive(session, {
-      activeChatTileId,
-      activeChatSessionId,
-      activeChatSessionEntryId,
-    }))
-    if (!activeSession) return
-    if ((sessionPromotions[activeSession.id] ?? 0) > 0) return
-    promoteSession(activeSession)
-  }, [sessions, activeChatTileId, activeChatSessionId, activeChatSessionEntryId, sessionPromotions, promoteSession])
+    if (!sentSnapshot || sentSnapshot.seq <= lastPromotedSeqRef.current) return
+    lastPromotedSeqRef.current = sentSnapshot.seq
+    const match = sessions.find(session => {
+      if (sentSnapshot.entryId && session.id === sentSnapshot.entryId) return true
+      if (sentSnapshot.sessionId && session.sessionId === sentSnapshot.sessionId) return true
+      if (sentSnapshot.tileId && session.tileId === sentSnapshot.tileId) return true
+      return false
+    })
+    if (match) promoteSession(match)
+  }, [sentSnapshot, sessions, promoteSession])
 
   const isThreadGroupCollapsed = useCallback((group: SessionProjectGroup) => {
     const explicit = collapsedThreadGroups[group.key]
@@ -457,15 +473,40 @@ export function Sidebar({
   }, [])
 
   const visibleSessions = useMemo(() => {
+    // Dedup across workspaces: the same underlying chat can be surfaced by
+    // multiple workspaces that share a project path. When it carries a real
+    // provider sessionId we key on (agent, sessionId) so duplicates collapse;
+    // fall back to `id` only for rows without a sessionId. Tiebreaker prefers
+    // workspace/project scope over user scope, then the more recent entry.
     const deduped = new Map<string, SessionEntry>()
+    const archivedByKey = new Map<string, boolean>()
+    const keyFor = (session: SessionEntry): string => {
+      if (session.sessionId) return `sid:${getSessionAgentKey(session)}:${session.sessionId}`
+      return `id:${session.id}`
+    }
+    const scopeRank = (session: SessionEntry): number => (session.scope === 'user' ? 0 : 1)
     for (const session of promotedSessions) {
-      const existing = deduped.get(session.id)
+      const key = keyFor(session)
+      // OR-merge archived across every copy of the session: archive state is
+      // stored per-workspace, so a row archived in workspace A can appear
+      // "unarchived" via workspace B. If ANY copy is archived, treat the
+      // deduped row as archived.
+      if (session.isArchived === true) archivedByKey.set(key, true)
+      const existing = deduped.get(key)
       if (!existing) {
-        deduped.set(session.id, session)
+        deduped.set(key, session)
         continue
       }
-      if (existing.scope === 'user' && session.scope !== 'user') {
-        deduped.set(session.id, session)
+      const existingScore = scopeRank(existing)
+      const nextScore = scopeRank(session)
+      if (nextScore > existingScore) { deduped.set(key, session); continue }
+      if (nextScore === existingScore && session.updatedAt > existing.updatedAt) {
+        deduped.set(key, session)
+      }
+    }
+    for (const [key, entry] of deduped) {
+      if (archivedByKey.get(key) === true && entry.isArchived !== true) {
+        deduped.set(key, { ...entry, isArchived: true })
       }
     }
 
@@ -630,17 +671,48 @@ export function Sidebar({
     if (!session.workspaceId || archivingSessionId) return
     setArchivingSessionId(session.id)
     try {
-      const result = await window.electron.canvas.setSessionArchived(session.workspaceId, session.id, archived)
-      if (result?.ok) {
+      // Archive state is persisted per-workspace, but the same underlying chat
+      // can be surfaced by multiple workspaces sharing a project path. Write
+      // the flag to every workspace that lists this session (match by
+      // agent + sessionId, or by id when sessionId is absent) so the row
+      // can't resurrect from a copy that wasn't told about the change.
+      const agentKey = getSessionAgentKey(session)
+      const targets = new Map<string, SessionEntry>()
+      for (const candidate of sessions) {
+        const sameBySessionId = Boolean(session.sessionId)
+          && candidate.sessionId === session.sessionId
+          && getSessionAgentKey(candidate) === agentKey
+        const sameById = candidate.id === session.id
+        if (!sameBySessionId && !sameById) continue
+        if (!candidate.workspaceId) continue
+        const key = `${candidate.workspaceId}::${candidate.id}`
+        if (!targets.has(key)) targets.set(key, candidate)
+      }
+      if (targets.size === 0) {
+        targets.set(`${session.workspaceId}::${session.id}`, session)
+      }
+
+      const results = await Promise.all(
+        [...targets.values()].map(target =>
+          window.electron.canvas.setSessionArchived(target.workspaceId, target.id, archived)
+            .catch(() => ({ ok: false }))
+            .then(result => ({ target, ok: Boolean(result?.ok) }))
+        ),
+      )
+
+      const succeeded = new Set(
+        results.filter(r => r.ok).map(r => `${r.target.workspaceId}::${r.target.id}`),
+      )
+      if (succeeded.size > 0) {
         setSessions(prev => prev.map(entry => {
-          if (entry.id !== session.id || entry.workspaceId !== session.workspaceId) return entry
+          if (!succeeded.has(`${entry.workspaceId}::${entry.id}`)) return entry
           return { ...entry, isArchived: archived }
         }))
       }
     } finally {
       setArchivingSessionId(null)
     }
-  }, [archivingSessionId])
+  }, [archivingSessionId, sessions])
 
   const handleArchiveSessionClick = useCallback((session: SessionEntry) => {
     void setSessionArchived(session, !(session.isArchived === true))
@@ -718,6 +790,107 @@ export function Sidebar({
     onOpenFolder()
     setThreadMenuOpen(false)
   }, [onOpenFolder])
+
+  const projectContextMenuItems = useCallback((group: SessionProjectGroup): MenuItem[] => {
+    const projectEntry = projectEntries.find(entry => entry.id === group.projectId) ?? null
+    const projectPath = projectEntry?.path ?? group.projectPath
+    const workspaceIds = projectEntry?.workspaceIds ?? []
+
+    return [
+      {
+        label: 'Open in Finder',
+        action: () => {
+          if (!projectPath) return
+          const reveal = window.electron.fs.revealInFinder
+          if (typeof reveal !== 'function') return
+          void reveal(projectPath).catch(() => {})
+        },
+      },
+      {
+        label: 'Create permanent worktree',
+        action: () => {
+          if (!projectPath) return
+          const name = window.prompt(`Worktree name for ${group.label}`, '')?.trim()
+          if (!name) return
+          const safeName = name.replace(/[^A-Za-z0-9._/-]/g, '-')
+          if (!safeName) { window.alert('Invalid worktree name.'); return }
+          void window.electron.workspace.createProjectWorktree({
+            projectId: projectEntry?.id,
+            projectPath,
+            name: safeName,
+          }).then(async result => {
+            if (!result?.ok) {
+              window.alert(result?.error || 'Failed to create worktree.')
+              return
+            }
+            const listProjects = window.electron.workspace.listProjects
+            if (typeof listProjects === 'function') {
+              const next = await listProjects().catch(() => null)
+              if (next) setProjects(next)
+            }
+          }).catch(error => {
+            window.alert(error instanceof Error ? error.message : String(error))
+          })
+        },
+      },
+      {
+        label: 'Rename project',
+        action: () => {
+          const currentName = projectEntry?.name ?? group.label
+          const nextName = window.prompt('Rename project', currentName)?.trim()
+          if (!nextName || nextName === currentName) return
+          void window.electron.workspace.renameProject({
+            projectId: projectEntry?.id,
+            projectPath,
+            name: nextName,
+          }).then(async result => {
+            if (!result?.ok) {
+              window.alert(result?.error || 'Failed to rename project.')
+              return
+            }
+            const listProjects = window.electron.workspace.listProjects
+            if (typeof listProjects === 'function') {
+              const next = await listProjects().catch(() => null)
+              if (next) setProjects(next)
+            }
+          }).catch(error => {
+            window.alert(error instanceof Error ? error.message : String(error))
+          })
+        },
+      },
+      {
+        label: 'Archive chats',
+        action: () => {
+          const projectSessions = sessions.filter(session => {
+            const normalizedProjectPath = normalizeSidebarPath(session.projectPath ?? session.workspacePath)
+            if (normalizedProjectPath && projectPath) return normalizedProjectPath === normalizeSidebarPath(projectPath)
+            return workspaceIds.includes(session.workspaceId)
+          }).filter(session => session.isArchived !== true)
+          if (projectSessions.length === 0) return
+          const confirmed = window.confirm(`Archive ${projectSessions.length} chat${projectSessions.length === 1 ? '' : 's'} in ${group.label}?`)
+          if (!confirmed) return
+          for (const session of projectSessions) {
+            void setSessionArchived(session, true)
+          }
+        },
+      },
+      {
+        label: 'Remove',
+        action: () => {
+          const confirmed = window.confirm(`Remove ${group.label} from the sidebar? (Files are not deleted.)`)
+          if (!confirmed) return
+          void Promise.all(workspaceIds.map(workspaceId =>
+            window.electron.workspace.removeProjectFolder(workspaceId, projectPath).catch(() => null),
+          )).then(async () => {
+            const listProjects = window.electron.workspace.listProjects
+            if (typeof listProjects !== 'function') return
+            const next = await listProjects().catch(() => null)
+            if (next) setProjects(next)
+          })
+        },
+      },
+    ]
+  }, [projectEntries, sessions, setSessionArchived])
 
   const emitScrollMetrics = useCallback(() => {
     const el = scrollRef.current
@@ -1084,6 +1257,39 @@ export function Sidebar({
                           {group.label}
                         </span>
                       </button>
+                      <button
+                        type="button"
+                        title={`Project actions: ${group.label}`}
+                        onClick={e => {
+                          e.stopPropagation()
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          setProjectCtx({ x: rect.right, y: rect.bottom + 4, group })
+                        }}
+                        style={{
+                          width: 20,
+                          height: 20,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: 'transparent',
+                          border: 'none',
+                          borderRadius: 5,
+                          color: theme.text.disabled,
+                          cursor: 'pointer',
+                          padding: 0,
+                          flexShrink: 0,
+                          opacity: hoveredProjectRow === group.key ? 1 : 0,
+                          transition: 'opacity 0.1s ease, background 0.1s ease, color 0.1s ease',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = theme.surface.hover; e.currentTarget.style.color = theme.text.primary }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = theme.text.disabled }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <circle cx="3.2" cy="7" r="1.05" fill="currentColor" />
+                          <circle cx="7" cy="7" r="1.05" fill="currentColor" />
+                          <circle cx="10.8" cy="7" r="1.05" fill="currentColor" />
+                        </svg>
+                      </button>
                       {onNewChatForProject && (
                         <button
                           type="button"
@@ -1133,15 +1339,20 @@ export function Sidebar({
                       <SidebarItem
                         key={session.id}
                         label={formatSessionTitleForSidebar(session.title)}
-                        icon={getSessionAgentIcon(session)}
+                        icon={getSessionAgentIcon(session, {
+                          streaming:
+                            (session.tileId ? streamingSnapshot.tileIds.has(session.tileId) : false)
+                            || (session.sessionId ? streamingSnapshot.sessionIds.has(session.sessionId) : false)
+                            || streamingSnapshot.entryIds.has(session.id),
+                        })}
                         indent={Math.max(1, session.displayIndent + 1)}
                         indentUnit={6}
                         extraWidth={SESSION_ROW_EXTRA_WIDTH}
+                        idleExtra={formatSessionSidebarRelativeTime(session.updatedAt)}
                         title={`${session.title}\n${session.sourceLabel}${session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}${(session.checkpointCount ?? 0) > 0 ? ` · ${session.checkpointCount} checkpoint${session.checkpointCount === 1 ? '' : 's'}` : ''}${session.isArchived ? ' · archived' : ''}`}
                         active={isSelected}
                         muted={session.isArchived === true && !isSelected}
                         onClick={() => {
-                          promoteSession(session)
                           if (session.tileId && openTileIdSet.has(session.tileId)) {
                             onFocusTile(session.tileId)
                             return
@@ -1620,6 +1831,10 @@ export function Sidebar({
 
       {sessionCtx && (
         <ContextMenu x={sessionCtx.x} y={sessionCtx.y} items={sessionContextMenuItems(sessionCtx.session)} onClose={() => setSessionCtx(null)} />
+      )}
+
+      {projectCtx && (
+        <ContextMenu x={projectCtx.x} y={projectCtx.y} items={projectContextMenuItems(projectCtx.group)} onClose={() => setProjectCtx(null)} />
       )}
 
       {/* Resize handle */}

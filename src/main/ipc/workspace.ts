@@ -141,6 +141,22 @@ export function registerWorkspaceIPC(): void {
     return await daemonClient.removeProjectFolder(workspaceId, folderPath)
   })
 
+  ipcMain.handle('workspace:renameProject', async (_, args: { projectId?: string; projectPath?: string; name: string }) => {
+    await ensureDaemonRunning()
+    return await daemonClient.renameProject(args).catch(error => ({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+  })
+
+  ipcMain.handle('workspace:createProjectWorktree', async (_, args: { projectId?: string; projectPath?: string; name: string; branch?: string }) => {
+    await ensureDaemonRunning()
+    return await daemonClient.createProjectWorktree(args).catch(error => ({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+  })
+
   ipcMain.handle('workspace:createFromFolder', async (_, folderPath: string) => {
     await ensureDaemonRunning()
     const workspace = await daemonClient.createWorkspaceFromFolder(folderPath)

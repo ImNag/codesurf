@@ -225,6 +225,11 @@ function isGenericOpenClawLabel(value) {
   return GENERIC_OPENCLAW_LABELS.has(value.trim().toLowerCase())
 }
 
+function stripCodexSystemMarkers(text) {
+  if (!text) return text
+  return text.replace(/<turn_aborted>[\s\S]*?<\/turn_aborted>/g, '').trim()
+}
+
 function extractTextParts(content) {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -841,7 +846,7 @@ async function listCodexSessions(workspacePath) {
           if (!model && typeof evt?.payload?.model === 'string') model = evt.payload.model
           if (!sessionId && typeof evt?.payload?.id === 'string') sessionId = evt.payload.id
           if (evt?.type === 'response_item' && evt?.payload?.type === 'message') {
-            const text = truncate(extractTextParts(evt.payload.content))
+            const text = truncate(stripCodexSystemMarkers(extractTextParts(evt.payload.content)))
             if (text) {
               messageCount += 1
               lastMessage = text
@@ -1042,8 +1047,18 @@ export async function listExternalSessionEntries(codesurfHome, workspacePath, op
 }
 
 export async function findSessionEntryById(codesurfHome, workspacePath, id) {
-  const entries = await listExternalSessionEntries(codesurfHome, workspacePath)
-  return entries.find(entry => entry.id === id) ?? null
+  const scoped = await listExternalSessionEntries(codesurfHome, workspacePath)
+  const scopedHit = scoped.find(entry => entry.id === id)
+  if (scopedHit) return scopedHit
+
+  if (workspacePath) {
+    const global = await listExternalSessionEntries(codesurfHome, null)
+    const globalHit = global.find(entry => entry.id === id)
+    if (globalHit) return globalHit
+  }
+
+  const refreshed = await listExternalSessionEntries(codesurfHome, workspacePath, { force: true })
+  return refreshed.find(entry => entry.id === id) ?? null
 }
 
 async function parseCodeSurfChatState(filePath) {
@@ -1212,7 +1227,7 @@ function parseCodexChatStateFromLines(lines, entry, offset = 0) {
       const role = roleFromUnknown(payload?.role)
       if (!role) return
 
-      const content = extractTextParts(payload.content)
+      const content = stripCodexSystemMarkers(extractTextParts(payload.content))
       if (role === 'assistant') {
         flushAssistantArtifacts(absoluteIndex, timestamp, content)
         return

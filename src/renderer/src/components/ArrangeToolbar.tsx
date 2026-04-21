@@ -155,6 +155,16 @@ const RowIcon = () => (
   </svg>
 )
 
+const CanvasBackIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6.5 3H3v3.5" />
+    <path d="M9.5 13H13V9.5" />
+    <path d="M13 6.5V3H9.5" />
+    <path d="M3 9.5V13h3.5" />
+    <path d="M11 5 5 11" />
+  </svg>
+)
+
 export function ArrangeToolbar({
   tiles,
   groups,
@@ -214,42 +224,46 @@ export function ArrangeToolbar({
       <Btn label={<ColumnIcon />} title="Stack in column (ELK)" active={!isTabbedView && activeCanvasMode === 'column'} loading={loading} onClick={() => run('column')} />
       <Btn label={<RowIcon />} title="Arrange in row (ELK)" active={!isTabbedView && activeCanvasMode === 'row'} loading={loading} onClick={() => run('row')} />
       <div style={{ width: 1, height: 14, background: dividerBg, margin: '0 2px' }} />
-      <button
-        onClick={onZoomToggle}
-        title="Toggle zoom to 100%"
-        style={{
-          fontSize: 10,
-          color: zoomTextColor,
-          background: zoomBg,
-          display: 'flex',
-          alignItems: 'center',
-          height: '100%',
-          // @ts-ignore
-          WebkitAppRegion: 'no-drag',
-          border: `1px solid ${zoomBorder}`,
-          cursor: 'pointer',
-          padding: '0 8px',
-          borderRadius: 8,
-          userSelect: 'none',
-          fontFamily: 'inherit',
-          whiteSpace: 'nowrap',
-          fontVariantNumeric: 'tabular-nums',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.color = theme.text.primary
-          e.currentTarget.style.borderColor = zoomBorderHover
-          e.currentTarget.style.background = zoomBgHover
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.color = zoomTextColor
-          e.currentTarget.style.borderColor = zoomBorder
-          e.currentTarget.style.background = zoomBg
-        }}
-      >
-        {Math.round(zoom * 100)}%
-      </button>
+      {isTabbedView ? (
+        <Btn label={<CanvasBackIcon />} title="Back to canvas" active={false} loading={false} onClick={onToggleTabs} />
+      ) : (
+        <button
+          onClick={onZoomToggle}
+          title="Toggle zoom to 100%"
+          style={{
+            fontSize: 10,
+            color: zoomTextColor,
+            background: zoomBg,
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
+            // @ts-ignore
+            WebkitAppRegion: 'no-drag',
+            border: `1px solid ${zoomBorder}`,
+            cursor: 'pointer',
+            padding: '0 8px',
+            borderRadius: 8,
+            userSelect: 'none',
+            fontFamily: 'inherit',
+            whiteSpace: 'nowrap',
+            fontVariantNumeric: 'tabular-nums',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = theme.text.primary
+            e.currentTarget.style.borderColor = zoomBorderHover
+            e.currentTarget.style.background = zoomBgHover
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = zoomTextColor
+            e.currentTarget.style.borderColor = zoomBorder
+            e.currentTarget.style.background = zoomBg
+          }}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+      )}
     </div>
   )
 }

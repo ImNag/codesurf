@@ -2,8 +2,9 @@
 
 import { createServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, basename, join } from 'node:path'
+import { dirname, basename, join, resolve as resolvePath } from 'node:path'
 import { homedir } from 'node:os'
 import { findSessionEntryById, getExternalSessionChatState, invalidateExternalSessionCache, listExternalSessionEntries } from './session-index.mjs'
 import { createChatJobManager } from './chat-jobs.mjs'
@@ -101,6 +102,15 @@ function deleteLocalSessionTitleOverride(workspaceId, sessionEntryId) {
   if (!(key in overrides)) return
   delete overrides[key]
   writeSessionTitleOverrides(overrides)
+}
+
+function applyExternalSessionTitleOverride(workspacePath, entry) {
+  const overrides = readSessionTitleOverrides()
+  const scopedKey = externalSessionOverrideKey(workspacePath, entry.id)
+  const globalKey = externalSessionOverrideKey(null, entry.id)
+  const override = overrides[scopedKey] ?? overrides[globalKey]
+  if (typeof override !== 'string' || !override.trim()) return entry
+  return { ...entry, title: override.trim() }
 }
 
 function setExternalSessionTitleOverride(workspacePath, sessionEntryId, title) {
@@ -2298,6 +2308,93 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    if (method === 'POST' && url.pathname === '/workspace/project/rename') {
+      const body = await parseRequestBody(req)
+      const projectId = typeof body?.projectId === 'string' ? body.projectId.trim() : ''
+      const projectPath = typeof body?.projectPath === 'string' ? body.projectPath.trim() : ''
+      const name = String(body?.name ?? '').trim()
+      if (!name) { sendJson(res, 400, { ok: false, error: 'name is required' }); return }
+      if (!projectId && !projectPath) { sendJson(res, 400, { ok: false, error: 'projectId or projectPath is required' }); return }
+      const state = readWorkspaceState()
+      const normalizedPath = projectPath ? normalizePath(projectPath) : null
+      const idx = state.projects.findIndex(project => {
+        if (projectId && project.id === projectId) return true
+        if (normalizedPath && normalizePath(project.path) === normalizedPath) return true
+        return false
+      })
+      if (idx < 0) { sendJson(res, 404, { ok: false, error: 'Project not found' }); return }
+      const next = { ...state.projects[idx], name }
+      const projects = state.projects.map((project, i) => i === idx ? next : project)
+      writeWorkspaceState({ ...state, projects })
+      sendJson(res, 200, { ok: true, project: next })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/workspace/project/worktree') {
+      const body = await parseRequestBody(req)
+      const projectId = typeof body?.projectId === 'string' ? body.projectId.trim() : ''
+      const sourcePath = typeof body?.projectPath === 'string' ? body.projectPath.trim() : ''
+      const worktreeName = String(body?.name ?? '').trim()
+      const branch = String(body?.branch ?? '').trim() || worktreeName
+      if (!worktreeName) { sendJson(res, 400, { ok: false, error: 'name is required' }); return }
+      if (!projectId && !sourcePath) { sendJson(res, 400, { ok: false, error: 'projectId or projectPath is required' }); return }
+
+      const state = readWorkspaceState()
+      const sourceProject = state.projects.find(project => {
+        if (projectId && project.id === projectId) return true
+        if (sourcePath && normalizePath(project.path) === normalizePath(sourcePath)) return true
+        return false
+      })
+      if (!sourceProject) { sendJson(res, 404, { ok: false, error: 'Project not found' }); return }
+
+      const sourceDir = sourceProject.path
+      const worktreePath = resolvePath(dirname(sourceDir), `${basename(sourceDir)}-${worktreeName}`)
+      if (existsSync(worktreePath)) { sendJson(res, 409, { ok: false, error: `Path already exists: ${worktreePath}` }); return }
+
+      try {
+        await new Promise((resolve, reject) => {
+          execFile('git', ['-C', sourceDir, 'rev-parse', '--is-inside-work-tree'], (err, stdout) => {
+            if (err) return reject(new Error(`Not a git repository: ${sourceDir}`))
+            if (String(stdout).trim() !== 'true') return reject(new Error(`Not a git repository: ${sourceDir}`))
+            resolve(null)
+          })
+        })
+        await new Promise((resolve, reject) => {
+          execFile('git', ['-C', sourceDir, 'worktree', 'add', '-b', branch, worktreePath], (err, _stdout, stderr) => {
+            if (err) {
+              execFile('git', ['-C', sourceDir, 'worktree', 'add', worktreePath, branch], (err2, _s2, stderr2) => {
+                if (err2) return reject(new Error(stderr2?.toString().trim() || stderr?.toString().trim() || err2.message))
+                resolve(null)
+              })
+              return
+            }
+            resolve(null)
+          })
+        })
+      } catch (worktreeError) {
+        sendJson(res, 500, { ok: false, error: worktreeError instanceof Error ? worktreeError.message : String(worktreeError) })
+        return
+      }
+
+      const freshState = readWorkspaceState()
+      const newProject = normalizeProject({
+        id: `project-${randomUUID()}`,
+        name: `${sourceProject.name} (${worktreeName})`,
+        path: worktreePath,
+      })
+      if (!newProject) { sendJson(res, 500, { ok: false, error: 'Failed to register worktree project' }); return }
+
+      const hostWorkspaces = freshState.workspaces.map(workspace => {
+        if (!workspace.projectIds.includes(sourceProject.id)) return workspace
+        if (workspace.projectIds.includes(newProject.id)) return workspace
+        return { ...workspace, projectIds: [...workspace.projectIds, newProject.id] }
+      })
+      writeWorkspaceState({ ...freshState, projects: [...freshState.projects, newProject], workspaces: hostWorkspaces })
+
+      sendJson(res, 200, { ok: true, project: newProject, path: worktreePath, branch })
+      return
+    }
+
     if (method === 'GET' && url.pathname === '/workspace/active') {
       const state = readWorkspaceState()
       const active = getActiveWorkspace(state)
@@ -2462,7 +2559,8 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && url.pathname === '/session/external/list') {
       const workspacePath = String(url.searchParams.get('workspacePath') ?? '').trim() || null
       const force = url.searchParams.get('force') === '1'
-      sendJson(res, 200, await listExternalSessionEntries(HOME, workspacePath, { force }))
+      const entries = await listExternalSessionEntries(HOME, workspacePath, { force })
+      sendJson(res, 200, entries.map(entry => applyExternalSessionTitleOverride(workspacePath, entry)))
       return
     }
 

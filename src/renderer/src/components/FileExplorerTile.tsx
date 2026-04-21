@@ -260,12 +260,27 @@ function FolderIcon({ expanded }: { expanded: boolean }): JSX.Element {
 }
 
 function Badge({ count }: { count: number }): JSX.Element {
+  const theme = useTheme()
+  const isLight = theme.mode === 'light'
+
   return (
     <span style={{
-      fontSize: 10, color: '#aaa',
-      background: '#2a2a2a', borderRadius: 8,
-      padding: '1px 6px', marginLeft: 6,
-      fontFamily: 'inherit', flexShrink: 0
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 18,
+      fontSize: 10,
+      lineHeight: 1.2,
+      fontWeight: 700,
+      fontVariantNumeric: 'tabular-nums',
+      color: isLight ? '#1b2430' : theme.text.secondary,
+      background: isLight ? '#ffffff' : theme.surface.panelMuted,
+      border: `1px solid ${isLight ? 'rgba(15,23,42,0.18)' : theme.border.subtle}`,
+      borderRadius: 999,
+      padding: '2px 7px',
+      marginLeft: 6,
+      fontFamily: 'inherit',
+      flexShrink: 0
     }}>
       {count}
     </span>

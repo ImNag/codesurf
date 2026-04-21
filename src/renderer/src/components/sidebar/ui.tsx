@@ -102,7 +102,7 @@ export function SidebarMenuPortal({ anchorRef, children }: { anchorRef: React.Re
   )
 }
 
-export function SidebarItem({ label, icon, active, muted, emphasize, onClick, onContextMenu, indent = 0, indentUnit = 10, extra, extraAlwaysVisible = false, extraWidth, title }: {
+export function SidebarItem({ label, icon, active, muted, emphasize, onClick, onContextMenu, indent = 0, indentUnit = 10, extra, extraAlwaysVisible = false, extraWidth, idleExtra, idleExtraWidth = 44, title }: {
   label: string
   icon?: React.ReactNode
   active?: boolean
@@ -126,6 +126,14 @@ export function SidebarItem({ label, icon, active, muted, emphasize, onClick, on
   extra?: React.ReactNode
   extraAlwaysVisible?: boolean
   extraWidth?: number
+  /**
+   * Content shown on the right side of the row ONLY when not hovered (and
+   * `extra` is not always visible). Swapped out for `extra` on hover — used
+   * e.g. for codex-style relative timestamps that give way to row actions.
+   */
+  idleExtra?: React.ReactNode
+  /** Reserved right-side space for `idleExtra` so the label ellipsises cleanly before hitting it. */
+  idleExtraWidth?: number
   /** Native tooltip (shown after OS delay) — useful for truncated labels / metadata. */
   title?: string
 }): React.JSX.Element {
@@ -156,7 +164,11 @@ export function SidebarItem({ label, icon, active, muted, emphasize, onClick, on
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         paddingTop: 4, paddingBottom: 4, paddingLeft: 8 + indent * indentUnit,
-        paddingRight: extra && (hovered || extraAlwaysVisible) ? 6 + (extraWidth ?? 20) : 6,
+        paddingRight: extra && (hovered || extraAlwaysVisible)
+          ? 6 + (extraWidth ?? 20)
+          : idleExtra && !extraAlwaysVisible
+            ? 6 + idleExtraWidth
+            : 6,
         minHeight: 28, cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', borderRadius: 6, margin: '0 4px',
         background: active ? theme.surface.selection : hovered ? theme.surface.hover : 'transparent',
         transition: 'background 0.1s ease', position: 'relative',
@@ -170,10 +182,22 @@ export function SidebarItem({ label, icon, active, muted, emphasize, onClick, on
       }}>
         {label}
       </span>
+      {idleExtra && !extraAlwaysVisible && (
+        <span style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+          color: theme.text.disabled, fontSize: Math.max(10, fonts.secondarySize - 1), fontWeight: 500,
+          lineHeight: 1, whiteSpace: 'nowrap', pointerEvents: 'none',
+          opacity: hovered ? 0 : 1, visibility: hovered ? 'hidden' : 'visible',
+          transition: 'opacity 0.1s ease',
+        }}>
+          {idleExtra}
+        </span>
+      )}
       {extra && (
         <span style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', width: extraWidth, minWidth: 20, minHeight: 20,
-          position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', opacity: hovered || extraAlwaysVisible ? 1 : 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: extraWidth, minWidth: 20, minHeight: 20,
+          position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', opacity: hovered || extraAlwaysVisible ? 1 : 0,
           visibility: hovered || extraAlwaysVisible ? 'visible' : 'hidden', pointerEvents: hovered || extraAlwaysVisible ? 'auto' : 'none', transition: 'opacity 0.1s ease',
         }}>
           {extra}

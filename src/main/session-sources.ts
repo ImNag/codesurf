@@ -307,6 +307,17 @@ function makeImportedRichMessage(params: {
   }
 }
 
+/**
+ * Strip Codex internal control markers that occasionally bleed into message
+ * content (e.g. `<turn_aborted>…</turn_aborted>` written into the turn log
+ * when the user interrupts mid-run). These are protocol-level annotations,
+ * not user-authored text, and must not render as chat bubbles.
+ */
+function stripCodexSystemMarkers(text: string): string {
+  if (!text) return text
+  return text.replace(/<turn_aborted>[\s\S]*?<\/turn_aborted>/g, '').trim()
+}
+
 function extractTextParts(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -798,7 +809,7 @@ async function listClaudeSessions(workspacePath: string | null): Promise<Aggrega
   const recent = withStat
     .filter(item => item.stat?.isFile())
     .sort((a, b) => (b.stat?.mtimeMs ?? 0) - (a.stat?.mtimeMs ?? 0))
-    .slice(0, 80)
+    .slice(0, 500)
 
   const entries = await Promise.all(recent.map(async ({ filePath, stat }) => {
     let lastMessage: string | null = null
@@ -879,7 +890,7 @@ async function listCodexSessions(workspacePath: string | null): Promise<Aggregat
   const recent = files
     .map(filePath => ({ filePath, ts: parseCodexTimestamp(filePath) }))
     .sort((a, b) => b.ts - a.ts)
-    .slice(0, 80)
+    .slice(0, 500)
 
   const entries = await Promise.all(recent.map(async ({ filePath, ts }) => {
     let lastMessage: string | null = null
@@ -896,7 +907,7 @@ async function listCodexSessions(workspacePath: string | null): Promise<Aggregat
           if (!model && typeof evt?.payload?.model === 'string') model = evt.payload.model
           if (!sessionId && typeof evt?.payload?.id === 'string') sessionId = evt.payload.id
           if (evt?.type === 'response_item' && evt?.payload?.type === 'message') {
-            const text = truncate(extractTextParts(evt.payload.content))
+            const text = truncate(stripCodexSystemMarkers(extractTextParts(evt.payload.content)))
             if (text) {
               messageCount += 1
               lastMessage = text
@@ -1048,7 +1059,7 @@ async function listOpenClawSessions(workspacePath: string | null): Promise<Aggre
     }
   }
 
-  return entries.sort(compareSessions).slice(0, 80)
+  return entries.sort(compareSessions).slice(0, 500)
 }
 
 function parseOpenCodeTimestamp(filePath: string): number {
@@ -1067,7 +1078,7 @@ async function listOpenCodeSessions(workspacePath: string | null): Promise<Aggre
   const recent = files
     .map(filePath => ({ filePath, ts: parseOpenCodeTimestamp(filePath) }))
     .sort((a, b) => b.ts - a.ts)
-    .slice(0, 80)
+    .slice(0, 500)
 
   const entries = await Promise.all(recent.map(async ({ filePath, ts }) => {
     const parsed = await readJsonSafe(filePath, { maxBytes: MAX_SESSION_LISTING_JSON_BYTES })
@@ -1129,8 +1140,26 @@ export async function listExternalSessionEntries(
 }
 
 export async function findSessionEntryById(workspacePath: string | null, id: string): Promise<AggregatedSessionEntry | null> {
-  const entries = await listExternalSessionEntries(workspacePath)
-  return entries.find(entry => entry.id === id) ?? null
+  // First try the workspace-scoped list — fast path for the common case.
+  const scoped = await listExternalSessionEntries(workspacePath)
+  const scopedHit = scoped.find(entry => entry.id === id)
+  if (scopedHit) return scopedHit
+
+  // Sidebar listings go through the daemon indexer which sees globally; the
+  // main-process scoped index occasionally misses sessions whose cwd doesn't
+  // exactly match the workspace path (symlinks, alt paths, or user-scope
+  // global sessions). Fall back to the unscoped list so clicking one of
+  // those rows still loads its chat state instead of silently failing.
+  if (workspacePath) {
+    const global = await listExternalSessionEntries(null)
+    const globalHit = global.find(entry => entry.id === id)
+    if (globalHit) return globalHit
+  }
+
+  // Last-resort: force-refresh the scoped cache in case the session was just
+  // created and the prior entry is stale.
+  const refreshed = await listExternalSessionEntries(workspacePath, { force: true })
+  return refreshed.find(entry => entry.id === id) ?? null
 }
 
 async function parseCodeSurfChatState(filePath: string): Promise<ImportedChatState | null> {
@@ -1301,7 +1330,7 @@ function parseCodexChatStateFromLines(lines: string[], entry: AggregatedSessionE
       const role = roleFromUnknown(payload?.role)
       if (!role) return
 
-      const content = extractTextParts(payload.content)
+      const content = stripCodexSystemMarkers(extractTextParts(payload.content))
       if (role === 'assistant') {
         flushAssistantArtifacts(absoluteIndex, timestamp, content)
         return

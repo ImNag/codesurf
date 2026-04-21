@@ -30,6 +30,8 @@ import { stripCapabilityPrefix, getAllNodeTools } from '../../../shared/nodeTool
 import type { ToolBlock, ThinkingBlock, ContentBlock, ChatMessage, BlockNote, FileChange } from '../../../shared/chat-types'
 import { BlockNoteAffordance } from './chat/BlockNoteAffordance'
 import { getChatTileRuntimeState, setChatTileRuntimeState, reviveChatTileRuntimeState, isChatTileRuntimeStateDisposed } from './chatTileRuntimeState'
+import { setChatStreaming } from './chatStreamingStore'
+import { recordChatMessageSent } from './chatMessageSentStore'
 import { setTileTodos, clearTileTodos, useTileTodos, type TileTodoItem } from '../state/tileTodosStore'
 import { CUSTOMISATION_LOCATIONS_CHANGED_EVENT, type CustomisationLocationsChangedDetail } from './CustomisationTile'
 import { PlanCard } from './chat/PlanCard'
@@ -2195,6 +2197,13 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [sessionId, setSessionId] = useState<string | null>(() => initialRuntimeStateRef.current?.sessionId ?? null)
   const [linkedSessionEntryId, setLinkedSessionEntryId] = useState<string | null>(() => initialRuntimeStateRef.current?.linkedSessionEntryId ?? null)
   const [preserveSessionSummary, setPreserveSessionSummary] = useState<boolean>(() => initialRuntimeStateRef.current?.preserveSessionSummary === true)
+
+  // Publish this tile's streaming state so the sidebar can swap the row icon
+  // for a spinner while the thread is active.
+  useEffect(() => {
+    setChatStreaming(tileId, isStreaming, { sessionId, entryId: linkedSessionEntryId })
+    return () => { setChatStreaming(tileId, false) }
+  }, [tileId, isStreaming, sessionId, linkedSessionEntryId])
   // Compacted-session history archive. Claude Agent SDK returns a condensed
   // transcript on resume (just the last couple of messages); the SDK already
   // holds the rest in its internal compacted state, so we don't feed earlier
@@ -2426,7 +2435,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       changeBlockCount,
     }
   }, [messages, mergeDrawerFileChanges])
-  const [latestChangeDrawerExpanded, setLatestChangeDrawerExpanded] = useState(true)
+  const [latestChangeDrawerExpanded, setLatestChangeDrawerExpanded] = useState(false)
   const [latestChangeDrawerExpandedFiles, setLatestChangeDrawerExpandedFiles] = useState<Record<string, boolean>>({})
   const [latestCheckpointId, setLatestCheckpointId] = useState<string | null>(null)
   const [isRestoringLatestCheckpoint, setIsRestoringLatestCheckpoint] = useState(false)
@@ -2437,7 +2446,9 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       return
     }
 
-    setLatestChangeDrawerExpanded(true)
+    // Default the drawer to collapsed whenever a new change block arrives
+    // (including on initial mount / reload). Users can expand on demand.
+    setLatestChangeDrawerExpanded(false)
     setLatestChangeDrawerExpandedFiles({})
   }, [latestChangeDrawer?.key])
 
@@ -4479,6 +4490,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       return
     }
 
+    // Signal the sidebar that the user just submitted a message in this thread
+    // so it can promote the session to the top. This is the ONLY path that
+    // should move a thread in the sidebar — opening, streaming-resume, or tool
+    // continuation must not trigger it.
+    recordChatMessageSent({ tileId, sessionId, entryId: linkedSessionEntryId })
+
     setInput('')
     setAcType(null)
     setAcQuery('')
@@ -5440,17 +5457,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         {latestChangeDrawer && (
           <div style={{
             flexShrink: 0,
-            width: CHAT_COMPOSER_WIDTH,
-            minWidth: CHAT_COMPOSER_MIN_WIDTH_STYLE,
-            margin: '0 auto -1px auto',
+            // Match the queued-messages drawer's indent + bottom-tuck so the
+            // changes drawer reads as pulled out from behind the composer
+            // rather than sitting on top of it.
+            width: `calc(${CHAT_COMPOSER_WIDTH} - 24px)`,
+            minWidth: `calc(${CHAT_COMPOSER_MIN_WIDTH_STYLE} - 24px)`,
+            margin: '0 auto -12px auto',
             border: `1px solid ${theme.chat.divider}`,
             borderBottom: 'none',
-            borderRadius: '18px 18px 0 0',
+            borderRadius: '14px 14px 0 0',
             background: theme.surface.panelMuted,
             boxShadow: theme.shadow.panel,
             overflow: 'hidden',
             position: 'relative',
-            zIndex: 1,
+            zIndex: 0,
+            paddingBottom: 12,
           }}>
             <div
               style={{
@@ -5517,11 +5538,33 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                     {isRestoringLatestCheckpoint ? 'Undoing…' : 'Undo'}
                   </button>
                 )}
-                <ChevronRight size={14} style={{
-                  transform: latestChangeDrawerExpanded ? 'rotate(90deg)' : 'none',
-                  transition: 'transform 0.15s',
-                  opacity: 0.55,
-                }} />
+                <button
+                  type="button"
+                  onClick={event => {
+                    event.stopPropagation()
+                    setLatestChangeDrawerExpanded(v => !v)
+                  }}
+                  title={latestChangeDrawerExpanded ? 'Collapse changes' : 'Expand changes'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 22,
+                    height: 22,
+                    border: 'none',
+                    background: 'transparent',
+                    color: theme.chat.textSecondary,
+                    cursor: 'pointer',
+                    padding: 0,
+                    ...NON_SELECTABLE_UI_STYLE,
+                  }}
+                >
+                  <ChevronRight size={14} style={{
+                    transform: latestChangeDrawerExpanded ? 'rotate(90deg)' : 'none',
+                    transition: 'transform 0.15s',
+                    opacity: 0.55,
+                  }} />
+                </button>
               </div>
             </div>
             {latestChangeDrawerExpanded && (

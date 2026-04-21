@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('electron', {
     createFromFolder: (folderPath: string) => ipcRenderer.invoke('workspace:createFromFolder', folderPath),
     addProjectFolder: (workspaceId: string, folderPath: string) => ipcRenderer.invoke('workspace:addProjectFolder', workspaceId, folderPath),
     removeProjectFolder: (workspaceId: string, folderPath: string) => ipcRenderer.invoke('workspace:removeProjectFolder', workspaceId, folderPath),
+    renameProject: (args: { projectId?: string; projectPath?: string; name: string }) => ipcRenderer.invoke('workspace:renameProject', args),
+    createProjectWorktree: (args: { projectId?: string; projectPath?: string; name: string; branch?: string }) => ipcRenderer.invoke('workspace:createProjectWorktree', args),
     openFolder: () => ipcRenderer.invoke('workspace:openFolder'),
     delete: (id: string) => ipcRenderer.invoke('workspace:delete', id),
     setActive: (id: string) => ipcRenderer.invoke('workspace:setActive', id),
