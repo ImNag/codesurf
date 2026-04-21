@@ -373,6 +373,9 @@ export function PromptsSection({ workspacePath, hideHeaderText = false }: { work
         { path: `${workspacePath}/GEMINI.md`,                        label: 'gemini',   name: 'Gemini Instructions' },
         { path: `${homePath}/.gemini/GEMINI.md`,                     label: 'gemini',   name: 'Gemini Instructions (global)' },
         { path: `${workspacePath}/AGENTS.md`,                        label: 'opencode', name: 'Agents Instructions' },
+        { path: `${workspacePath}/CLAUDE.md`,                        label: 'claude',   name: 'Claude Instructions' },
+        { path: `${workspacePath}/.claude/CLAUDE.md`,                label: 'claude',   name: 'Claude Instructions (local)' },
+        { path: `${homePath}/.claude/CLAUDE.md`,                     label: 'claude',   name: 'Claude Instructions (global)' },
       ]
       const discovered: PromptTemplate[] = []
       for (const dir of dirs) {

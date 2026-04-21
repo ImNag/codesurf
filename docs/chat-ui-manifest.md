@@ -49,10 +49,13 @@ Primary file:
 This tile already discovers and exposes:
 
 - `<workspace>/AGENTS.md`
+- `<workspace>/CLAUDE.md`
+- `<workspace>/.claude/CLAUDE.md`
+- `~/.claude/CLAUDE.md`
 
-as a prompt/configuration source.
+as prompt/configuration sources.
 
-That means AGENTS memory already has a natural editing/discovery entry point in the UI. Do not build a parallel AGENTS editor surface.
+That means AGENTS and CLAUDE memory already have a natural editing/discovery entry point in the UI. Do not build a parallel instruction editor surface.
 
 ### 3. Existing AI elements already in use
 
@@ -71,10 +74,10 @@ The important point is not to invent another renderer subsystem. Reuse the same 
 
 What is already true today:
 
-- AGENTS memory is now loaded daemon-side
+- AGENTS and CLAUDE memory are now loaded daemon-side
 - the resulting prompt is injected into local runtime and daemon chat paths
 - the start of a chat turn now emits a normal existing chat tool chip labeled `Workspace Instructions`
-- AGENTS files themselves are discoverable/editable via `CustomisationTile`
+- AGENTS and CLAUDE files themselves are discoverable/editable via `CustomisationTile`
 
 ### Correct UI manifestation
 
@@ -96,8 +99,8 @@ That gives the user an inspectable "what context was loaded" trace without creat
 Do not create:
 
 - a separate "memory panel" inside chat
-- a new React component just for AGENTS sections
-- a second AGENTS browser/editor when `CustomisationTile` already exposes the file
+- a new React component just for instruction file sections
+- a second AGENTS/CLAUDE browser/editor when `CustomisationTile` already exposes the files
 
 ## Checkpoints
 
@@ -144,7 +147,7 @@ Backend source:
 Renderer mapping:
 
 - stream a normal tool/status chip in `ChatTile`
-- edit the underlying AGENTS file through `CustomisationTile`
+- edit the underlying AGENTS or CLAUDE file through `CustomisationTile`
 
 ### Checkpoints
 
@@ -165,11 +168,11 @@ Renderer mapping:
 
 For product/app documentation, describe the UI this way:
 
-- CodeSurf loads layered AGENTS instructions automatically for each workspace
+- CodeSurf loads layered AGENTS and CLAUDE instructions automatically for each workspace
 - local/private instructions are kept local and are not sent to cloud execution paths
 - before risky local edits, CodeSurf saves daemon-owned checkpoints
 - checkpointed edits and file changes appear in the normal chat operation stream
-- AGENTS instructions are edited through the existing workspace customisation flow
+- AGENTS and CLAUDE instructions are edited through the existing workspace customisation flow
 - rewind/restore is an action on existing chat/history surfaces, not a separate mode or screen
 
 ## Short version for docs writers

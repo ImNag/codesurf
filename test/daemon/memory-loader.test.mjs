@@ -147,6 +147,52 @@ test('daemon memory loader returns layered AGENTS context, imports, buckets, and
   assert.doesNotMatch(response.payload.prompt, /User instruction layer|Workspace local instruction layer|Nested workspace local instruction layer/)
 })
 
+test('daemon memory loader includes CLAUDE.md layers with the same bucket rules as AGENTS', async t => {
+  const daemon = await startDaemon()
+  t.after(async () => {
+    await daemon.stop()
+  })
+
+  const workspaceDir = join(daemon.homeDir, 'project-claude-memory')
+  await mkdir(join(daemon.homeDir, '.claude'), { recursive: true })
+  await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+
+  await writeFile(join(daemon.homeDir, '.claude', 'CLAUDE.md'), 'User Claude layer', 'utf8')
+  await writeFile(join(workspaceDir, 'CLAUDE.md'), 'Workspace Claude layer', 'utf8')
+  await writeFile(join(workspaceDir, '.claude', 'CLAUDE.md'), 'Workspace Claude local layer', 'utf8')
+
+  let response = await daemon.request('/workspace/create-with-path', {
+    body: {
+      name: 'Claude Memory Workspace',
+      projectPath: workspaceDir,
+    },
+  })
+  assert.equal(response.status, 200)
+  const workspaceId = response.payload.id
+
+  response = await daemon.request(`/memory/load?workspaceId=${encodeURIComponent(workspaceId)}&executionTarget=local`)
+  assert.equal(response.status, 200)
+  assert.deepEqual(
+    response.payload.sections.map(section => ({
+      scope: section.scope,
+      bucket: section.bucket,
+      displayPath: section.displayPath,
+      content: section.content,
+    })),
+    [
+      { scope: 'user', bucket: 'local-only', displayPath: '~/.claude/CLAUDE.md', content: 'User Claude layer' },
+      { scope: 'workspace', bucket: 'remote-safe', displayPath: 'CLAUDE.md', content: 'Workspace Claude layer' },
+      { scope: 'workspace-local', bucket: 'local-only', displayPath: '.claude/CLAUDE.md', content: 'Workspace Claude local layer' },
+    ],
+  )
+  assert.match(response.payload.prompt, /User Claude layer[\s\S]*Workspace Claude layer[\s\S]*Workspace Claude local layer/)
+
+  response = await daemon.request(`/memory/load?workspaceId=${encodeURIComponent(workspaceId)}&executionTarget=cloud`)
+  assert.equal(response.status, 200)
+  assert.match(response.payload.prompt, /Workspace Claude layer/)
+  assert.doesNotMatch(response.payload.prompt, /User Claude layer|Workspace Claude local layer/)
+})
+
 test('daemon memory loader keeps imported local-only files out of cloud prompts and avoids self-import duplication', async t => {
   const daemon = await startDaemon()
   t.after(async () => {

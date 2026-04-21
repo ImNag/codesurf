@@ -4,7 +4,7 @@
 
 This document describes the two chat safety/context systems now living behind the daemon boundary:
 
-- layered AGENTS-style memory loading
+- layered AGENTS/CLAUDE-style memory loading
 - daemon-owned checkpoints / rewind primitives
 
 These systems are designed so local runtime chat, local daemon chat, and remote daemon chat can converge on the same model:
@@ -50,16 +50,24 @@ The Electron main process currently acts as a client/controller:
 
 ## Memory model
 
-## Supported AGENTS locations
+## Supported AGENTS / CLAUDE locations
 
 For a workspace with one or more mounted project folders, the loader currently resolves:
 
-- user: `~/.codesurf/AGENTS.md`
-- project root: `<project>/AGENTS.md`
-- project local/private: `<project>/.codesurf/AGENTS.md`
+- user:
+  - `~/.codesurf/AGENTS.md`
+  - `~/.claude/CLAUDE.md`
+- project root:
+  - `<project>/AGENTS.md`
+  - `<project>/CLAUDE.md`
+- project local/private:
+  - `<project>/.codesurf/AGENTS.md`
+  - `<project>/.claude/CLAUDE.md`
 - nested mounted projects inside the same workspace:
   - `<nested-project>/AGENTS.md`
+  - `<nested-project>/CLAUDE.md`
   - `<nested-project>/.codesurf/AGENTS.md`
+  - `<nested-project>/.claude/CLAUDE.md`
 
 The loader sorts project roots shallowest-first so the prompt keeps the same layered precedence as the workspace model.
 
@@ -69,11 +77,14 @@ Every section is classified into one of two buckets today:
 
 - `remote-safe`
   - normal project `AGENTS.md`
-  - imports that remain outside `.codesurf/`
+  - normal project `CLAUDE.md`
+  - imports that remain outside `.codesurf/` and `.claude/`
 - `local-only`
   - user/global `~/.codesurf/AGENTS.md`
+  - user/global `~/.claude/CLAUDE.md`
   - project-local `.codesurf/AGENTS.md`
-  - imports inside `.codesurf/`
+  - project-local `.claude/CLAUDE.md`
+  - imports inside `.codesurf/` or `.claude/`
 
 Execution target decides which buckets make it into the outbound prompt:
 
@@ -86,7 +97,7 @@ Execution target decides which buckets make it into the outbound prompt:
 
 ## Import resolution
 
-`@import <path>` lines inside AGENTS files are resolved relative to the importing file.
+`@import <path>` lines inside AGENTS and CLAUDE files are resolved relative to the importing file.
 
 Important safety rules:
 
@@ -131,7 +142,7 @@ Behavior:
 
 - resolves the workspace
 - materializes all mounted project paths
-- loads layered AGENTS context
+- loads layered AGENTS and CLAUDE context
 - filters by bucket for the requested execution target
 - returns the final prompt plus section metadata
 
@@ -146,7 +157,7 @@ That memory prompt is then injected into:
 - Claude system prompt assembly
 - Codex prompt preamble
 
-So local runtime chat now uses the same daemon-owned AGENTS loader as daemon-backed chat.
+So local runtime chat now uses the same daemon-owned AGENTS / CLAUDE loader as daemon-backed chat.
 
 ### Daemon-backed chat
 
@@ -308,4 +319,4 @@ See `docs/chat-ui-manifest.md` for the renderer-specific mapping.
 
 ## Practical summary
 
-Memory loading now works as a daemon-owned layered AGENTS system with import resolution and privacy buckets, while checkpoints are stored/restored by the daemon and currently triggered for risky local runtime edits.
+Memory loading now works as a daemon-owned layered AGENTS / CLAUDE system with import resolution and privacy buckets, while checkpoints are stored/restored by the daemon and currently triggered for risky local runtime edits.

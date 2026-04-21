@@ -124,6 +124,17 @@ function memoryCandidates({ homeDir, workspaceDir, projectPaths }) {
       rootPath: userRoot,
       disallowSymlink: false,
     })
+    const claudeRoot = join(homeDir, '.claude')
+    candidates.push({
+      scope: 'user',
+      scopeRemote: 'user',
+      scopeLocal: 'user',
+      bucket: 'local-only',
+      displayPath: '~/.claude/CLAUDE.md',
+      path: join(claudeRoot, 'CLAUDE.md'),
+      rootPath: claudeRoot,
+      disallowSymlink: false,
+    })
   }
 
   const primaryWorkspace = workspaceDir ?? projectPaths[0] ?? null
@@ -145,12 +156,32 @@ function memoryCandidates({ homeDir, workspaceDir, projectPaths }) {
       disallowSymlink: true,
     })
     candidates.push({
+      scope: scopeRemote,
+      scopeRemote,
+      scopeLocal,
+      bucket: 'remote-safe',
+      displayPath: `${relativePrefix}CLAUDE.md`,
+      path: join(projectPath, 'CLAUDE.md'),
+      rootPath: projectPath,
+      disallowSymlink: true,
+    })
+    candidates.push({
       scope: scopeLocal,
       scopeRemote,
       scopeLocal,
       bucket: 'local-only',
       displayPath: `${relativePrefix}.codesurf/AGENTS.md`,
       path: join(projectPath, '.codesurf', 'AGENTS.md'),
+      rootPath: projectPath,
+      disallowSymlink: true,
+    })
+    candidates.push({
+      scope: scopeLocal,
+      scopeRemote,
+      scopeLocal,
+      bucket: 'local-only',
+      displayPath: `${relativePrefix}.claude/CLAUDE.md`,
+      path: join(projectPath, '.claude', 'CLAUDE.md'),
       rootPath: projectPath,
       disallowSymlink: true,
     })
@@ -211,7 +242,11 @@ function resolveImportCandidate(parent, importPath) {
   const relativePath = parent.rootPath
     ? relative(parent.rootPath, candidatePath).replace(/\\/g, '/')
     : importPath
-  const importedIsLocalOnly = parent.bucket === 'local-only' || relativePath === '.codesurf/AGENTS.md' || relativePath.startsWith('.codesurf/')
+  const importedIsLocalOnly = parent.bucket === 'local-only'
+    || relativePath === '.codesurf/AGENTS.md'
+    || relativePath.startsWith('.codesurf/')
+    || relativePath === '.claude/CLAUDE.md'
+    || relativePath.startsWith('.claude/')
   return {
     ...parent,
     scope: importedIsLocalOnly ? parent.scopeLocal : parent.scopeRemote,
