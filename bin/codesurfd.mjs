@@ -9,6 +9,7 @@ import { findSessionEntryById, getExternalSessionChatState, invalidateExternalSe
 import { createChatJobManager } from './chat-jobs.mjs'
 import { createCheckpointStore } from './checkpoints.mjs'
 import { loadMemoryContext } from './memory-loader.mjs'
+import { createSkillsIndex } from './skills-index.mjs'
 
 const HOME = process.env.CODESURF_HOME || join(homedir(), '.codesurf')
 const PID_PATH = process.env.CODESURF_DAEMON_PID_PATH || join(HOME, 'daemon', 'pid.json')
@@ -33,6 +34,10 @@ const checkpointStore = createCheckpointStore({
   readWorkspaceState,
   runtimeSessionStatePath,
   workspaceContexDir,
+})
+const skillsIndex = createSkillsIndex({
+  homeDir: HOME,
+  userHomeDir: homedir(),
 })
 
 function ensureDir(dirPath) {
@@ -1839,6 +1844,39 @@ function resolveWorkspaceProjectPath(workspaceId, fallbackPath = null) {
   return projectPaths[0] ?? normalizePath(fallbackPath)
 }
 
+function resolveWorkspaceDirForSkills(workspaceId, fallbackPath = null) {
+  const normalizedFallback = normalizePath(fallbackPath)
+  if (typeof workspaceId === 'string' && workspaceId.trim()) {
+    return resolveWorkspaceProjectPath(workspaceId.trim(), normalizedFallback)
+  }
+  return normalizedFallback
+}
+
+async function loadWorkspaceSkillsIndex({ workspaceId, workspaceDir = null, cardId = null } = {}) {
+  return await skillsIndex.listSkills({
+    workspaceDir: resolveWorkspaceDirForSkills(workspaceId, workspaceDir),
+    cardId,
+  })
+}
+
+async function getWorkspaceSkill({ workspaceId, workspaceDir = null, cardId = null, skillId } = {}) {
+  return await skillsIndex.getSkill({
+    workspaceDir: resolveWorkspaceDirForSkills(workspaceId, workspaceDir),
+    cardId,
+    skillId,
+  })
+}
+
+async function installWorkspaceSkill({ workspaceId, workspaceDir = null, cardId = null, zipPath, scope = 'global', overwrite = false } = {}) {
+  return await skillsIndex.installSkill({
+    workspaceDir: resolveWorkspaceDirForSkills(workspaceId, workspaceDir),
+    cardId,
+    zipPath,
+    scope,
+    overwrite,
+  })
+}
+
 async function loadWorkspaceMemoryContext(workspaceId, executionTarget = 'local') {
   const state = readWorkspaceState()
   const workspace = state.workspaces.find(entry => entry.id === workspaceId)
@@ -2381,6 +2419,61 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    if (method === 'GET' && url.pathname === '/skills/list') {
+      const workspaceId = String(url.searchParams.get('workspaceId') ?? '').trim() || null
+      const workspaceDir = String(url.searchParams.get('workspaceDir') ?? '').trim() || null
+      const cardId = String(url.searchParams.get('cardId') ?? '').trim() || null
+      sendJson(res, 200, await loadWorkspaceSkillsIndex({ workspaceId, workspaceDir, cardId }))
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/skills/get') {
+      const workspaceId = String(url.searchParams.get('workspaceId') ?? '').trim() || null
+      const workspaceDir = String(url.searchParams.get('workspaceDir') ?? '').trim() || null
+      const cardId = String(url.searchParams.get('cardId') ?? '').trim() || null
+      const skillId = String(url.searchParams.get('skillId') ?? '').trim()
+      if (!skillId) {
+        sendJson(res, 400, { error: 'skillId is required' })
+        return
+      }
+      const skill = await getWorkspaceSkill({ workspaceId, workspaceDir, cardId, skillId })
+      if (!skill) {
+        sendJson(res, 404, { error: `Skill not found: ${skillId}` })
+        return
+      }
+      sendJson(res, 200, skill)
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/skills/install') {
+      const body = await parseRequestBody(req)
+      const workspaceId = String(body?.workspaceId ?? '').trim() || null
+      const workspaceDir = String(body?.workspaceDir ?? '').trim() || null
+      const zipPath = String(body?.zipPath ?? '').trim()
+      const scope = body?.scope === 'workspace' ? 'workspace' : 'global'
+      if (!zipPath) {
+        sendJson(res, 400, { error: 'zipPath is required' })
+        return
+      }
+      if (scope === 'workspace' && !resolveWorkspaceDirForSkills(workspaceId, workspaceDir)) {
+        sendJson(res, 400, { error: 'workspaceId or workspaceDir is required for workspace installs' })
+        return
+      }
+      try {
+        sendJson(res, 200, await installWorkspaceSkill({
+          workspaceId,
+          workspaceDir,
+          cardId: typeof body?.cardId === 'string' ? body.cardId : null,
+          zipPath,
+          scope,
+          overwrite: body?.overwrite === true,
+        }))
+      } catch (error) {
+        sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) })
+      }
+      return
+    }
+
     if (method === 'POST' && url.pathname === '/chat/job/start') {
       const body = await parseRequestBody(req)
       if (!body?.request || typeof body.request !== 'object') {
@@ -2405,6 +2498,25 @@ const server = createServer(async (req, res) => {
           if (!(error instanceof Error && /Workspace not found:/i.test(error.message))) {
             throw error
           }
+        }
+      }
+      if (!String(request?.skillsPrompt ?? '').trim()) {
+        try {
+          const skillIndex = await loadWorkspaceSkillsIndex({
+            workspaceId: typeof request?.workspaceId === 'string' ? request.workspaceId : null,
+            workspaceDir: typeof request?.workspaceDir === 'string' ? request.workspaceDir : null,
+            cardId: typeof request?.cardId === 'string' ? request.cardId : null,
+          })
+          const skillsPrompt = String(skillIndex?.selection?.prompt ?? '').trim()
+          if (skillsPrompt) {
+            request = {
+              ...request,
+              skillsPrompt,
+              skillsSummary: String(skillIndex?.selection?.summary ?? '').trim() || null,
+            }
+          }
+        } catch {
+          // Skills are optional context; daemon-owned prompt assembly should not fail the job if indexing is unavailable.
         }
       }
       const job = await chatJobs.startJob(request)
