@@ -10,6 +10,7 @@ import { createChatJobManager } from './chat-jobs.mjs'
 import { createCheckpointStore } from './checkpoints.mjs'
 import { loadMemoryContext } from './memory-loader.mjs'
 import { createSkillsIndex } from './skills-index.mjs'
+import { expandFileReferences } from './file-references.mjs'
 
 const HOME = process.env.CODESURF_HOME || join(homedir(), '.codesurf')
 const PID_PATH = process.env.CODESURF_DAEMON_PID_PATH || join(HOME, 'daemon', 'pid.json')
@@ -2471,6 +2472,25 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) })
       }
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/file-references/expand') {
+      const body = await parseRequestBody(req)
+      const workspaceId = String(body?.workspaceId ?? '').trim()
+      const executionTarget = body?.executionTarget === 'cloud' ? 'cloud' : 'local'
+      const workspaceDir = workspaceId
+        ? resolveWorkspaceProjectPath(workspaceId, body?.workspaceDir ?? null)
+        : normalizePath(body?.workspaceDir)
+      if (!workspaceDir) {
+        sendJson(res, 400, { error: 'workspaceId or workspaceDir is required' })
+        return
+      }
+      sendJson(res, 200, await expandFileReferences({
+        message: body?.message,
+        workspaceDir,
+        executionTarget,
+      }))
       return
     }
 
