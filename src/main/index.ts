@@ -20,6 +20,8 @@ import { registerSystemIPC } from './ipc/system'
 import { registerExecutionIPC } from './ipc/execution'
 import { registerPermissionsIPC } from './ipc/permissions'
 import { getSavedZoomLevel, registerUIIPC } from './ipc/ui'
+import { registerJobsIPC } from './ipc/jobs'
+import { registerSkillsIPC, queuePendingSkillFile } from './ipc/skills'
 import { registerFileProtocol } from './file-protocol'
 import { flushAll as flushActivityStore } from './activity-store'
 import { initializeAgentPathsCache, registerAgentPathsIPC } from './agent-paths'
@@ -33,6 +35,7 @@ import { migrateLegacyStorage } from './migration'
 import { APP_ID, APP_NAME, CONTEX_HOME } from './paths'
 import { closeDb, getDb, getDbStatus } from './db'
 import { ensureInitialIndex } from './db/thread-indexer'
+import { ensureInitialJobIndex } from './db/job-indexer'
 import { stopAllRelayServices } from './relay/service'
 // browserTile BrowserView IPC was removed — renderer uses <webview> tag directly
 
@@ -45,6 +48,45 @@ const maxOldSpaceSizeMb = Number.isFinite(envMaxOldSpaceSizeMb) && envMaxOldSpac
 // Expose global.gc() in renderer processes and keep the Electron V8 flag budget
 // aligned with the standalone launcher override.
 app.commandLine.appendSwitch('js-flags', `--expose-gc --max-old-space-size=${maxOldSpaceSizeMb}`)
+
+// .skill file association support -----------------------------------------
+// Capture launch-via-Finder / `open "X.skill"` before app.whenReady so the
+// path isn't dropped. On macOS Finder uses the `open-file` event; on other
+// platforms the path arrives via argv. `queuePendingSkillFile` stashes the
+// path and forwards it to the first renderer window once it's ready.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  queuePendingSkillFile(filePath)
+})
+
+// Single-instance lock so a second `open foo.skill` invocation reuses the
+// existing window instead of launching a new one. Argv inspection finds
+// `.skill` paths from Windows/Linux file associations (macOS uses open-file).
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_evt, argv) => {
+    for (const arg of argv) {
+      if (typeof arg === 'string' && arg.toLowerCase().endsWith('.skill')) {
+        queuePendingSkillFile(arg)
+      }
+    }
+    const wins = BrowserWindow.getAllWindows()
+    if (wins.length > 0) {
+      const win = wins[0]
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+  })
+  // Same argv scan for the first launch — `codesurf foo.skill` from a shell
+  // or a double-click on non-mac platforms.
+  for (const arg of process.argv.slice(1)) {
+    if (typeof arg === 'string' && arg.toLowerCase().endsWith('.skill')) {
+      queuePendingSkillFile(arg)
+    }
+  }
+}
 
 // Per-window display titles (webContents.id → label set by renderer via workspace name)
 const windowTitles = new Map<number, string>()
@@ -60,6 +102,20 @@ function resolveBundledExtensionDirs(): string[] {
     join(process.resourcesPath, 'bundled-extensions'),
   ]
 
+  return [...new Set(candidates.filter(candidate => existsSync(candidate)))]
+}
+
+/**
+ * Catalog directories — extensions scanned from these paths appear in the
+ * gallery as available-to-install entries but default to DISABLED so their
+ * power-tier main scripts don't execute until the user clicks Add.
+ */
+function resolveCatalogExtensionDirs(): string[] {
+  const candidates = [
+    join(app.getAppPath(), 'examples', 'extensions'),
+    join(app.getAppPath(), 'resources', 'examples', 'extensions'),
+    join(process.resourcesPath, 'examples', 'extensions'),
+  ]
   return [...new Set(candidates.filter(candidate => existsSync(candidate)))]
 }
 
@@ -295,6 +351,12 @@ app.whenReady().then(async () => {
     console.warn('[threads] initial index failed:', err)
   })
 
+  // Same pattern for the job + timeline index.
+  void ensureInitialJobIndex().catch(err => {
+    // eslint-disable-next-line no-console
+    console.warn('[jobs] initial index failed:', err)
+  })
+
   // Init workspace dirs + register all IPC handlers
   await initWorkspaces()
   registerWorkspaceIPC()
@@ -313,6 +375,8 @@ app.whenReady().then(async () => {
   registerExecutionIPC()
   registerPermissionsIPC()
   registerUIIPC()
+  registerJobsIPC()
+  registerSkillsIPC()
   registerFileProtocol()
   registerAgentPathsIPC()
   registerChromeSyncIPC()
@@ -320,7 +384,10 @@ app.whenReady().then(async () => {
 
   // Keep the extension system fully lazy. Do not scan or boot extension hosts
   // at startup; load them only when an extension tile or explicit management UI asks.
-  extensionRegistry = new ExtensionRegistry({ bundledDirs: resolveBundledExtensionDirs() })
+  extensionRegistry = new ExtensionRegistry({
+    bundledDirs: resolveBundledExtensionDirs(),
+    catalogDirs: resolveCatalogExtensionDirs(),
+  })
   registerExtensionProtocol(extensionRegistry)
   registerExtensionIPC(extensionRegistry)
   setExtensionRegistryProvider(() => extensionRegistry)

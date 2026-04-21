@@ -8,7 +8,7 @@ import { bus } from '../event-bus'
 import { writeMCPConfigToWorkspace } from '../mcp-server'
 import { CONTEX_HOME, workspaceTileDir, legacyWorkspaceTileDir } from '../paths'
 import { getAllNodeTools } from '../../shared/nodeTools'
-import { setTerminalNotifier, updateLinks, removeTile as removePeerTile, getLinkedPeerStates, getUnreadMessages } from '../peer-state'
+import { setTerminalNotifier, updateLinks, removeTile as removePeerTile } from '../peer-state'
 import { readSettingsSync } from './workspace'
 
 function ensureNodePtySpawnHelperExecutable(): void {
@@ -174,42 +174,13 @@ function tmuxKillSession(sessionName: string): void {
   } catch { /* session may already be gone */ }
 }
 
-/** Update tmux status bar with current peer link state */
-function updateTmuxStatus(sessionName: string, tileId: string): void {
-  const tmux = getTmuxPath()
-  if (!tmux) return
-
-  const peers = getLinkedPeerStates(tileId)
-  const unread = getUnreadMessages(tileId)
-
-  let statusRight = ''
-  if (peers.length === 0 && unread.length === 0) {
-    statusRight = '#[fg=#555]no peers'
-  } else {
-    const parts: string[] = []
-    for (const p of peers) {
-      const shortId = p.tileId.slice(-6)
-      const statusIcon = p.status === 'working' ? '#[fg=#f0a050]●' :
-                         p.status === 'blocked' ? '#[fg=#f05050]●' :
-                         p.status === 'done'    ? '#[fg=#50c878]●' :
-                                                  '#[fg=#555]●'
-      const task = p.task ? ` ${p.task.slice(0, 20)}` : ''
-      parts.push(`${statusIcon} #[fg=#7bf1ff]${shortId}#[fg=#aaa]${task}`)
-    }
-    if (unread.length > 0) {
-      parts.push(`#[fg=#f0a050]✉ ${unread.length}`)
-    }
-    statusRight = parts.join(' #[fg=#555]│ ')
-  }
-
-  try {
-    execFileSync(tmux, ['set-option', '-t', sessionName, 'status', 'on'], { stdio: 'ignore' })
-    execFileSync(tmux, ['set-option', '-t', sessionName, 'status-style', 'bg=#1e1e1e,fg=#aaa'], { stdio: 'ignore' })
-    execFileSync(tmux, ['set-option', '-t', sessionName, 'status-left', '#[fg=#7bf1ff,bold] contex #[fg=#555]│ '], { stdio: 'ignore' })
-    execFileSync(tmux, ['set-option', '-t', sessionName, 'status-left-length', '20'], { stdio: 'ignore' })
-    execFileSync(tmux, ['set-option', '-t', sessionName, 'status-right', statusRight], { stdio: 'ignore' })
-    execFileSync(tmux, ['set-option', '-t', sessionName, 'status-right-length', '80'], { stdio: 'ignore' })
-  } catch { /* tmux session may be gone */ }
+/**
+ * Peer state updates previously repainted a tmux status bar here. The status
+ * bar is now hidden (see `ensureTmuxConf` + attach-time `status off`), so this
+ * is a no-op kept only as a hook for a future in-app peer display.
+ */
+function updateTmuxStatus(_sessionName: string, _tileId: string): void {
+  // intentionally blank — status bar is hidden
 }
 
 /** Build the tmux new-session command args for a fresh session. */
@@ -468,15 +439,12 @@ export function registerTerminalIPC(): void {
       }
     }
 
-    // Apply contex status bar style to new/reattached tmux sessions
+    // Force status bar off on both new and reattached sessions — belt &
+    // braces alongside `set -g status off` in the conf file, which can be
+    // ignored if a pre-existing session was created before the conf landed.
     if (useTmux && tmux) {
       try {
-        execFileSync(tmux, ['set-option', '-t', sessName, 'status', 'on'], { stdio: 'ignore' })
-        execFileSync(tmux, ['set-option', '-t', sessName, 'status-style', 'bg=#1e1e1e,fg=#aaa'], { stdio: 'ignore' })
-        execFileSync(tmux, ['set-option', '-t', sessName, 'status-left', '#[fg=#7bf1ff,bold] contex #[fg=#555]│ '], { stdio: 'ignore' })
-        execFileSync(tmux, ['set-option', '-t', sessName, 'status-left-length', '20'], { stdio: 'ignore' })
-        execFileSync(tmux, ['set-option', '-t', sessName, 'status-right', '#[fg=#555]no peers'], { stdio: 'ignore' })
-        execFileSync(tmux, ['set-option', '-t', sessName, 'status-right-length', '80'], { stdio: 'ignore' })
+        execFileSync(tmux, ['set-option', '-t', sessName, 'status', 'off'], { stdio: 'ignore' })
       } catch { /* best effort */ }
     }
 

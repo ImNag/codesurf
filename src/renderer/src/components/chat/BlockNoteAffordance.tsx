@@ -66,6 +66,11 @@ export function BlockNoteAffordance({
   const [composerOpen, setComposerOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [useInline, setUseInline] = useState(false)
+  // Runtime placement chosen on open. 'primary' = the configured side
+  // (composer hugs the wrapper edge on the same side as the icon),
+  // 'inline' = stacked below the block. Picked at open time so we never
+  // pop open too narrow to type in.
+  const [composerPlacement, setComposerPlacement] = useState<'primary' | 'inline'>('primary')
 
   // Grace-period hide: the icon lives in the gutter a little off to the side
   // of the block, so moving the pointer from block → icon means briefly
@@ -129,6 +134,12 @@ export function BlockNoteAffordance({
 
   const openComposer = useCallback(() => {
     setDraft(note?.text ?? '')
+    // Composer anchors INSIDE the wrapper on the same side as the icon, so
+    // it can never be clipped by an overflow:hidden ancestor (chat tile /
+    // panel). The only placement decision is "on-side" vs "inline below" —
+    // inline kicks in when `useInline` says the wrapper itself is too
+    // narrow to fit the composer at its min-width.
+    setComposerPlacement(useInline ? 'inline' : 'primary')
     setComposerOpen(true)
     // Focus the textarea on next frame so layout has settled.
     requestAnimationFrame(() => {
@@ -138,7 +149,7 @@ export function BlockNoteAffordance({
         composerRef.current.value.length,
       )
     })
-  }, [note?.text])
+  }, [note?.text, useInline])
 
   const closeComposer = useCallback(() => {
     setComposerOpen(false)
@@ -186,14 +197,15 @@ export function BlockNoteAffordance({
     ? { left: -gutterOffset - NOTE_CARD_WIDTH, right: 'auto' }
     : { right: -gutterOffset - NOTE_CARD_WIDTH, left: 'auto' }
 
-  // The composer popover anchors to the block and sticks out into the gutter
-  // when there's room; when we've fallen back to inline mode it renders
-  // directly below instead.
-  const composerSideStyle: React.CSSProperties = useInline
+  // The composer popover anchors to the block and stays INSIDE the wrapper
+  // so it can't spill past the chat tile's clipping edge. The configured
+  // `side` controls which edge it hugs (matching the icon); when the
+  // wrapper is too narrow to fit COMPOSER_MIN_WIDTH we stack inline below.
+  const composerSideStyle: React.CSSProperties = composerPlacement === 'inline' || useInline
     ? { left: 0, right: 0, top: 'calc(100% + 6px)', minWidth: 0 }
     : side === 'left'
-      ? { left: -gutterOffset - COMPOSER_MIN_WIDTH, right: 'auto', top: 0, minWidth: COMPOSER_MIN_WIDTH }
-      : { right: -gutterOffset - COMPOSER_MIN_WIDTH, left: 'auto', top: 0, minWidth: COMPOSER_MIN_WIDTH }
+      ? { left: 0, right: 'auto', top: 0, minWidth: COMPOSER_MIN_WIDTH, maxWidth: '100%' }
+      : { right: 0, left: 'auto', top: 0, minWidth: COMPOSER_MIN_WIDTH, maxWidth: '100%' }
 
   return (
     <div

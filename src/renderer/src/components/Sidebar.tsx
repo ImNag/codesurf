@@ -46,6 +46,12 @@ interface Props {
   onToggleCollapse: () => void
   onScrollMetricsChange?: (metrics: { hasOverflow: boolean; topRatio: number; thumbRatio: number }) => void
   showFooter?: boolean
+  /**
+   * Tile id of the currently focused chat, or null when the focus isn't on a
+   * chat. Used to emphasize the matching session row in the thread list so
+   * the user can see "you are here" without clicking around.
+   */
+  activeChatTileId?: string | null
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
@@ -55,7 +61,8 @@ export function Sidebar({
   onNewTerminal, onNewKanban, onNewBrowser, onNewChat, onNewFiles, onOpenSettings,
   onOpenSessionInChat, onOpenSessionInApp,
   extensionTiles, extensionEntries, onAddExtensionTile, pinnedExtensionIds, onTogglePinnedExtension,
-  collapsed, width, onWidthChange, minWidth = 270, maxWidth = 520, onResizeStateChange, onToggleCollapse: _onToggleCollapse, onScrollMetricsChange, showFooter = true
+  collapsed, width, onWidthChange, minWidth = 270, maxWidth = 520, onResizeStateChange, onToggleCollapse: _onToggleCollapse, onScrollMetricsChange, showFooter = true,
+  activeChatTileId = null,
 }: Props): React.JSX.Element {
   const fonts = useAppFonts()
   const theme = useTheme()
@@ -520,21 +527,61 @@ const visibleSessions = useMemo(() => {
       })
   }, [visibleSessions, displayedSessions, projectEntries, threadOrganizeMode, getProjectCount])
 
+  // Search should hit ALL loaded sessions, not just the paged subset —
+  // otherwise hidden-for-performance items would be unsearchable. When a
+  // query is present we rebuild groups from the full `visibleSessions`
+  // list and skip pagination; when empty we fall back to the paged view.
   const filteredSessionGroups = useMemo(() => {
     const q = projectSearch.trim().toLowerCase()
     if (!q) return displayedSessionGroups
-    return displayedSessionGroups
-      .map(group => {
-        const labelMatch = group.label.toLowerCase().includes(q)
-        const matchedSessions = group.sessions.filter(s => s.title.toLowerCase().includes(q))
-        if (labelMatch) return group
-        if (matchedSessions.length === 0) return null
-        return { ...group, sessions: matchedSessions }
-      })
-      .filter(Boolean) as typeof displayedSessionGroups
-  }, [displayedSessionGroups, projectSearch])
 
-  const hasMoreSessions = threadOrganizeMode === 'chronological'
+    const matchesSession = (session: SessionEntry): boolean => {
+      if (session.title?.toLowerCase().includes(q)) return true
+      if (session.lastMessage?.toLowerCase().includes(q)) return true
+      return false
+    }
+
+    if (threadOrganizeMode === 'chronological') {
+      const allMatched = visibleSessions.filter(matchesSession)
+      if (allMatched.length === 0) return []
+      return [{
+        projectId: 'chronological',
+        projectPath: '',
+        representativeWorkspaceId: null,
+        key: 'chronological',
+        label: 'Threads',
+        sessions: allMatched,
+      }]
+    }
+
+    return projectEntries
+      .map(projectEntry => {
+        const projectPath = normalizeSidebarPath(projectEntry.path)
+        const workspaceIdSet = new Set(projectEntry.workspaceIds)
+        const allWorkspaceSessions = visibleSessions.filter(session => {
+          const sessionProjectPath = normalizeSidebarPath(session.projectPath ?? session.workspacePath)
+          if (sessionProjectPath) return sessionProjectPath === projectPath
+          return workspaceIdSet.has(session.workspaceId)
+        })
+        const label = getProjectDisplayLabel(projectEntry)
+        const labelMatch = label.toLowerCase().includes(q)
+        const matchedSessions = labelMatch
+          ? allWorkspaceSessions
+          : allWorkspaceSessions.filter(matchesSession)
+        if (matchedSessions.length === 0) return null
+        return {
+          projectId: projectEntry.id,
+          projectPath: projectEntry.path,
+          representativeWorkspaceId: projectEntry.representativeWorkspaceId,
+          key: projectEntry.id,
+          label,
+          sessions: matchedSessions,
+        } as SessionProjectGroup
+      })
+      .filter(Boolean) as SessionProjectGroup[]
+  }, [displayedSessionGroups, projectSearch, threadOrganizeMode, visibleSessions, projectEntries])
+
+  const hasMoreSessions = threadOrganizeMode === 'chronological' && !projectSearch.trim()
     ? displayedSessions.length < visibleSessions.length
     : false
 
@@ -897,6 +944,11 @@ const visibleSessions = useMemo(() => {
                       indent={Math.max(1, session.displayIndent + 1)}
                       extraWidth={24}
                       title={`${session.title}\n${session.sourceLabel}${session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}`}
+                      emphasize={
+                        activeChatTileId
+                          ? session.tileId === activeChatTileId
+                          : undefined
+                      }
                       onClick={() => {
                         if (session.tileId && openTileIdSet.has(session.tileId)) {
                           onFocusTile(session.tileId)
@@ -963,8 +1015,11 @@ const visibleSessions = useMemo(() => {
                   )}
 
                   {/* Per-project "show more". Only renders when this specific
-                      project has more threads than currently displayed. */}
+                      project has more threads than currently displayed. Hidden
+                      while searching because search already spans the full
+                      session list, not just the paged subset. */}
                   {threadOrganizeMode === 'project'
+                    && !projectSearch.trim()
                     && !isThreadGroupCollapsed(group)
                     && (projectSessionTotals[group.projectId] ?? 0) > group.sessions.length && (
                     <button

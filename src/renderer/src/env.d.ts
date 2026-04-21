@@ -71,12 +71,20 @@ interface ElectronAPI {
     onOpencodeModelsUpdated(cb: (payload: { models: Array<{ id: string; label: string; description?: string }>; source: string; error?: string }) => void): () => void
     openclawAgents(): Promise<{ agents: Array<{ id: string; label: string; description?: string }> }>
     selectFiles(): Promise<string[]>
+    writeTempAttachment(payload: { data: string; mime?: string; ext?: string; filenameHint?: string }): Promise<{ ok: true; path: string } | { ok: false; error: string }>
     answerUserQuestion(payload: {
       cardId: string
       toolId: string | null
       answers: Record<string, string>
       annotations?: Record<string, { notes?: string; preview?: string }>
     }): Promise<{ ok: boolean; error?: string }>
+    answerToolPermission(payload: {
+      cardId: string
+      toolId: string | null
+      // `never` persists a deny-grant so subsequent calls auto-reject.
+      decision: 'deny' | 'never' | 'once' | 'session' | 'today' | 'forever'
+    }): Promise<{ ok: boolean; error?: string }>
+    setPermissionMode(payload: { cardId: string; mode: string }): Promise<{ ok: boolean; error?: string }>
   }
   shell?: {
     openExternal(url: string): Promise<void>
@@ -235,7 +243,20 @@ interface ElectronAPI {
       tiles: import('../../shared/types').ExtensionTileContrib[]
     }>
     listTiles(): Promise<import('../../shared/types').ExtensionTileContrib[]>
+    listChatSurfaces(): Promise<Array<{
+      extId: string
+      id: string
+      label: string
+      description?: string
+      icon?: string
+      entry: string
+      emits: 'image' | 'text'
+      defaultHeight: number
+      minHeight: number
+      uiMode?: 'native' | 'custom'
+    }>>
     tileEntry(extId: string, tileType: string, tileId?: string): Promise<string | null>
+    chatSurfaceEntry(extId: string, surfaceId: string, instanceId?: string): Promise<string | null>
     getBridgeScript(tileId: string, extId: string): Promise<string>
     enable(extId: string): Promise<boolean>
     disable(extId: string): Promise<boolean>
@@ -254,6 +275,26 @@ interface ElectronAPI {
   }
   homedir: string
   platform: NodeJS.Platform
+  skills: {
+    inspect(zipPath: string): Promise<{
+      name: string
+      description: string
+      topFolder: string
+      entryCount: number
+      hasSkillMd: boolean
+      preview: string
+      zipPath: string
+      sizeBytes: number
+    }>
+    install(args: { zipPath: string; targetDir?: string; overwrite?: boolean }): Promise<{
+      installedPath: string
+      entries: string[]
+      targetDir: string
+    }>
+    getDefaultTargetDir(): Promise<string>
+    ready(): Promise<boolean>
+    onFileOpened(callback: (payload: { path: string }) => void): () => void
+  }
   bus: {
     publish(channel: string, type: string, source: string, payload: Record<string, unknown>): Promise<import('../../shared/types').BusEvent>
     subscribe(channel: string, subscriberId: string, callback: (event: import('../../shared/types').BusEvent) => void): () => void

@@ -158,6 +158,7 @@ export interface ExtensionManifest {
   ui?: ExtensionUIContrib
   contributes?: {
     tiles?: ExtensionTileEntry[]
+    chatSurfaces?: ExtensionChatSurfaceEntry[]
     mcpTools?: ExtensionMCPToolContrib[]
     contextMenu?: ExtensionContextMenuContrib[]
     settings?: ExtensionSettingContrib[]
@@ -181,6 +182,24 @@ export interface ExtensionTileEntry {
 }
 
 export interface ExtensionTileContrib extends ExtensionTileEntry {
+  extId: string
+  uiMode?: 'native' | 'custom'
+}
+
+export interface ExtensionChatSurfaceEntry {
+  id: string
+  label: string
+  description?: string
+  icon?: string
+  entry: string
+  /** What the surface produces when flushed. Defaults to 'image'. */
+  emits?: 'image' | 'text'
+  /** Preferred panel height in px when mounted above the composer. */
+  defaultHeight?: number
+  minHeight?: number
+}
+
+export interface ExtensionChatSurfaceContrib extends ExtensionChatSurfaceEntry {
   extId: string
   uiMode?: 'native' | 'custom'
 }
@@ -383,13 +402,22 @@ export interface AppSettings {
   }
 }
 
-export type ToolPermissionDecisionScope = 'once' | 'session' | 'today' | 'forever'
+// All possible scopes the user can pick in the permission card.
+// - once    : one-shot allow
+// - session : persist allow for the current in-memory session
+// - today   : persist allow until end of local day
+// - forever : persist allow permanently (across restarts)
+// - never   : persist deny permanently — the tool is silently denied next
+//             time without re-prompting. Mirrors `forever` but for deny.
+export type ToolPermissionDecisionScope = 'once' | 'session' | 'today' | 'forever' | 'never'
 
 export interface ToolPermissionGrant {
   id: string
   provider: string
   toolName: string
-  action: 'allow'
+  // `allow` grants silently auto-approve on match; `deny` grants silently
+  // auto-reject. Only the latter is created for the `never` scope.
+  action: 'allow' | 'deny'
   scope: Exclude<ToolPermissionDecisionScope, 'once'>
   workspaceDir: string | null
   title?: string | null

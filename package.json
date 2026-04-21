@@ -109,6 +109,15 @@
     ],
     "beforeBuild": "scripts/before-build.js",
     "icon": "resources/icon.png",
+    "fileAssociations": [
+      {
+        "ext": "skill",
+        "name": "Claude Skill",
+        "description": "Claude agent skill bundle",
+        "role": "Viewer",
+        "icon": "resources/icon.png"
+      }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [

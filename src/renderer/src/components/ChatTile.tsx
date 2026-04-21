@@ -12,13 +12,14 @@ import { dispatchOpenLink, findAnchorFromEventTarget } from '../utils/links'
 import {
   ShieldCheck, ChevronDown, AlertTriangle,
   Check, ArrowUp, ArrowDown, Square, MessageSquare, Bot,
-  Brain, ChevronRight, Clock, DollarSign,
-  FileText, Folder, GripVertical, Paperclip, Plus, Trash2, Wrench
+  Brain, ChevronRight, Clock, Cog, DollarSign,
+  FileText, Folder, GripVertical, Lock, Paperclip, Pencil, Plus, Trash2, Wrench
 } from 'lucide-react'
 import { useMCPServers, type MCPServerEntry } from '../hooks/useMCPServers'
 import { useAppFonts } from '../FontContext'
 import { useTheme } from '../ThemeContext'
 import { ensureShimmerStyles, ShimmerText, WorkingDots, ChatMarkdown } from './shared/streamdown-utils'
+import { DiffView } from './chat/DiffView'
 import {
   type BuiltinProvider, type ModelOption, type ModeOption, type ThinkingOption,
   DEFAULT_MODELS, DEFAULT_PROVIDER_ID, PROVIDER_MODES, EXTENSION_PROVIDER_MODE,
@@ -29,8 +30,19 @@ import { stripCapabilityPrefix, getAllNodeTools } from '../../../shared/nodeTool
 import type { ToolBlock, ThinkingBlock, ContentBlock, ChatMessage, BlockNote } from '../../../shared/chat-types'
 import { BlockNoteAffordance } from './chat/BlockNoteAffordance'
 import { getChatTileRuntimeState, setChatTileRuntimeState, reviveChatTileRuntimeState, isChatTileRuntimeStateDisposed } from './chatTileRuntimeState'
-import { setTileTodos, clearTileTodos, type TileTodoItem } from '../state/tileTodosStore'
+import { setTileTodos, clearTileTodos, useTileTodos, type TileTodoItem } from '../state/tileTodosStore'
+import { CUSTOMISATION_LOCATIONS_CHANGED_EVENT, type CustomisationLocationsChangedDetail } from './CustomisationTile'
+import { PlanCard } from './chat/PlanCard'
+import { PlanPane } from './chat/PlanPane'
+import { PlanChip } from './chat/PlanChip'
 import { JSXPreview, JSXPreviewContent, JSXPreviewError } from './ai-elements/JSXPreview'
+import {
+  ToolPermissionCard,
+  ToolPermissionProvider,
+  useToolPermissionContext,
+  type ToolPermissionDecision,
+  type ToolPermissionRequest,
+} from './ai-elements/ToolPermission'
 
 const CHAT_SLASH_COMMANDS = [
   { value: '/compact', description: 'Compact conversation' },
@@ -56,7 +68,15 @@ const CHAT_DEFAULT_SKILL_LOCATIONS = [
 function resolveChatSkillLocations(raw: string, homePath: string, workspacePath: string | null): string[] {
   return raw
     .split('\n')
-    .map(line => line.trim())
+    .map(line => {
+      // Strip optional surrounding quotes and convert shell-style escapes
+      // (e.g. `Application\ Support`) into literal characters. Without this
+      // a pasted shell path silently fails the `readDir` lookup.
+      let l = line.trim()
+      if (!l) return ''
+      if ((l.startsWith('"') && l.endsWith('"')) || (l.startsWith("'") && l.endsWith("'"))) l = l.slice(1, -1)
+      return l.replace(/\\([ \t()'"\\])/g, '$1')
+    })
     .filter(Boolean)
     .filter(line => workspacePath || !line.startsWith('$WORKSPACE'))
     .map(line => line.replace(/^\$HOME/, homePath).replace(/^\$WORKSPACE/, workspacePath ?? ''))
@@ -198,6 +218,41 @@ function isUrgentQueuedContent(text: string): boolean {
 interface PendingAttachment {
   path: string
   kind: 'image' | 'file'
+}
+
+/**
+ * Chat-surface extension mounted above the composer (e.g. Sketch).
+ * Only one active at a time per chat tile. The host caches the latest
+ * payload via an RPC message from the extension and flushes it to a
+ * temp file on send.
+ */
+interface ActiveChatSurface {
+  extId: string
+  surfaceId: string
+  label: string
+  instanceId: string
+  entryUrl: string
+  emits: 'image' | 'text'
+  height: number
+  minHeight: number
+  /** Last payload pushed up from the iframe via surface.setPayload */
+  payload: null | {
+    kind: 'image' | 'text'
+    data: string
+    mime?: string
+    ext?: string
+  }
+}
+
+interface ChatSurfaceMenuEntry {
+  extId: string
+  surfaceId: string
+  label: string
+  description?: string
+  icon?: string
+  emits: 'image' | 'text'
+  defaultHeight: number
+  minHeight: number
 }
 
 interface QueuedChatTurn {
@@ -660,6 +715,7 @@ function AskUserQuestionChip({ block, payload }: { block: ToolBlock; payload: As
   )
 }
 
+
 // --- Font defaults (used when no settings are provided) --------------------------
 
 // Use the canonical font stacks from shared/types.ts DEFAULT_FONTS
@@ -956,6 +1012,39 @@ async function buildRecentEditContext(messages: ChatMessage[], workspaceDir: str
 
   if (combined.length <= RECENT_EDIT_CONTEXT_MAX_CHARS) return combined
   return `${combined.slice(0, RECENT_EDIT_CONTEXT_MAX_CHARS - 1).trimEnd()}…`
+}
+
+/** Per-turn annotations ("block notes") the user has stuck onto earlier
+ *  messages, tool calls, or thinking blocks are pure UI state by default —
+ *  they never reach the model. This helper serialises them into a compact
+ *  markdown block that we append to the newest outgoing user message so the
+ *  agent can read them as guidance. Capped in size to avoid ballooning the
+ *  request, and silently returns null when there's nothing to send. */
+const BLOCK_NOTES_CONTEXT_MAX_CHARS = 4000
+function buildBlockNotesContext(messages: ChatMessage[]): string | null {
+  const lines: string[] = []
+  for (let turnIdx = 0; turnIdx < messages.length; turnIdx += 1) {
+    const msg = messages[turnIdx]
+    if (msg.note?.text) {
+      const snippet = (msg.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+      lines.push(`- [${msg.role} turn ${turnIdx + 1}${snippet ? `: "${snippet}${snippet.length >= 80 ? '…' : ''}"` : ''}] ${msg.note.text}`)
+    }
+    for (const tb of msg.toolBlocks ?? []) {
+      if (tb.note?.text) {
+        lines.push(`- [tool \`${tb.name}\`] ${tb.note.text}`)
+      }
+    }
+    for (const tk of msg.thinkingBlocks ?? []) {
+      if (tk.note?.text) {
+        const snippet = (tk.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+        lines.push(`- [thinking${snippet ? `: "${snippet}${snippet.length >= 80 ? '…' : ''}"` : ''}] ${tk.note.text}`)
+      }
+    }
+  }
+  if (lines.length === 0) return null
+  const body = 'User annotations on earlier turns (treat as durable guidance, not fresh requests):\n' + lines.join('\n')
+  if (body.length <= BLOCK_NOTES_CONTEXT_MAX_CHARS) return body
+  return `${body.slice(0, BLOCK_NOTES_CONTEXT_MAX_CHARS - 1).trimEnd()}…`
 }
 
 function splitMessageAttachmentPaths(text: string): {
@@ -1574,18 +1663,19 @@ const ChatMessageContent = React.memo(({
   const { bodyText, attachmentPaths } = useMemo(() => splitMessageAttachmentPaths(text), [text])
   // JSX preview disabled — was causing render lockups on message history load
   // const bodySegments = useMemo(() => splitRenderableMessageSegments(bodyText, isStreaming), [bodyText, isStreaming])
-  const chipBackground = isUser
-    ? 'rgba(255,255,255,0.1)'
-    : theme.surface.panelMuted
-  const chipBorder = isUser
-    ? 'rgba(255,255,255,0.18)'
-    : theme.border.subtle
-  const chipText = isUser
-    ? '#f8fbff'
-    : theme.text.primary
-  const chipMeta = isUser
-    ? 'rgba(255,255,255,0.72)'
-    : theme.text.disabled
+  // Chip colors must stay legible regardless of whether the parent message
+  // bubble is dark (dark theme user bubble) or light (light theme user
+  // bubble). In light mode we pick an explicitly-white chip surface with a
+  // strong border and a forced-dark text colour so we don't blend into the
+  // pale user bubble — previously `theme.surface.panelElevated` was nearly
+  // identical to the bubble and child text colours were inheriting light
+  // values from elsewhere, producing a "ghost chip" effect.
+  void isUser
+  const isLight = theme.mode === 'light'
+  const chipBackground = isLight ? '#ffffff' : theme.surface.panelElevated
+  const chipBorder = isLight ? 'rgba(15,23,42,0.18)' : theme.border.default
+  const chipText = isLight ? '#1b2430' : theme.text.primary
+  const chipMeta = isLight ? '#2d3748' : theme.text.secondary
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: bodyText && attachmentPaths.length > 0 ? 12 : 0, minWidth: 0, width: '100%' }}>
@@ -1607,6 +1697,7 @@ const ChatMessageContent = React.memo(({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
             {attachmentPaths.map(path => {
               const wasRead = readAttachmentPaths?.has(path) === true
+              const isImage = isImagePath(path)
               return (
                 <button
                   key={path}
@@ -1616,18 +1707,34 @@ const ChatMessageContent = React.memo(({
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 5,
+                    gap: 6,
                     minWidth: 0,
                     maxWidth: '100%',
                     borderRadius: 6,
                     border: `1px solid ${chipBorder}`,
                     background: chipBackground,
                     color: chipText,
-                    padding: '3px 7px',
+                    padding: isImage ? 3 : '3px 7px',
                     cursor: 'pointer',
                   }}
                 >
-                  <FileText size={10} style={{ flexShrink: 0, opacity: 0.8 }} />
+                  {isImage ? (
+                    <img
+                      src={`contex-file://${encodeURI(path).replace(/#/g, '%23')}`}
+                      alt={basename(path)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        objectFit: 'cover',
+                        borderRadius: 4,
+                        flexShrink: 0,
+                        display: 'block',
+                        background: isLight ? '#f5f7fb' : 'rgba(255,255,255,0.04)',
+                      }}
+                    />
+                  ) : (
+                    <FileText size={10} color={chipText} style={{ flexShrink: 0, opacity: 0.85 }} />
+                  )}
                   <span
                     style={{
                       minWidth: 0,
@@ -1637,6 +1744,8 @@ const ChatMessageContent = React.memo(({
                       whiteSpace: 'nowrap',
                       fontSize: Math.max(10, fonts.size - 2),
                       lineHeight: 1.2,
+                      color: chipText,
+                      paddingRight: isImage ? 6 : 0,
                     }}
                   >
                     {basename(path)}
@@ -1645,7 +1754,7 @@ const ChatMessageContent = React.memo(({
                     <Check
                       size={10}
                       color={theme.status.success}
-                      style={{ flexShrink: 0 }}
+                      style={{ flexShrink: 0, marginRight: isImage ? 4 : 0 }}
                       aria-label="Read by the model"
                     />
                   )}
@@ -1865,6 +1974,16 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   // before they get tucked into "Called N tools"). Populated by an effect
   // that walks messages; cleared when the chip is gone from state.
   const toolCompletedAtRef = useRef<Map<string, number>>(new Map())
+  // Inline tool-permission prompts. Keyed by tool_use id.
+  // `pending` holds active requests awaiting a user decision.
+  // `resolved` holds recently-answered ones so the chip collapses gracefully
+  // instead of vanishing the moment the user clicks.
+  const [pendingToolPermissions, setPendingToolPermissions] = useState<Map<string, ToolPermissionRequest>>(() => new Map())
+  const [resolvedToolPermissions, setResolvedToolPermissions] = useState<Map<string, ToolPermissionDecision>>(() => new Map())
+  const handleToolPermissionDecision = useCallback(async (args: { cardId: string; toolId: string; decision: ToolPermissionDecision }) => {
+    const res = await window.electron?.chat?.answerToolPermission?.(args)
+    return res ?? { ok: true }
+  }, [])
   const [executionTarget, setExecutionTarget] = useState<'local' | 'cloud'>(() => initialExecutionTarget)
   const [cloudHostId, setCloudHostId] = useState<string | null>(() => initialCloudHostId)
   const [provider, setProvider] = useState<string>(() => initialProvider)
@@ -2046,6 +2165,10 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     return () => { for (const u of unsubs) u() }
   }, [connectedPeerSignature, tileId])
   const [mode, setMode] = useState(() => initialMode)
+  // Tracks the permission mode we last pushed to the running Claude query so
+  // user-initiated mid-stream mode switches (Default -> Bypass etc.) propagate
+  // into the active canUseTool closure via chat:setPermissionMode.
+  const lastPushedModeRef = useRef<string>(initialMode)
   const [thinking, setThinking] = useState(() => initialRuntimeStateRef.current?.thinking ?? 'adaptive')
   const [autoAgentMode, setAutoAgentMode] = useState(() => initialRuntimeStateRef.current?.autoAgentMode ?? false)
   const effectiveAgentMode = Boolean(isConnected || isAutoConnected || autoAgentMode)
@@ -2067,6 +2190,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [openclawAgents, setOpenclawAgents] = useState<ModelOption[]>(DEFAULT_MODELS.openclaw)
   const [modelFilter, setModelFilter] = useState('')
   const [attachments, setAttachments] = useState<PendingAttachment[]>(() => initialRuntimeStateRef.current?.attachments ?? [])
+  // Chat-surface extensions (e.g. Sketch) mounted above the composer. One at a time.
+  const [activeChatSurface, setActiveChatSurface] = useState<ActiveChatSurface | null>(null)
+  const [chatSurfaceMenu, setChatSurfaceMenu] = useState<ChatSurfaceMenuEntry[]>([])
+  const activeChatSurfaceRef = useRef<ActiveChatSurface | null>(null)
+  useEffect(() => { activeChatSurfaceRef.current = activeChatSurface }, [activeChatSurface])
+  const chatSurfaceIframeRef = useRef<HTMLIFrameElement | null>(null)
   const [queuedTurns, setQueuedTurns] = useState<QueuedChatTurn[]>(() => initialRuntimeStateRef.current?.queuedTurns ?? [])
   // Drag-reorder state for the queued-turn list. A row can be dropped above
   // ('before'), below ('after'), or onto ('into') another row — the last case
@@ -2111,6 +2240,20 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [isDictating, setIsDictating] = useState(false)
   const [dictationText, setDictationText] = useState('')
   const recognitionRef = useRef<any>(null)
+
+  // Plan pane (right-docked inline plan panel). Subscribes to the per-tile
+  // todos store so the pane, the composer chip, and the transcript's inline
+  // PlanCard all share one source of truth (latest TodoWrite block).
+  const planTodos = useTileTodos(tileId)
+  const [isPlanOpen, setIsPlanOpen] = useState(false)
+  // Auto-close when the plan goes away (conversation cleared / new chat).
+  useEffect(() => {
+    if (!planTodos || planTodos.length === 0) setIsPlanOpen(false)
+  }, [planTodos])
+  const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null)
+  useEffect(() => {
+    if (planTodos && planTodos.length > 0) setPlanUpdatedAt(Date.now())
+  }, [planTodos])
 
   // Autocomplete state
   const [acType, setAcType] = useState<'slash' | 'mention' | null>(null)
@@ -2220,12 +2363,33 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
   useEffect(() => { ensureChatMdStyle() }, [])
 
+  // Bumped whenever CustomisationTile saves a new set of skill/prompt
+  // locations, so the skill-discovery effect below re-runs and picks up new
+  // folders (or drops skills from removed folders).
+  const [skillLocationsVersion, setSkillLocationsVersion] = useState(0)
+  useEffect(() => {
+    const handler = (event: Event): void => {
+      const detail = (event as CustomEvent<CustomisationLocationsChangedDetail>).detail
+      if (!detail) return
+      if (detail.kind !== 'skills' && detail.kind !== 'prompts') return
+      const currentWorkspace = _workspaceDir?.trim() || null
+      if (currentWorkspace && detail.workspacePath && detail.workspacePath !== currentWorkspace) return
+      setSkillLocationsVersion(v => v + 1)
+    }
+    window.addEventListener(CUSTOMISATION_LOCATIONS_CHANGED_EVENT, handler as EventListener)
+    return () => window.removeEventListener(CUSTOMISATION_LOCATIONS_CHANGED_EVENT, handler as EventListener)
+  }, [_workspaceDir])
+
   useEffect(() => {
     let cancelled = false
     const workspacePath = _workspaceDir?.trim() || null
     const homePath = window.electron.homedir ?? ''
     const skillsPath = workspacePath ? `${workspacePath}/.contex/customisation/skills.json` : null
     const locationsPath = workspacePath ? `${workspacePath}/.contex/customisation/locations-skills.json` : null
+    // Commands are conceptually prompts — the Prompts locations panel is the
+    // canonical place users add slash-command folders. Merge both lists so any
+    // folder added under Prompts OR Skills gets scanned for chat skills.
+    const promptLocationsPath = workspacePath ? `${workspacePath}/.contex/customisation/locations-prompts.json` : null
 
     ;(async () => {
       const discovered = new Map<string, SkillDefinition>()
@@ -2260,36 +2424,63 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         }
       }
 
-      let rawLocations = CHAT_DEFAULT_SKILL_LOCATIONS
-      if (locationsPath) {
-        const locationsRaw = await window.electron.fs.readFile(locationsPath).catch(() => '')
-        if (locationsRaw) {
-          try {
-            const parsed = JSON.parse(locationsRaw)
-            if (typeof parsed === 'string' && parsed.trim()) rawLocations = parsed
-          } catch {
-            if (locationsRaw.trim()) rawLocations = locationsRaw
-          }
+      const readLocationsFile = async (path: string | null): Promise<string> => {
+        if (!path) return ''
+        const raw = await window.electron.fs.readFile(path).catch(() => '')
+        if (!raw) return ''
+        try {
+          const parsed = JSON.parse(raw)
+          if (typeof parsed === 'string') return parsed
+        } catch {
+          return raw
         }
+        return ''
       }
 
-      const dirs = resolveChatSkillLocations(rawLocations, homePath, workspacePath)
+      const skillsLocationsText = await readLocationsFile(locationsPath)
+      const promptsLocationsText = await readLocationsFile(promptLocationsPath)
+      const mergedSources = [skillsLocationsText, promptsLocationsText].filter(s => s && s.trim()).join('\n')
+      const rawLocations = mergedSources.trim() ? mergedSources : CHAT_DEFAULT_SKILL_LOCATIONS
+
+      const seenDirs = new Set<string>()
+      const dirs = resolveChatSkillLocations(rawLocations, homePath, workspacePath).filter(d => {
+        if (seenDirs.has(d)) return false
+        seenDirs.add(d)
+        return true
+      })
+      // Claude-format skills are sub-folders containing `SKILL.md`. Other
+      // tools drop a single `.md`/`.txt`/`.mdc` file at the top level. Support
+      // both so e.g. `~/Library/Application Support/Claude/skills/foo/SKILL.md`
+      // is picked up as skill "foo".
+      const registerDiscoveredSkill = (filePath: string, fallbackName: string, content: string, dir: string): void => {
+        const nameMatch = content.match(/^---[\s\S]*?name:\s*(.+?)$/m)
+        const descriptionMatch = content.match(/^---[\s\S]*?description:\s*(.+?)$/m)
+        const name = nameMatch?.[1]?.trim() ?? fallbackName
+        registerSkill({
+          id: `discovered-${filePath}`,
+          name,
+          description: descriptionMatch?.[1]?.trim() ?? `From ${dir}`,
+          content,
+          command: name,
+        })
+      }
       for (const dir of dirs) {
         const entries: Array<{ name: string; path: string; isDir: boolean; ext: string }> = await window.electron.fs.readDir(dir).catch(() => [])
         for (const entry of entries) {
-          if (entry.isDir || (entry.ext !== '.md' && entry.ext !== '.txt' && entry.ext !== '.mdc')) continue
+          if (entry.isDir) {
+            const sub: Array<{ name: string; path: string; isDir: boolean; ext: string }> = await window.electron.fs.readDir(entry.path).catch(() => [])
+            const skillFile = sub.find(e => !e.isDir && /^skill\.md$/i.test(e.name))
+              ?? sub.find(e => !e.isDir && /^skill\.(txt|mdc)$/i.test(e.name))
+            if (!skillFile) continue
+            const content = await window.electron.fs.readFile(skillFile.path).catch(() => '')
+            if (!content) continue
+            registerDiscoveredSkill(skillFile.path, entry.name, content, dir)
+            continue
+          }
+          if (entry.ext !== '.md' && entry.ext !== '.txt' && entry.ext !== '.mdc') continue
           const content = await window.electron.fs.readFile(entry.path).catch(() => '')
           if (!content) continue
-          const nameMatch = content.match(/^---[\s\S]*?name:\s*(.+?)$/m)
-          const descriptionMatch = content.match(/^---[\s\S]*?description:\s*(.+?)$/m)
-          const name = nameMatch?.[1]?.trim() ?? entry.name.replace(/\.(md|txt|mdc)$/i, '')
-          registerSkill({
-            id: `discovered-${entry.path}`,
-            name,
-            description: descriptionMatch?.[1]?.trim() ?? `From ${dir}`,
-            content,
-            command: name,
-          })
+          registerDiscoveredSkill(entry.path, entry.name.replace(/\.(md|txt|mdc)$/i, ''), content, dir)
         }
       }
 
@@ -2300,7 +2491,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     })
 
     return () => { cancelled = true }
-  }, [_workspaceDir])
+  }, [_workspaceDir, skillLocationsVersion])
 
   useEffect(() => {
     window.electron?.bus?.publish(`tile:${tileId}`, 'tool_inventory', `chat:${tileId}`, {
@@ -2479,17 +2670,25 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   // progressive-collapse logic (applyLiveCollapse below) can apply a grace
   // period before folding a freshly-finished chip into the group summary.
   // Also prune entries for tool ids that no longer exist in state.
+  const toolStampInitialRunRef = useRef(true)
   useEffect(() => {
     const seen = new Set<string>()
     const now = Date.now()
+    // On first run (history load) stamp already-done tools as if they
+    // completed before the grace window so they're immediately eligible
+    // to fold. Subsequent runs stamp freshly-completed tools with `now`
+    // so live streaming still gets the full grace period.
+    const initialRun = toolStampInitialRunRef.current
+    const stampValue = initialRun ? 0 : now
     for (const msg of messages) {
       for (const tb of msg.toolBlocks ?? []) {
         seen.add(tb.id)
         if (tb.status === 'done' && !toolCompletedAtRef.current.has(tb.id)) {
-          toolCompletedAtRef.current.set(tb.id, now)
+          toolCompletedAtRef.current.set(tb.id, stampValue)
         }
       }
     }
+    toolStampInitialRunRef.current = false
     // Drop stale entries for tool blocks that got removed (e.g. conversation
     // cleared / message regenerated).
     for (const id of Array.from(toolCompletedAtRef.current.keys())) {
@@ -2596,6 +2795,22 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     if (!isStreaming) return
     lastActivityAtRef.current = Date.now()
   }, [messages, isStreaming])
+
+  // Push permission-mode changes into the running Claude query. Only fires
+  // when mode actually changed during an active stream — initial mount and
+  // stream start re-baseline the ref so the next user-initiated switch gets
+  // detected. Only Claude's SDK supports runtime mode changes; other providers
+  // will need a per-turn restart (out of scope).
+  useEffect(() => {
+    if (!isStreaming) {
+      lastPushedModeRef.current = mode
+      return
+    }
+    if (provider !== 'claude') return
+    if (lastPushedModeRef.current === mode) return
+    lastPushedModeRef.current = mode
+    void window.electron?.chat?.setPermissionMode?.({ cardId: tileId, mode })
+  }, [mode, isStreaming, provider, tileId])
 
   // Tick every 500ms while streaming (and for ~7s afterwards) so time-based
   // UI can recompute: the quiet-indicator's "quiet for Xs" counter, and the
@@ -2835,7 +3050,20 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   // Set of attachment paths the model has actually loaded (via Read-style
   // tools). Drives the confirmation tick on attachment chips — must stay
   // authoritative: only paths demonstrably consumed by the model appear here.
-  const readAttachmentPaths = useMemo(() => collectModelReadPaths(messages), [messages])
+  //
+  // Keyed on the sorted content of the set so the Set identity is stable
+  // across streaming ticks that don't add a new Read tool call. This is
+  // load-bearing: ChatMessageContent receives this prop and is React.memo'd;
+  // a fresh Set every token would break memo for every completed block on
+  // every single token, causing a full message re-render storm.
+  const readPathsSnapshot = useMemo(
+    () => [...collectModelReadPaths(messages)].sort().join('\u0000'),
+    [messages],
+  )
+  const readAttachmentPaths = useMemo(
+    () => new Set(readPathsSnapshot ? readPathsSnapshot.split('\u0000') : []),
+    [readPathsSnapshot],
+  )
   const estimatedContextTokens = useMemo(() => {
     const totalChars = messages.reduce((sum, message) => sum + estimateMessageChars(message), 0) + input.length
     const conversationTokens = Math.max(0, Math.round(totalChars / 4))
@@ -3362,6 +3590,59 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           })
           break
 
+        case 'tool_permission_request': {
+          const pid = typeof event.toolId === 'string' ? event.toolId : null
+          if (!pid) break
+          const request: ToolPermissionRequest = {
+            toolId: pid,
+            toolName: typeof event.toolName === 'string' ? event.toolName : 'tool',
+            provider: typeof event.provider === 'string' ? event.provider : 'claude',
+            title: typeof event.title === 'string' ? event.title : null,
+            description: typeof event.description === 'string' ? event.description : null,
+            blockedPath: typeof event.blockedPath === 'string' ? event.blockedPath : null,
+            workspaceDir: typeof event.workspaceDir === 'string' ? event.workspaceDir : null,
+          }
+          setPendingToolPermissions(prev => {
+            const next = new Map(prev)
+            next.set(pid, request)
+            return next
+          })
+          setResolvedToolPermissions(prev => {
+            if (!prev.has(pid)) return prev
+            const next = new Map(prev)
+            next.delete(pid)
+            return next
+          })
+          break
+        }
+
+        case 'tool_permission_resolved': {
+          const pid = typeof event.toolId === 'string' ? event.toolId : null
+          if (!pid) break
+          const decision: ToolPermissionDecision =
+            event.decision === 'deny' || event.decision === 'once' || event.decision === 'session'
+              || event.decision === 'today' || event.decision === 'forever'
+              ? event.decision
+              : 'once'
+          setPendingToolPermissions(prev => {
+            if (!prev.has(pid)) return prev
+            const next = new Map(prev)
+            next.delete(pid)
+            return next
+          })
+          // Only persist a visible "resolved" banner for denials — allowed
+          // tools let the normal chip render the tool result. Denials need a
+          // permanent explanation since no tool_result follows.
+          if (decision === 'deny') {
+            setResolvedToolPermissions(prev => {
+              const next = new Map(prev)
+              next.set(pid, decision)
+              return next
+            })
+          }
+          break
+        }
+
         case 'tool_progress':
           updateLast(m => {
             const blocks = [...(m.toolBlocks ?? [])]
@@ -3423,28 +3704,45 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     return cleanup
   }, [tileId])
 
-  // Subscribe to incoming MCP peer commands on this tile's bus channel
+  // Subscribe to incoming MCP peer commands on this tile's bus channel.
+  // Strict gating so broadcasts from editor/extension peers don't spam every
+  // chat tile: the command must target THIS tileId explicitly, and the
+  // injected message id is a content hash so replays dedup instead of piling
+  // up identical `[App.tsx] …` noise lines.
   useEffect(() => {
     if (!window.electron?.bus) return
+    const seenPeerIds = new Set<string>()
     const unsubscribe = window.electron.bus.subscribe(`tile:${tileId}`, `chat:${tileId}:mcp`, (evt: any) => {
       if (!evt?.type?.startsWith('mcp_') && !String(evt.source || '').startsWith('mcp:')) return
       const payload = (evt.payload as Record<string, unknown>) || {}
       const command = typeof payload.command === 'string' ? payload.command : ''
-      if (!command) return
+      if (command !== 'chat_send_message' && command !== 'chat_acknowledge') return
 
-      if (command === 'chat_send_message' || command === 'chat_acknowledge') {
-        const text = typeof payload.message === 'string' ? payload.message : ''
-        if (!text) return
-        const prefix = command === 'chat_acknowledge' ? '🤝 ' : '📨 '
-        const incomingMsg: ChatMessage = {
-          id: `peer-${Date.now()}`,
-          role: 'user',
-          content: `${prefix}${text}`,
-          timestamp: Date.now(),
-          isStreaming: false,
-        }
-        setMessagesSafe(prev => [...prev, incomingMsg])
+      const targetCardId = typeof payload.cardId === 'string' ? payload.cardId
+        : typeof payload.tileId === 'string' ? payload.tileId
+        : null
+      // Reject broadcasts that don't explicitly target this tile.
+      if (!targetCardId || targetCardId !== tileId) return
+
+      const text = typeof payload.message === 'string' ? payload.message.trim() : ''
+      if (!text) return
+
+      const sig = `${evt.source ?? 'peer'}::${command}::${text}`
+      let hash = 0
+      for (let i = 0; i < sig.length; i++) hash = (hash * 31 + sig.charCodeAt(i)) | 0
+      const peerMsgId = `peer-${Math.abs(hash).toString(36)}`
+      if (seenPeerIds.has(peerMsgId)) return
+      seenPeerIds.add(peerMsgId)
+
+      const prefix = command === 'chat_acknowledge' ? '🤝 ' : '📨 '
+      const incomingMsg: ChatMessage = {
+        id: peerMsgId,
+        role: 'user',
+        content: `${prefix}${text}`,
+        timestamp: Date.now(),
+        isStreaming: false,
       }
+      setMessagesSafe(prev => (prev.some(m => m.id === peerMsgId) ? prev : [...prev, incomingMsg]))
     })
     return () => unsubscribe?.()
   }, [tileId])
@@ -3500,6 +3798,115 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setAttachments(prev => prev.filter(item => item.path !== path))
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [])
+
+  // ── Chat-surface extensions (e.g. Sketch) ─────────────────────────────────
+  // Re-query whenever extensions are enabled/disabled or the global
+  // extensions switch is flipped, so newly-installed chat surfaces (Sketch
+  // etc.) appear in the composer `+` menu without requiring a tile reload.
+  useEffect(() => {
+    let cancelled = false
+    const extensionsApi = (window.electron as unknown as { extensions?: { listChatSurfaces?: () => Promise<ChatSurfaceMenuEntry[] & Array<any>> } })?.extensions
+    const fetchMenu = () => {
+      if (!extensionsApi?.listChatSurfaces) {
+        setChatSurfaceMenu([])
+        return
+      }
+      extensionsApi.listChatSurfaces().then((entries: any[]) => {
+        if (cancelled) return
+        setChatSurfaceMenu((entries ?? []).map(e => ({
+          extId: String(e.extId),
+          surfaceId: String(e.id),
+          label: String(e.label ?? e.id),
+          description: e.description ? String(e.description) : undefined,
+          icon: e.icon ? String(e.icon) : undefined,
+          emits: e.emits === 'text' ? 'text' : 'image',
+          defaultHeight: Number.isFinite(e.defaultHeight) ? Number(e.defaultHeight) : 260,
+          minHeight: Number.isFinite(e.minHeight) ? Number(e.minHeight) : 160,
+        })))
+      }).catch(() => { if (!cancelled) setChatSurfaceMenu([]) })
+    }
+    fetchMenu()
+    const onChanged = () => fetchMenu()
+    window.addEventListener('codesurf:extensions-changed', onChanged)
+    return () => {
+      cancelled = true
+      window.removeEventListener('codesurf:extensions-changed', onChanged)
+    }
+  }, [])
+
+  const openChatSurface = useCallback(async (entry: ChatSurfaceMenuEntry) => {
+    setShowInsertMenu(false)
+    const instanceId = `surf-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`
+    const extensionsApi = (window.electron as unknown as { extensions?: { chatSurfaceEntry?: (ext: string, id: string, inst: string) => Promise<string | null> } })?.extensions
+    const url = extensionsApi?.chatSurfaceEntry
+      ? await extensionsApi.chatSurfaceEntry(entry.extId, entry.surfaceId, instanceId).catch(() => null)
+      : null
+    if (!url) {
+      // Surface could not be resolved (extension missing / disabled).
+      return
+    }
+    setActiveChatSurface({
+      extId: entry.extId,
+      surfaceId: entry.surfaceId,
+      label: entry.label,
+      instanceId,
+      entryUrl: url,
+      emits: entry.emits,
+      height: Math.max(entry.minHeight, entry.defaultHeight),
+      minHeight: entry.minHeight,
+      payload: null,
+    })
+  }, [])
+
+  const closeChatSurface = useCallback(() => {
+    setActiveChatSurface(null)
+  }, [])
+
+  // Listen for messages from the chat-surface iframe. We handle one method:
+  //   surface.setPayload  — caches the latest payload on the host.
+  // Other RPC methods fall through (the standard ExtensionTile bridge will
+  // answer them when/if the surface is promoted to a tile-style extension).
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      const msg = e.data
+      if (!msg || typeof msg !== 'object') return
+      const surface = activeChatSurfaceRef.current
+      if (!surface) return
+      if (msg.type !== 'contex-rpc') return
+      if (msg.tileId !== surface.instanceId) return
+
+      const reply = (result: unknown, error?: string) => {
+        const win = chatSurfaceIframeRef.current?.contentWindow
+        if (!win) return
+        win.postMessage({ type: 'contex-rpc-response', id: msg.id, result: error ? undefined : result, error }, '*')
+      }
+
+      if (msg.method === 'surface.setPayload') {
+        const payload = msg.params?.payload ?? null
+        setActiveChatSurface(prev => prev ? { ...prev, payload: payload && typeof payload === 'object' ? {
+          kind: payload.kind === 'text' ? 'text' : 'image',
+          data: String(payload.data ?? ''),
+          mime: typeof payload.mime === 'string' ? payload.mime : undefined,
+          ext: typeof payload.ext === 'string' ? payload.ext : undefined,
+        } : null } : prev)
+        reply(true)
+        return
+      }
+
+      // Minimal theme/meta support so extensions can still call these.
+      if (msg.method === 'tile.getMeta') {
+        reply({ tileId: surface.instanceId, extId: surface.extId, surfaceId: surface.surfaceId, kind: 'chat-surface' })
+        return
+      }
+      if (msg.method === 'theme.getColors') {
+        reply({})
+        return
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+  // ──────────────────────────────────────────────────────────────────────────
 
   const handleTileDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     // Ignore our own internal drags (queued-turn reorder, etc.) — they
@@ -3616,14 +4023,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
     try {
       const recentEditContext = await buildRecentEditContext(activeMessages, _workspaceDir, userBodyText)
+      const blockNotesContext = buildBlockNotesContext(activeMessages)
       const requestMessages = [...activeMessages, userMsg].map((message, index, allMessages) => {
         const isNewestUserMessage = index === allMessages.length - 1 && message.id === userMsg.id
-        if (!isNewestUserMessage || !recentEditContext) {
+        if (!isNewestUserMessage || (!recentEditContext && !blockNotesContext)) {
           return { role: message.role, content: message.content }
         }
+        // Both context blocks are appended to the newest user turn so they
+        // travel with the request the model is actually responding to, not
+        // as floating system noise earlier in the transcript.
+        const parts = [message.content]
+        if (recentEditContext) parts.push(`---\nRecent edit context:\n${recentEditContext}`)
+        if (blockNotesContext) parts.push(`---\n${blockNotesContext}`)
         return {
           role: message.role,
-          content: `${message.content}\n\n---\nRecent edit context:\n${recentEditContext}`.trim(),
+          content: parts.join('\n\n').trim(),
         }
       })
 
@@ -3824,7 +4238,53 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       return
     }
 
-    const messageContent = buildOutgoingMessageContent(input, attachments)
+    // Flush any active chat-surface (e.g. Sketch) to a temp file and attach
+    // it before composing the outgoing message. Give the extension up to
+    // ~1s to respond to the requestFlush event with an updated payload.
+    let flushedAttachments = attachments
+    const surface = activeChatSurfaceRef.current
+    if (surface) {
+      try {
+        await new Promise<void>((resolve) => {
+          let done = false
+          const ack = () => { if (done) return; done = true; resolve() }
+          const timeout = setTimeout(ack, 1200)
+          const onceAck = (e: MessageEvent) => {
+            const msg = e.data
+            if (!msg || typeof msg !== 'object') return
+            if (msg.type === 'contex-rpc' && msg.method === 'surface.setPayload' && msg.tileId === surface.instanceId) {
+              window.removeEventListener('message', onceAck)
+              clearTimeout(timeout)
+              ack()
+            }
+          }
+          window.addEventListener('message', onceAck)
+          const iframe = chatSurfaceIframeRef.current
+          iframe?.contentWindow?.postMessage({ type: 'contex-event', event: 'surface.requestFlush', data: {} }, '*')
+        })
+      } catch { /* best-effort */ }
+
+      const latest = activeChatSurfaceRef.current
+      const payload = latest?.payload
+      if (payload && payload.kind === 'image' && payload.data) {
+        try {
+          const chatApi = (window.electron as unknown as { chat?: { writeTempAttachment?: (p: { data: string; mime?: string; ext?: string; filenameHint?: string }) => Promise<{ ok: true; path: string } | { ok: false; error: string }> } }).chat
+          if (chatApi?.writeTempAttachment) {
+            const r = await chatApi.writeTempAttachment({
+              data: payload.data,
+              mime: payload.mime,
+              ext: payload.ext,
+              filenameHint: surface.label.toLowerCase().replace(/\s+/g, '-'),
+            })
+            if (r.ok) {
+              flushedAttachments = [...attachments, { path: r.path, kind: 'image' }]
+            }
+          }
+        } catch { /* best-effort */ }
+      }
+    }
+
+    const messageContent = buildOutgoingMessageContent(input, flushedAttachments)
     if (!messageContent) return
 
     // Local-only slash commands — handled client-side, never dispatched to
@@ -3843,6 +4303,13 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setAcType(null)
     setAcQuery('')
     setAttachments([])
+
+    // Tell the surface to clear itself for the next turn, then dismount.
+    if (surface) {
+      const iframe = chatSurfaceIframeRef.current
+      iframe?.contentWindow?.postMessage({ type: 'contex-event', event: 'surface.clear', data: {} }, '*')
+      setActiveChatSurface(null)
+    }
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     await dispatchMessageContent(messageContent)
@@ -4007,6 +4474,12 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     <ChatDispatchCtx.Provider value={chatDispatchValue}>
     <FontCtx.Provider value={fontCtxValue}>
     <AskUserQuestionContext.Provider value={{ cardId: tileId }}>
+    <ToolPermissionProvider
+      cardId={tileId}
+      pending={pendingToolPermissions}
+      resolved={resolvedToolPermissions}
+      onDecide={handleToolPermissionDecision}
+    >
     <div
       onDragOver={handleTileDragOver}
       onDragLeave={handleTileDragLeave}
@@ -4020,6 +4493,21 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
       }}
     >
 
+      {/* Horizontal split: [transcript + composer column] | [plan pane] */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'row',
+        minHeight: 0,
+        minWidth: 0,
+      }}>
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        minWidth: 0,
+      }}>
 
       {/* Messages */}
       <div
@@ -4423,6 +4911,13 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                       // Flush any trailing chip row (e.g. stream ended on a
                       // thinking or tool block without a subsequent text block).
                       flushChipRow()
+                      // Trailing status chip — lives below the last rendered
+                      // block while the message is streaming. The component
+                      // itself decides whether to show (hides during thinking,
+                      // honors the 2s show-delay) so we render unconditionally.
+                      if (msg.role === 'assistant' && msg.isStreaming) {
+                        elements.push(<WorkingChipView key={`working-${msg.id}`} message={msg} />)
+                      }
                       return elements
                     })()}
                   </>
@@ -4480,7 +4975,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 {!msg.isStreaming && msg.role === 'assistant' && msg.cost != null && (
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    fontSize: monoSize - 1, color: theme.chat.muted, fontFamily: fontMono,
+                    fontSize: monoSize - 2, color: theme.chat.subtle, fontFamily: fontMono,
                     padding: '0 4px',
                     marginTop: -5,
                   }}>
@@ -4496,7 +4991,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                 {/* User message time footer */}
                 {!msg.isStreaming && msg.role === 'user' && (
                   <div style={{
-                    fontSize: monoSize - 1, color: theme.chat.muted, fontFamily: fontMono,
+                    fontSize: monoSize - 2, color: theme.chat.subtle, fontFamily: fontMono,
                     padding: '0 4px', textAlign: 'right',
                     marginTop: -5,
                   }}>
@@ -5041,6 +5536,53 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
           </div>
         )}
 
+        {activeChatSurface && (
+          <div style={{
+            padding: '8px 14px 0 14px',
+          }}>
+            <div style={{
+              position: 'relative',
+              width: '100%',
+              height: activeChatSurface.height,
+              borderRadius: 12,
+              border: `1px solid ${dropdownBorder}`,
+              background: theme.surface.panelElevated,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '6px 10px',
+                borderBottom: `1px solid ${theme.border.subtle}`,
+                background: theme.surface.overlay,
+                fontSize: 11, fontFamily: fontMono, color: theme.chat.muted,
+              }}>
+                <span>{activeChatSurface.label}</span>
+                <button
+                  onClick={closeChatSurface}
+                  aria-label="Close"
+                  style={{
+                    width: 18, height: 18, borderRadius: 4,
+                    border: `1px solid ${theme.border.default}`, background: 'transparent',
+                    color: theme.chat.muted, cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 0, fontSize: 11, lineHeight: 1,
+                  }}
+                >×</button>
+              </div>
+              <iframe
+                key={activeChatSurface.instanceId}
+                ref={chatSurfaceIframeRef}
+                src={activeChatSurface.entryUrl}
+                title={activeChatSurface.label}
+                style={{ flex: 1, width: '100%', border: 'none', background: 'transparent' }}
+                sandbox="allow-scripts allow-same-origin"
+              />
+            </div>
+          </div>
+        )}
+
         {attachments.length > 0 && (
           <div style={{
             display: 'block', gap: 8, padding: '8px 14px 4px 14px',
@@ -5170,6 +5712,66 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                   disabledServers={disabledServers}
                   setDisabledServers={setDisabledServers}
                   peerToolNames={peerToolNames}
+                  chatSurfaces={chatSurfaceMenu}
+                  activeChatSurfaceId={activeChatSurface ? `${activeChatSurface.extId}:${activeChatSurface.surfaceId}` : null}
+                  onOpenChatSurface={openChatSurface}
+                />
+              </MenuPortal>
+            )}
+          </div>
+
+          {/* Provider — shown only before the conversation starts. Different
+              CLI agents have incompatible session formats (Claude SDK session
+              resumption vs. Codex subprocess streams vs. OpenCode HTTP), so
+              swapping mid-conversation would break history continuity. The
+              current provider is still implicit in the Model pill's icon.
+              Clear the conversation to expose the picker again. */}
+          {messages.length === 0 && (
+            <div ref={providerMenuRef} style={{ position: 'relative' }}>
+              <ToolbarPill
+                prefix={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
+                label={currentProviderEntry?.label ?? 'Provider'}
+                active={showProviderMenu}
+                onClick={() => toggleMenu('provider')}
+                title="Choose the CLI agent (hidden once the conversation starts)"
+              />
+              {showProviderMenu && (
+                <MenuPortal anchorRef={providerMenuRef}>
+                  <Dropdown>
+                    {providerEntries.map(entry => (
+                      <DropdownItem
+                        key={entry.id}
+                        icon={entry.icon}
+                        label={entry.label}
+                        sublabel={entry.description}
+                        active={provider === entry.id}
+                        onClick={() => handleProviderChange(entry.id)}
+                      />
+                    ))}
+                  </Dropdown>
+                </MenuPortal>
+              )}
+            </div>
+          )}
+
+          {/* Model */}
+          <div ref={modelMenuRef} style={{ position: 'relative' }}>
+            <ToolbarPill
+              prefix={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
+              label={currentModel.label}
+              active={showModelMenu}
+              onClick={() => toggleMenu('model')}
+            />
+            {showModelMenu && (
+              <MenuPortal anchorRef={modelMenuRef}>
+                <ModelDropdown
+                  models={currentProviderEntry?.models ?? []}
+                  activeId={model}
+                  filter={modelFilter}
+                  onFilterChange={setModelFilter}
+                  providerIcon={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
+                  noun={optionNoun}
+                  onSelect={(id) => { setModel(id); setShowModelMenu(false); setModelFilter('') }}
                 />
               </MenuPortal>
             )}
@@ -5197,55 +5799,6 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
                     />
                   ))}
                 </Dropdown>
-              </MenuPortal>
-            )}
-          </div>
-
-          {/* Provider */}
-          <div ref={providerMenuRef} style={{ position: 'relative' }}>
-            <ToolbarPill
-              prefix={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
-              label={currentProviderEntry?.label ?? 'Provider'}
-              active={showProviderMenu}
-              onClick={() => toggleMenu('provider')}
-            />
-            {showProviderMenu && (
-              <MenuPortal anchorRef={providerMenuRef}>
-                <Dropdown>
-                  {providerEntries.map(entry => (
-                    <DropdownItem
-                      key={entry.id}
-                      icon={entry.icon}
-                      label={entry.label}
-                      sublabel={entry.description}
-                      active={provider === entry.id}
-                      onClick={() => handleProviderChange(entry.id)}
-                    />
-                  ))}
-                </Dropdown>
-              </MenuPortal>
-            )}
-          </div>
-
-          {/* Model */}
-          <div ref={modelMenuRef} style={{ position: 'relative' }}>
-            <ToolbarPill
-              prefix={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
-              label={currentModel.label}
-              active={showModelMenu}
-              onClick={() => toggleMenu('model')}
-            />
-            {showModelMenu && (
-              <MenuPortal anchorRef={modelMenuRef}>
-                <ModelDropdown
-                  models={currentProviderEntry?.models ?? []}
-                  activeId={model}
-                  filter={modelFilter}
-                  onFilterChange={setModelFilter}
-                  providerIcon={currentProviderEntry?.icon ?? <Bot size={TOOLBAR_PILL_ICON_SIZE} />}
-                  noun={optionNoun}
-                  onSelect={(id) => { setModel(id); setShowModelMenu(false); setModelFilter('') }}
-                />
               </MenuPortal>
             )}
           </div>
@@ -5302,16 +5855,17 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               onMouseDown={e => e.preventDefault()}
               style={{
                 width: 28, height: 28, minWidth: 28, borderRadius: '50%',
-                background: theme.status.danger, border: 'none',
+                background: theme.text.primary, border: 'none',
                 cursor: 'pointer', display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
-                padding: 0, transition: 'background 0.15s', flexShrink: 0,
+                padding: 0, transition: 'opacity 0.15s', flexShrink: 0,
+                opacity: 0.92,
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = theme.status.dangerHover)}
-              onMouseLeave={e => (e.currentTarget.style.background = theme.status.danger)}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.92')}
               title="Stop generation"
             >
-              <Square size={10} fill="#fff" color="#fff" />
+              <Square size={10} fill={theme.chat.background} color={theme.chat.background} />
             </button>
           ) : (
             <button
@@ -5619,6 +6173,16 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               )}
             </div>
 
+            {/* Plan / Tasks chip — only visible when the agent has emitted a
+                TodoWrite block. Toggles the right-docked PlanPane. */}
+            {planTodos && planTodos.length > 0 && (
+              <PlanChip
+                todos={planTodos}
+                active={isPlanOpen}
+                onClick={() => setIsPlanOpen(v => !v)}
+              />
+            )}
+
             {/* Context indicator sits in a 28×28 hit-box so its centre-line
                 aligns with the Stop/Send button in the primary toolbar above
                 (both buttons are now 28px wide with matching 8px container
@@ -5688,7 +6252,17 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
         </div>
         </div>
       </div>
+      </div>
+      {isPlanOpen && planTodos && planTodos.length > 0 && (
+        <PlanPane
+          todos={planTodos}
+          updatedAt={planUpdatedAt}
+          onClose={() => setIsPlanOpen(false)}
+        />
+      )}
+      </div>
     </div>
+    </ToolPermissionProvider>
     </AskUserQuestionContext.Provider>
     </FontCtx.Provider>
     </ChatDispatchCtx.Provider>
@@ -5697,7 +6271,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
 // --- Rich message sub-components -------------------------------------------------
 
-function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Element {
+const ThinkingBlockView = React.memo(function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -5831,13 +6405,122 @@ function ThinkingBlockView({ thinking }: { thinking: ThinkingBlock }): JSX.Eleme
       )}
     </div>
   )
-}
+})
+
+/**
+ * WorkingChipView — sibling to ThinkingBlockView, shown at the end of a
+ * streaming assistant message when the agent is "doing something" that isn't
+ * thinking and isn't producing text.
+ *
+ * Two states, picked automatically:
+ *   - A ToolBlock with `status: 'running'` exists → `Running {toolName}` chip
+ *     with a live-ticking elapsed counter measured from the tool's first-seen
+ *     running moment.
+ *   - No running tool, but the message has been streaming for ≥ 2s → generic
+ *     `Working for Ns` chip measured from message-stream start.
+ *
+ * Hidden whenever a thinking block is currently active — the ThinkingBlockView
+ * chip is already occupying that visual slot. Also hidden on non-streaming
+ * messages. The 2s grace keeps fast responses (< 2s, no tools) from flashing a
+ * chip the user never reads.
+ *
+ * Mirrors the ThinkingBlockView chip shell so the two read as one family.
+ */
+const WorkingChipView = React.memo(function WorkingChipView({ message }: { message: ChatMessage }): JSX.Element | null {
+  const theme = useTheme()
+  const fonts = useFonts()
+
+  const activeThinking = (message.thinkingBlocks ?? []).find(t => !t.done)
+  const activeTool = (() => {
+    const blocks = message.toolBlocks ?? []
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].status === 'running') return blocks[i]
+    }
+    return null
+  })()
+
+  // Remember when the current running tool was first observed so elapsed
+  // time reflects "since this tool started", not "since the chip mounted".
+  // Reset whenever the running tool id changes (or disappears).
+  const toolStartRef = useRef<{ id: string; at: number } | null>(null)
+  if (activeTool) {
+    if (!toolStartRef.current || toolStartRef.current.id !== activeTool.id) {
+      toolStartRef.current = { id: activeTool.id, at: Date.now() }
+    }
+  } else if (toolStartRef.current) {
+    toolStartRef.current = null
+  }
+
+  // Remember when the streaming message first mounted so the generic
+  // "Working for Ns" timer can honor the 2s show-delay.
+  const msgStartRef = useRef<number | null>(null)
+  if (message.isStreaming && msgStartRef.current == null) {
+    msgStartRef.current = Date.now()
+  } else if (!message.isStreaming) {
+    msgStartRef.current = null
+  }
+
+  // One timer ticks everything. 250ms is smooth enough for seconds display.
+  const [, setTick] = useState(0)
+  const isActive = Boolean(message.isStreaming && !activeThinking)
+  useEffect(() => {
+    if (!isActive) return
+    const id = setInterval(() => setTick(t => (t + 1) % 1_000_000), 250)
+    return () => clearInterval(id)
+  }, [isActive])
+
+  if (!message.isStreaming) return null
+  if (activeThinking) return null
+
+  const now = Date.now()
+  const toolElapsed = activeTool && toolStartRef.current
+    ? Math.max(0, Math.floor((now - toolStartRef.current.at) / 1000))
+    : 0
+  const msgElapsed = msgStartRef.current
+    ? Math.max(0, Math.floor((now - msgStartRef.current) / 1000))
+    : 0
+
+  if (!activeTool && msgElapsed < 2) return null
+
+  const label = activeTool
+    ? `Running ${activeTool.name} · ${toolElapsed}s`
+    : `Working for ${msgElapsed}s`
+
+  return (
+    <div style={{
+      background: theme.chat.assistantBubble,
+      border: `1px solid ${theme.chat.assistantBubbleBorder}`,
+      borderRadius: 8,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 5,
+      padding: '0 8px',
+      minHeight: 22,
+      boxSizing: 'border-box',
+      color: theme.accent.hover,
+      fontSize: 10.5,
+      fontFamily: fonts.sans,
+      fontWeight: 500,
+      lineHeight: 1,
+      width: 'fit-content',
+    }}>
+      <Cog size={11} style={{
+        opacity: 0.9,
+        flexShrink: 0,
+        animation: 'chat-spin 2.4s linear infinite',
+      }} />
+      <ShimmerText baseColor={theme.accent.hover} style={{ fontSize: 10.5, fontWeight: 500, lineHeight: 1 }}>
+        {label}
+      </ShimmerText>
+    </div>
+  )
+})
 
 /**
  * Collapses a mixed-name run of completed tool blocks into a single
  * "Called N tools" chip that expands horizontally to reveal the originals.
  */
-function MixedToolGroup({ blocks }: { blocks: ToolBlock[] }): JSX.Element {
+const MixedToolGroup = React.memo(function MixedToolGroup({ blocks }: { blocks: ToolBlock[] }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -5880,7 +6563,7 @@ function MixedToolGroup({ blocks }: { blocks: ToolBlock[] }): JSX.Element {
       {expanded && blocks.map(b => <ToolBlockView key={b.id} block={b} />)}
     </div>
   )
-}
+})
 
 /** Collapses consecutive same-name completed tool chips into "Read x6" style. */
 /**
@@ -5916,7 +6599,7 @@ function getGroupedToolLabel(name: string, count: number): string {
   }
 }
 
-function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[] }): JSX.Element {
+const CollapsedToolGroup = React.memo(function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[] }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -5963,14 +6646,33 @@ function CollapsedToolGroup({ name, blocks }: { name: string; blocks: ToolBlock[
       )}
     </div>
   )
-}
+})
 
 
-function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
+const ToolBlockView = React.memo(function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const codePanelFontSize = Math.max(11, fonts.size - 1)
   const isFileChangeBlock = (block.fileChanges?.length ?? 0) > 0
+
+  // Intercept tool-permission requests — when the agent needs user approval for
+  // this tool call, show an inline Allow/Deny prompt instead of (or alongside)
+  // the raw tool chip. Mirrors the AskUserQuestion pattern.
+  const permissionCtx = useToolPermissionContext()
+  const permissionRequest = permissionCtx?.pending.get(block.id) ?? null
+  const resolvedDecision = permissionCtx?.resolved.get(block.id) ?? null
+  if (permissionRequest || resolvedDecision) {
+    return (
+      <ToolPermissionCard
+        toolId={block.id}
+        fallbackToolName={block.name}
+        request={permissionRequest}
+        resolvedDecision={resolvedDecision}
+        theme={theme}
+        fonts={{ sans: fonts.sans, mono: fonts.mono }}
+      />
+    )
+  }
 
   // Intercept AskUserQuestion tool blocks: render an interactive form so the user
   // can actually answer the question instead of seeing a raw JSON chip.
@@ -5996,7 +6698,18 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
     }
   }, [block.fileChanges])
   const [expanded, setExpanded] = useState(isFileChangeBlock)
-  const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({})
+  // For file-change blocks default the per-file diff panels to open: the
+  // whole reason we're showing a file-change block is the diff itself. For
+  // regular tool blocks (Bash output, etc.) default to closed — users click
+  // to drill in.
+  const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>(() => {
+    if (!isFileChangeBlock) return {}
+    const map: Record<string, boolean> = {}
+    block.fileChanges?.forEach((change, index) => {
+      map[`${change.path}:${index}`] = true
+    })
+    return map
+  })
   const isRunning = block.status === 'running'
   const hasNestedData = (block.fileChanges?.length ?? 0) > 0 || (block.commandEntries?.length ?? 0) > 0
 
@@ -6187,41 +6900,12 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
                       }} />
                     </button>
                     {isExpanded && (
-                      <div style={{
-                        borderTop: `1px solid ${theme.chat.assistantBubbleBorder}`,
-                        maxHeight: isFileChangeBlock ? 360 : 280,
-                        overflowY: 'auto',
-                        background: theme.chat.background,
-                      }}>
-                        <pre style={{
-                          margin: 0,
-                          padding: '10px 12px',
-                          fontSize: codePanelFontSize,
-                          lineHeight: fonts.monoLineHeight,
-                          fontFamily: fonts.mono,
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                        }}>
-                          {change.diff.split('\n').map((line, lineIndex) => {
-                            let color = theme.chat.textSecondary
-                            let background = 'transparent'
-                            if (line.startsWith('+')) {
-                              color = theme.status.success
-                              background = 'rgba(63, 185, 80, 0.12)'
-                            } else if (line.startsWith('-')) {
-                              color = theme.status.danger
-                              background = 'rgba(248, 81, 73, 0.12)'
-                            } else if (line.startsWith('@@')) {
-                              color = theme.accent.base
-                            }
-
-                            return (
-                              <div key={lineIndex} style={{ color, background, padding: background === 'transparent' ? 0 : '0 4px', borderRadius: 4 }}>
-                                {line || ' '}
-                              </div>
-                            )
-                          })}
-                        </pre>
+                      <div style={{ borderTop: `1px solid ${theme.chat.assistantBubbleBorder}` }}>
+                        <DiffView
+                          diff={change.diff}
+                          path={change.path}
+                          fontSize={codePanelFontSize}
+                        />
                       </div>
                     )}
                   </div>
@@ -6295,7 +6979,7 @@ function ToolBlockView({ block }: { block: ToolBlock }): JSX.Element {
 
     </div>
   )
-}
+})
 
 function formatToolInput(input: string): string {
   try {
@@ -6548,36 +7232,21 @@ function ToolInputView({ toolName, input, codePanelFontSize }: {
   }
 
   if (toolName === 'TodoWrite' && parsed) {
-    const todos = Array.isArray((parsed as Record<string, unknown>).todos)
+    const todosRaw = Array.isArray((parsed as Record<string, unknown>).todos)
       ? (parsed as Record<string, unknown>).todos as unknown[]
       : []
+    const normalized: TileTodoItem[] = []
+    for (const t of todosRaw) {
+      const content = getStr(t, 'content') ?? ''
+      if (!content) continue
+      const status = (getStr(t, 'status') ?? 'pending') as TileTodoItem['status']
+      const activeForm = getStr(t, 'activeForm') ?? undefined
+      normalized.push({ content, status, activeForm })
+    }
     return (
       <>
         {noticeBanner}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {todos.map((todo, i) => {
-            const content = getStr(todo, 'content') ?? ''
-            const status = getStr(todo, 'status') ?? 'pending'
-            const color = status === 'completed'
-              ? theme.status.success
-              : status === 'in_progress'
-                ? theme.status.warning
-                : theme.chat.muted
-            return (
-              <div key={i} style={{
-                display: 'flex', gap: 8, alignItems: 'flex-start',
-                fontSize: codePanelFontSize, fontFamily: fonts.sans, color: theme.chat.text,
-              }}>
-                <span style={{ color, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
-                  {status === 'completed' ? '✓' : status === 'in_progress' ? '▸' : '○'}
-                </span>
-                <span style={{ textDecoration: status === 'completed' ? 'line-through' : undefined, opacity: status === 'completed' ? 0.65 : 1 }}>
-                  {content}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+        <PlanCard todos={normalized} variant="inline" />
       </>
     )
   }
@@ -6655,26 +7324,34 @@ function ToolbarBtn({ icon, tooltip, color, onClick }: {
   )
 }
 
-function ToolbarPill({ prefix, label, color, active, onClick }: {
-  prefix?: React.ReactNode; label: string; color?: string; active: boolean; onClick: () => void
+function ToolbarPill({ prefix, label, color, active, onClick, disabled, title }: {
+  prefix?: React.ReactNode
+  label: string
+  color?: string
+  active: boolean
+  onClick: () => void
+  disabled?: boolean
+  title?: string
 }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
   const [h, setH] = useState(false)
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      title={title}
       style={{
         display: 'flex', alignItems: 'center', gap: 4,
-        background: active ? theme.surface.hover : (h ? theme.surface.panelMuted : 'transparent'),
+        background: !disabled && active ? theme.surface.hover : (!disabled && h ? theme.surface.panelMuted : 'transparent'),
         border: 'none',
-        borderRadius: 6, padding: '4px 9px', cursor: 'pointer',
+        borderRadius: 6, padding: '4px 9px', cursor: disabled ? 'not-allowed' : 'pointer',
         fontSize: TOOLBAR_TEXT_SIZE, fontFamily: fonts.sans,
-        color: color ?? (h ? theme.chat.text : theme.chat.textSecondary),
+        color: color ?? (disabled ? theme.chat.muted : h ? theme.chat.text : theme.chat.textSecondary),
         transition: 'color 0.1s, background 0.1s',
         whiteSpace: 'nowrap',
         maxWidth: 180,
         overflow: 'hidden',
+        opacity: disabled ? 0.6 : 1,
         ...NON_SELECTABLE_UI_STYLE,
       }}
       onMouseEnter={() => setH(true)}
@@ -6682,9 +7359,21 @@ function ToolbarPill({ prefix, label, color, active, onClick }: {
     >
       {prefix && <span style={{ display: 'flex', opacity: 0.8 }}>{prefix}</span>}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-      <ChevronDown size={TOOLBAR_CHEVRON_SIZE} style={{ marginLeft: 1, opacity: 0.4, flexShrink: 0 }} />
+      {disabled
+        ? <Lock size={TOOLBAR_CHEVRON_SIZE - 1} style={{ marginLeft: 1, opacity: 0.55, flexShrink: 0 }} />
+        : <ChevronDown size={TOOLBAR_CHEVRON_SIZE} style={{ marginLeft: 1, opacity: 0.4, flexShrink: 0 }} />}
     </button>
   )
+}
+
+// Mode-pill accent colours are tuned for dark backgrounds. On light surfaces
+// the bright tokens (especially green) wash out and read as pastel — map them
+// to denser, WCAG-friendly variants when the theme is in light mode.
+const FOOTER_PILL_LIGHT_COLOR: Record<string, string> = {
+  '#3fb950': '#1f883d', // green  → deeper moss
+  '#58a6ff': '#1f6feb', // blue   → deeper cobalt
+  '#ffb432': '#a66300', // amber  → darker ochre
+  '#e54d2e': '#c3361c', // red    → darker crimson
 }
 
 function FooterPill({ prefix, label, color, active, onClick }: {
@@ -6697,6 +7386,10 @@ function FooterPill({ prefix, label, color, active, onClick }: {
   const fonts = useFonts()
   const theme = useTheme()
   const [h, setH] = useState(false)
+  const isLight = theme.mode === 'light'
+  const resolvedColor = color
+    ? (isLight ? (FOOTER_PILL_LIGHT_COLOR[color.toLowerCase()] ?? color) : color)
+    : undefined
 
   return (
     <button
@@ -6712,7 +7405,7 @@ function FooterPill({ prefix, label, color, active, onClick }: {
         cursor: 'pointer',
         fontSize: CHAT_FOOTER_TEXT_SIZE,
         fontFamily: fonts.sans,
-        color: color ?? (active || h ? theme.chat.text : theme.chat.textSecondary),
+        color: resolvedColor ?? (active || h ? theme.chat.text : theme.chat.textSecondary),
         transition: 'color 0.1s',
         whiteSpace: 'nowrap',
         minHeight: 24,
@@ -6782,6 +7475,9 @@ function ComposerInsertMenu({
   disabledServers,
   setDisabledServers,
   peerToolNames,
+  chatSurfaces,
+  activeChatSurfaceId,
+  onOpenChatSurface,
 }: {
   onAttachFiles: () => void
   mcpEnabled: boolean
@@ -6790,6 +7486,9 @@ function ComposerInsertMenu({
   disabledServers: Set<string>
   setDisabledServers: React.Dispatch<React.SetStateAction<Set<string>>>
   peerToolNames: string[]
+  chatSurfaces: ChatSurfaceMenuEntry[]
+  activeChatSurfaceId: string | null
+  onOpenChatSurface: (entry: ChatSurfaceMenuEntry) => void
 }): JSX.Element {
   const fonts = useFonts()
   const theme = useTheme()
@@ -6899,6 +7598,30 @@ function ComposerInsertMenu({
             </div>
           )}
         </div>
+
+        {chatSurfaces.length > 0 && (
+          <>
+            <div style={{ height: 1, background: theme.chat.dropdownBorder, margin: '4px 0' }} />
+            {chatSurfaces.map(entry => {
+              const id = `${entry.extId}:${entry.surfaceId}`
+              const active = activeChatSurfaceId === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onOpenChatSurface(entry)}
+                  style={itemStyle(active)}
+                  onMouseEnter={e => { e.currentTarget.style.background = theme.chat.dropdownHoverBackground }}
+                  onMouseLeave={e => { e.currentTarget.style.background = active ? theme.chat.dropdownHoverBackground : 'transparent' }}
+                  title={entry.description ?? entry.label}
+                >
+                  <Pencil size={14} color={theme.chat.muted} />
+                  <span style={{ fontSize: 12, fontFamily: fonts.sans }}>Add {entry.label}</span>
+                </button>
+              )
+            })}
+          </>
+        )}
       </Dropdown>
     </div>
   )

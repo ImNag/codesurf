@@ -52,6 +52,7 @@ const LazyClusoWidgetMount = React.lazy(() =>
     .catch(() => ({ default: () => null as React.ReactNode }))
 )
 const LazyAgentSetup = React.lazy(() => import('./components/AgentSetup').then(m => ({ default: m.AgentSetup })))
+const LazySkillInstallModal = React.lazy(() => import('./components/SkillInstallModal').then(m => ({ default: m.SkillInstallModal })))
 
 type DragState =
   | { type: null }
@@ -758,6 +759,10 @@ function App(): JSX.Element {
   const [guides, setGuides] = useState<{ x?: number; y?: number }[]>([])
   const [discoveryPulses, setDiscoveryPulses] = useState<DiscoveryPulse[]>([])
   const [showAgentSetup, setShowAgentSetup] = useState(false)
+  // .skill install dialog — populated when user drops a .skill file on the
+  // canvas or double-clicks one in Finder (forwarded via `skill:file-opened`
+  // from the main process).
+  const [skillInstallPath, setSkillInstallPath] = useState<string | null>(null)
   const { extensionTiles, extensionEntries } = useExtensions(
     workspace?.path ?? null,
     !settings.extensionsDisabled,
@@ -1097,6 +1102,76 @@ function App(): JSX.Element {
       window.localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
     } catch {}
   }, [settings])
+
+  // Listen for .skill files opened via Finder / file-association / argv. Also
+  // signal `skills:rendererReady` so main can flush any paths queued before
+  // the renderer was mounted.
+  //
+  // Additionally install a window-level drop listener so `.skill` bundles can
+  // be dropped anywhere in the app — full-screen chat / panel layout / expanded
+  // tiles — not just the canvas. Only files with the `.skill` extension are
+  // intercepted; all other drags fall through to their local handlers.
+  useEffect(() => {
+    const api = window.electron?.skills
+    const unsubList: Array<() => void> = []
+    if (api) {
+      const unsub = api.onFileOpened(({ path }) => {
+        if (path && path.toLowerCase().endsWith('.skill')) {
+          setSkillInstallPath(path)
+        }
+      })
+      void api.ready().catch(() => {})
+      unsubList.push(() => { try { unsub() } catch {} })
+    }
+
+    // Detect whether a drag contains OS files. `types` is the only reliable
+    // signal available during dragover — the actual file list is opaque until
+    // drop fires, per the HTML5 DnD spec.
+    const dragHasFiles = (dt: DataTransfer | null): boolean => {
+      if (!dt) return false
+      const types = dt.types
+      if (!types) return false
+      for (let i = 0; i < types.length; i++) {
+        if (types[i] === 'Files' || types[i] === 'application/x-moz-file') return true
+      }
+      return false
+    }
+
+    const onWindowDragOver = (e: DragEvent): void => {
+      // Only enable drops where the default drop target is normally rejected
+      // (outside the canvas). The canvas already preventDefaults on its own,
+      // so calling it again here is harmless. We gate on Files so internal
+      // HTML drags (text selections, etc.) are untouched.
+      if (dragHasFiles(e.dataTransfer)) {
+        e.preventDefault()
+      }
+    }
+
+    const onWindowDrop = (e: DragEvent): void => {
+      if (!dragHasFiles(e.dataTransfer)) return
+      const paths = getDroppedPaths(e.dataTransfer)
+      const skillPath = paths.find(p => p.toLowerCase().endsWith('.skill'))
+      if (!skillPath) return
+      // `.skill` bundles are always consumed by the install modal regardless
+      // of which view is active. Stop propagation so no tile-level handler
+      // interprets the path as a regular file drop.
+      e.preventDefault()
+      e.stopPropagation()
+      setSkillInstallPath(skillPath)
+    }
+
+    window.addEventListener('dragover', onWindowDragOver)
+    // Capture phase so we reach the handler before tile-level listeners that
+    // might try to swallow the drop.
+    window.addEventListener('drop', onWindowDrop, true)
+
+    unsubList.push(() => {
+      window.removeEventListener('dragover', onWindowDragOver)
+      window.removeEventListener('drop', onWindowDrop, true)
+    })
+
+    return () => { for (const fn of unsubList) fn() }
+  }, [])
 
   const updateAppSettings = useCallback((patch: Partial<AppSettings> | ((current: AppSettings) => Partial<AppSettings>)) => {
     setSettings(current => {
@@ -1465,6 +1540,26 @@ function App(): JSX.Element {
     if (pinned.size === 0) return []
     return extensionTiles.filter(ext => pinned.has(ext.extId) || pinned.has(ext.type))
   }, [settings.extensionsDisabled, settings.pinnedExtensionIds, extensionTiles])
+
+  // "You are here" signal for the sidebar's session list. Looks at the current
+  // focus: the fullscreen/expanded tile first, then the active panel's active
+  // tab, then the selected canvas tile. Only reports the id if that tile is a
+  // chat — otherwise the highlight stays off.
+  const activeChatTileId = useMemo(() => {
+    const candidates: (string | null)[] = []
+    if (expandedTileId) candidates.push(expandedTileId)
+    if (panelLayout && activePanelId) {
+      const leaf = findLeafById(panelLayout, activePanelId)
+      if (leaf?.activeTab) candidates.push(leaf.activeTab)
+    }
+    if (selectedTileId) candidates.push(selectedTileId)
+    for (const id of candidates) {
+      if (!id) continue
+      const tile = tiles.find(t => t.id === id)
+      if (tile?.type === 'chat') return tile.id
+    }
+    return null
+  }, [expandedTileId, panelLayout, activePanelId, selectedTileId, tiles])
 
   // ─── Tile creation ────────────────────────────────────────────────────────
   const addTile = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }, initialOptions?: { hideTitlebar?: boolean; hideNavbar?: boolean; launchBin?: string; launchArgs?: string[] }) => {
@@ -3780,6 +3875,7 @@ function App(): JSX.Element {
                 workspace={workspace}
                 workspaces={workspaces}
                 tiles={tiles}
+                activeChatTileId={activeChatTileId}
                 onSwitchWorkspace={handleSwitchWorkspace}
                 onDeleteWorkspace={handleDeleteWorkspace}
                 onNewWorkspace={handleNewWorkspace}
@@ -3918,8 +4014,7 @@ function App(): JSX.Element {
                     height: '100%',
                     padding: '0 2px 0 0',
                     gap: 2,
-                    borderBottom: isActive ? `1px solid ${theme.accent.base}` : '1px solid transparent',
-                    marginBottom: 5,
+                    marginBottom: 2,
                     paddingTop: 4,
                     color: isActive ? theme.text.primary : theme.text.muted,
                     transition: 'color 0.12s ease, border-color 0.12s ease',
@@ -3953,6 +4048,10 @@ function App(): JSX.Element {
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
+                        textDecorationLine: isActive ? 'underline' : 'none',
+                        textDecorationColor: isActive ? theme.accent.base : 'transparent',
+                        textDecorationThickness: 1,
+                        textUnderlineOffset: 5,
                       }}
                     >
                       {ws.name}
@@ -4006,8 +4105,7 @@ function App(): JSX.Element {
                   minWidth: 0,
                   height: '100%',
                   padding: '0 2px',
-                  borderBottom: `1px solid ${theme.accent.base}`,
-                  marginBottom: 5,
+                  marginBottom: 2,
                   paddingTop: 4,
                   color: theme.text.primary,
                   fontSize: appFonts.size,
@@ -4020,6 +4118,10 @@ function App(): JSX.Element {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    textDecorationLine: 'underline',
+                    textDecorationColor: theme.accent.base,
+                    textDecorationThickness: 1,
+                    textUnderlineOffset: 5,
                   }}
                 >
                   {workspaceTitleFallback}
@@ -4037,7 +4139,6 @@ function App(): JSX.Element {
                   height: '100%',
                   padding: '0 2px 0 0',
                   gap: 2,
-                  borderBottom: `1px solid ${theme.accent.base}`,
                   marginBottom: 5,
                   paddingTop: 4,
                   color: theme.text.primary,
@@ -4069,6 +4170,10 @@ function App(): JSX.Element {
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      textDecorationLine: 'underline',
+                      textDecorationColor: theme.accent.base,
+                      textDecorationThickness: 1,
+                      textUnderlineOffset: 5,
                     }}
                   >
                     NEW WORKSPACE
@@ -4284,6 +4389,13 @@ function App(): JSX.Element {
             // Files dropped from OS or sidebar
             const droppedPaths = getDroppedPaths(e.dataTransfer)
             if (droppedPaths.length > 0) {
+              // Check for .skill first (Claude skill bundle — zip archive).
+              // Opens the install-confirmation modal.
+              const skillPath = droppedPaths.find(p => p.toLowerCase().endsWith('.skill'))
+              if (skillPath) {
+                setSkillInstallPath(skillPath)
+                return
+              }
               // Check for .vsix first
               const vsixPath = droppedPaths.find(p => p.endsWith('.vsix'))
               if (vsixPath) {
@@ -4309,6 +4421,10 @@ function App(): JSX.Element {
             // File from sidebar (text/plain fallback)
             const filePath = e.dataTransfer.getData('text/plain')
             if (filePath) {
+              if (filePath.toLowerCase().endsWith('.skill')) {
+                setSkillInstallPath(filePath)
+                return
+              }
               void resolveFileTileType(filePath).then(type => addTile(type, filePath, world))
             }
           }}
@@ -5285,7 +5401,11 @@ function App(): JSX.Element {
       )}
       {showExtensionsGallery && (
         <Suspense fallback={null}>
-          <LazyExtensionsGallery onClose={() => setShowExtensionsGallery(false)} workspacePath={workspace?.path ?? null} />
+          <LazyExtensionsGallery
+            onClose={() => setShowExtensionsGallery(false)}
+            workspacePath={workspace?.path ?? null}
+            onSettingsChange={s => setSettings(withDefaultSettings(s))}
+          />
         </Suspense>
       )}
       {ctxMenu && (
@@ -5299,6 +5419,14 @@ function App(): JSX.Element {
       {showAgentSetup && (
         <Suspense fallback={null}>
           <LazyAgentSetup onComplete={() => setShowAgentSetup(false)} />
+        </Suspense>
+      )}
+      {skillInstallPath && (
+        <Suspense fallback={null}>
+          <LazySkillInstallModal
+            zipPath={skillInstallPath}
+            onClose={() => setSkillInstallPath(null)}
+          />
         </Suspense>
       )}
     </div>
