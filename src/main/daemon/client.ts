@@ -7,6 +7,46 @@ type RequestOptions = {
   body?: unknown
 }
 
+type DaemonSkillEntry = {
+  id: string
+  name: string
+  description: string
+  scope: 'global' | 'workspace' | 'command'
+  kind: 'skill' | 'command'
+  rootKind: string
+  path: string
+  displayPath: string
+  sourcePath: string
+  content?: string
+}
+
+type DaemonSkillRoot = {
+  id: string
+  path: string
+  displayPath: string
+  scope: 'global' | 'workspace'
+  kind: string
+  label: string
+  exists: boolean
+  sourceType: 'directory' | 'file'
+}
+
+type DaemonSkillSelection = {
+  enabledIds: string[]
+  disabledIds: string[]
+  resolved: DaemonSkillEntry[]
+  unresolvedIds: string[]
+  summary?: string
+  prompt?: string
+}
+
+type DaemonSkillIndex = {
+  workspaceDir: string | null
+  roots: DaemonSkillRoot[]
+  skills: DaemonSkillEntry[]
+  selection: DaemonSkillSelection
+}
+
 async function daemonRequest<T>(path: string, options?: RequestOptions): Promise<T> {
   let lastError: Error | null = null
 
@@ -193,6 +233,37 @@ export const daemonClient = {
     prompt?: string
   }> {
     return daemonRequest(`/memory/load?workspaceId=${encodeURIComponent(workspaceId)}&executionTarget=${encodeURIComponent(executionTarget)}`)
+  },
+  listSkills(args: { workspaceId?: string | null; workspaceDir?: string | null; cardId?: string | null } = {}): Promise<DaemonSkillIndex> {
+    const query = new URLSearchParams()
+    const workspaceId = String(args.workspaceId ?? '').trim()
+    const workspaceDir = String(args.workspaceDir ?? '').trim()
+    const cardId = String(args.cardId ?? '').trim()
+    if (workspaceId) query.set('workspaceId', workspaceId)
+    if (workspaceDir) query.set('workspaceDir', workspaceDir)
+    if (cardId) query.set('cardId', cardId)
+    return daemonRequest(`/skills/list${query.size > 0 ? `?${query.toString()}` : ''}`)
+  },
+  getSkill(args: { skillId: string; workspaceId?: string | null; workspaceDir?: string | null; cardId?: string | null }): Promise<DaemonSkillEntry | null> {
+    const query = new URLSearchParams()
+    query.set('skillId', String(args.skillId ?? '').trim())
+    const workspaceId = String(args.workspaceId ?? '').trim()
+    const workspaceDir = String(args.workspaceDir ?? '').trim()
+    const cardId = String(args.cardId ?? '').trim()
+    if (workspaceId) query.set('workspaceId', workspaceId)
+    if (workspaceDir) query.set('workspaceDir', workspaceDir)
+    if (cardId) query.set('cardId', cardId)
+    return daemonRequest(`/skills/get?${query.toString()}`)
+  },
+  installSkill(args: {
+    zipPath: string
+    scope?: 'global' | 'workspace'
+    overwrite?: boolean
+    workspaceId?: string | null
+    workspaceDir?: string | null
+    cardId?: string | null
+  }): Promise<{ ok: boolean; scope: 'global' | 'workspace'; targetRoot: string; installedPath: string; skill: DaemonSkillEntry }> {
+    return daemonRequest('/skills/install', { body: args })
   },
   listExternalSessions(workspacePath: string | null, force = false): Promise<AggregatedSessionEntry[]> {
     const normalizedPath = String(workspacePath ?? '').trim()

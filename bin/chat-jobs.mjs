@@ -404,15 +404,15 @@ function buildMemoryContextInput(memoryContext, instructionPrompt) {
   return describeMemoryContextForTool(memoryContext, instructionPrompt).input
 }
 
-function buildClaudeAgentPrompt(peers, asyncExecution, instructionPrompt) {
+function buildClaudeAgentPrompt(peers, asyncExecution, instructionPrompt, skillsPrompt) {
   const peerPrompt = buildClaudeSystemPrompt(peers)
   const asyncPrompt = buildAsyncExecutionPrompt(asyncExecution)
-  return joinPromptSections(peerPrompt, instructionPrompt, asyncPrompt)
+  return joinPromptSections(peerPrompt, instructionPrompt, skillsPrompt, asyncPrompt)
 }
 
-function buildCodexPrompt(userText, asyncExecution, instructionPrompt) {
+function buildCodexPrompt(userText, asyncExecution, instructionPrompt, skillsPrompt) {
   const asyncPrompt = buildAsyncExecutionPrompt(asyncExecution)
-  const preamble = joinPromptSections(instructionPrompt, asyncPrompt)
+  const preamble = joinPromptSections(instructionPrompt, skillsPrompt, asyncPrompt)
   return preamble ? `${preamble}\n\n## User Request\n${userText}` : userText
 }
 
@@ -551,7 +551,7 @@ export function createChatJobManager({ homeDir }) {
       ...(request.sessionId ? { resume: request.sessionId } : {}),
     }
 
-    const systemPrompt = buildClaudeAgentPrompt(request.peers, request.asyncExecution, instructionPrompt)
+    const systemPrompt = buildClaudeAgentPrompt(request.peers, request.asyncExecution, instructionPrompt, request.skillsPrompt)
     if (systemPrompt) {
       options.agent = 'contex'
       options.agents = {
@@ -661,7 +661,7 @@ export function createChatJobManager({ homeDir }) {
       '--dangerously-bypass-approvals-and-sandbox',
       '--skip-git-repo-check',
       ...(workspaceDir ? ['-C', workspaceDir] : []),
-      buildCodexPrompt(lastUserMsg.content, request.asyncExecution, instructionPrompt),
+      buildCodexPrompt(lastUserMsg.content, request.asyncExecution, instructionPrompt, request.skillsPrompt),
     ], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
@@ -844,6 +844,29 @@ export function createChatJobManager({ homeDir }) {
           toolId: 'codesurf-memory-context',
           toolName: 'Workspace Instructions',
           text: memorySummary,
+        })
+      }
+
+      const skillsSummary = String(request.skillsSummary ?? '').trim()
+      const skillsPrompt = String(request.skillsPrompt ?? '').trim()
+      if (skillsSummary) {
+        await appendEvent(job.id, {
+          type: 'tool_start',
+          toolId: 'codesurf-skills-context',
+          toolName: 'Included Skills',
+        })
+        if (skillsPrompt) {
+          await appendEvent(job.id, {
+            type: 'tool_input',
+            toolId: 'codesurf-skills-context',
+            text: skillsPrompt,
+          })
+        }
+        await appendEvent(job.id, {
+          type: 'tool_summary',
+          toolId: 'codesurf-skills-context',
+          toolName: 'Included Skills',
+          text: skillsSummary,
         })
       }
 
