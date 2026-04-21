@@ -234,6 +234,21 @@ contextBridge.exposeInMainWorld('electron', {
     }) => ipcRenderer.invoke('chat:answerToolPermission', payload) as Promise<{ ok: boolean; error?: string }>,
     setPermissionMode: (payload: { cardId: string; mode: string }) =>
       ipcRenderer.invoke('chat:setPermissionMode', payload) as Promise<{ ok: boolean; error?: string }>,
+    loadSessionHistory: (payload: { sessionId: string; limit?: number }) =>
+      ipcRenderer.invoke('chat:loadSessionHistory', payload) as Promise<{
+        ok: boolean
+        error?: string
+        filePath?: string
+        total?: number
+        messages: Array<{
+          id: string
+          role: 'user' | 'assistant' | 'system'
+          content: string
+          timestamp: number
+          tools?: string[]
+          hasToolResult?: boolean
+        }>
+      }>,
   },
 
   // Agent streaming (SSE/NDJSON parsers for Claude, Codex, Pi)

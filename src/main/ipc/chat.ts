@@ -12,7 +12,7 @@ import { spawn, ChildProcess, execFileSync, execFile } from 'child_process'
 import * as http from 'http'
 import * as net from 'net'
 import { promises as fs, existsSync } from 'fs'
-import { tmpdir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { promisify } from 'util'
 import { getMCPPort, getMCPToken, getContexMcpToolNames } from '../mcp-server'
@@ -3230,6 +3230,106 @@ export function registerChatIPC(): void {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  /**
+   * Reads the raw Claude transcript jsonl for a given sessionId and returns a
+   * lightweight ChatMessage[] reconstruction of the pre-compaction history.
+   *
+   * Why: the Claude Agent SDK periodically compacts long sessions, so when a
+   * user re-opens a chat they may see only the summary + last turn. The full
+   * jsonl is still on disk — this handler exposes it so the renderer can
+   * prepend "earlier messages" on demand.
+   *
+   * Scope is intentionally conservative: we reconstruct text content only
+   * (role + concatenated text blocks), tagging tool_use with a
+   * "[Used tool: name]" breadcrumb. Full ToolBlock / fileChange reconstruction
+   * would require replaying the stream and is out of scope here.
+   */
+  ipcMain.handle('chat:loadSessionHistory', async (_, payload: { sessionId: string; limit?: number }) => {
+    const sessionId = String(payload?.sessionId || '').trim()
+    if (!sessionId) return { ok: false, error: 'sessionId required', messages: [] }
+    const limit = Math.max(1, Math.min(2000, payload?.limit ?? 500))
+
+    // Search common Claude transcript locations. Different SDK versions have
+    // used different layouts, so we check both.
+    const candidates = [
+      join(homedir(), '.claude', 'transcripts', `${sessionId}.jsonl`),
+    ]
+    // Also scan ~/.claude/projects/<hash>/<sessionId>.jsonl
+    try {
+      const projectsRoot = join(homedir(), '.claude', 'projects')
+      if (existsSync(projectsRoot)) {
+        const entries = await fs.readdir(projectsRoot, { withFileTypes: true })
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          candidates.push(join(projectsRoot, entry.name, `${sessionId}.jsonl`))
+        }
+      }
+    } catch { /* ignore */ }
+
+    const filePath = candidates.find(p => existsSync(p))
+    if (!filePath) return { ok: false, error: 'transcript not found', messages: [] }
+
+    let raw: string
+    try { raw = await fs.readFile(filePath, 'utf8') }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : 'read failed', messages: [] } }
+
+    const lines = raw.split('\n').filter(Boolean).slice(0, limit)
+    const messages: Array<{
+      id: string
+      role: 'user' | 'assistant' | 'system'
+      content: string
+      timestamp: number
+      tools?: string[]
+      hasToolResult?: boolean
+    }> = []
+
+    for (let i = 0; i < lines.length; i += 1) {
+      try {
+        const evt = JSON.parse(lines[i])
+        // Event shape varies across versions. We pick up both the top-level
+        // shape ({type:'user', message:{role, content}}) and the flattened
+        // shape ({role, content}).
+        const role: string | undefined = evt?.message?.role ?? evt?.role ?? (evt?.type === 'user' ? 'user' : evt?.type === 'assistant' ? 'assistant' : undefined)
+        if (role !== 'user' && role !== 'assistant' && role !== 'system') continue
+
+        const rawContent = evt?.message?.content ?? evt?.content
+        let text = ''
+        const tools: string[] = []
+        let hasToolResult = false
+        if (typeof rawContent === 'string') {
+          text = rawContent
+        } else if (Array.isArray(rawContent)) {
+          for (const part of rawContent) {
+            if (!part || typeof part !== 'object') continue
+            if (part.type === 'text' && typeof part.text === 'string') text += part.text
+            else if (part.type === 'tool_use' && typeof part.name === 'string') tools.push(part.name)
+            else if (part.type === 'tool_result') hasToolResult = true
+          }
+        }
+        text = text.trim()
+        // Skip pure tool_result turns on the user side — they're redundant
+        // alongside the assistant's tool_use chips and only add clutter.
+        if (!text && tools.length === 0) continue
+        if (!text && hasToolResult && tools.length === 0) continue
+
+        const ts = typeof evt?.timestamp === 'string' ? Date.parse(evt.timestamp)
+          : typeof evt?.timestamp === 'number' ? evt.timestamp
+          : Date.now()
+
+        messages.push({
+          id: typeof evt?.uuid === 'string' ? evt.uuid : `history-${i}`,
+          role: role as 'user' | 'assistant' | 'system',
+          content: text,
+          timestamp: Number.isFinite(ts) ? ts : Date.now(),
+          ...(tools.length > 0 ? { tools } : {}),
+          ...(hasToolResult ? { hasToolResult: true } : {}),
+        })
+      } catch { /* skip malformed line */ }
+    }
+
+    return { ok: true, filePath, messages, total: messages.length }
   })
 
   ipcMain.handle('chat:opencodeModels', async () => {

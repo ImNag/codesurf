@@ -2182,6 +2182,22 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(() => initialRuntimeStateRef.current?.sessionId ?? null)
   const [preserveSessionSummary, setPreserveSessionSummary] = useState<boolean>(() => initialRuntimeStateRef.current?.preserveSessionSummary === true)
+  // Compacted-session history archive. Claude Agent SDK returns a condensed
+  // transcript on resume (just the last couple of messages); the SDK already
+  // holds the rest in its internal compacted state, so we don't feed earlier
+  // turns back into live context. This is purely a read-only visual archive
+  // — a show/hide toggle lets the human scroll back and read prior turns.
+  const [historicalMessages, setHistoricalMessages] = useState<Array<{
+    id: string
+    role: 'user' | 'assistant' | 'system'
+    content: string
+    timestamp: number
+    tools?: string[]
+    hasToolResult?: boolean
+  }>>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [earlierLoadError, setEarlierLoadError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(() => initialJobId)
   const [jobSequence, setJobSequence] = useState<number>(() => initialJobSequence)
   const [executionHosts, setExecutionHosts] = useState<import('../../../shared/types').ExecutionHostRecord[]>([])
@@ -4335,8 +4351,59 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     setJobId(null)
     setJobSequence(0)
     lastJobSequenceRef.current = 0
+    setHistoricalMessages([])
+    setShowHistory(false)
+    setEarlierLoadError(null)
     window.electron?.chat?.clearSession?.(tileId)
   }, [isStreaming, tileId, flushQueueStateNow, logQueueEvent])
+
+  // Drop any cached history archive whenever the resumed session changes
+  // so the toggle reverts to its fresh state for a new thread.
+  useEffect(() => {
+    setHistoricalMessages([])
+    setShowHistory(false)
+    setEarlierLoadError(null)
+  }, [sessionId])
+
+  const toggleEarlierMessages = useCallback(async () => {
+    // Already have the archive cached — just flip visibility.
+    if (historicalMessages.length > 0) {
+      setShowHistory(v => !v)
+      return
+    }
+    if (!sessionId || loadingEarlier) return
+    const api = (window as any).electron?.chat?.loadSessionHistory
+    if (typeof api !== 'function') {
+      setEarlierLoadError('History loader unavailable')
+      return
+    }
+    setLoadingEarlier(true)
+    setEarlierLoadError(null)
+    try {
+      const res = await api({ sessionId, limit: 500 })
+      if (!res?.ok || !Array.isArray(res.messages)) {
+        setEarlierLoadError(res?.error || 'Could not load earlier messages')
+        return
+      }
+      // Drop transcript entries whose content matches the already-rendered
+      // tail so the visible overlap between live messages and archive is 0.
+      const liveKeys = new Set(messages.map(m => `${m.role}::${(m.content ?? '').slice(0, 200)}`))
+      const archive = (res.messages as Array<{
+        id: string
+        role: 'user' | 'assistant' | 'system'
+        content: string
+        timestamp: number
+        tools?: string[]
+        hasToolResult?: boolean
+      }>).filter(m => !liveKeys.has(`${m.role}::${(m.content ?? '').slice(0, 200)}`))
+      setHistoricalMessages(archive)
+      setShowHistory(true)
+    } catch (err: any) {
+      setEarlierLoadError(String(err?.message ?? err ?? 'Load failed'))
+    } finally {
+      setLoadingEarlier(false)
+    }
+  }, [sessionId, loadingEarlier, historicalMessages.length, messages])
 
   useEffect(() => {
     if (isStreaming || queuedTurns.length === 0 || isFlushingQueuedTurnRef.current) return
@@ -4554,7 +4621,149 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
               Showing the most recent {renderedMessages.length} messages to keep this block responsive. {hiddenMessageCount} older message{hiddenMessageCount === 1 ? '' : 's'} are still preserved in compacted session state.
             </div>
           )}
- 
+
+          {/* Compacted-session archive — purely visual. The SDK still has
+              the full compacted context internally; this button just toggles
+              a read-only rendering of the on-disk .jsonl transcript so the
+              human can scroll back and read prior turns. It never feeds
+              content back into live context. */}
+          {sessionId && messages.length > 0 && (
+            <div style={{
+              alignSelf: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+              padding: '6px 0 2px',
+            }}>
+              <button
+                onClick={() => { void toggleEarlierMessages() }}
+                disabled={loadingEarlier}
+                style={{
+                  appearance: 'none',
+                  border: `1px solid ${theme.chat.divider}`,
+                  background: theme.chat.userBubble,
+                  color: theme.chat.muted,
+                  padding: '6px 14px',
+                  borderRadius: 999,
+                  fontSize: 11,
+                  cursor: loadingEarlier ? 'default' : 'pointer',
+                  opacity: loadingEarlier ? 0.6 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                title="Show previous turns from the on-disk session transcript (read-only)"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                  <path d="M6 2v4l2.5 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+                {loadingEarlier
+                  ? 'Loading earlier messages…'
+                  : historicalMessages.length > 0
+                    ? (showHistory
+                        ? `Hide earlier messages (${historicalMessages.length})`
+                        : `Show earlier messages (${historicalMessages.length})`)
+                    : 'Show earlier messages'}
+              </button>
+              {earlierLoadError && (
+                <span style={{ fontSize: 10, color: theme.chat.muted, opacity: 0.8 }}>{earlierLoadError}</span>
+              )}
+            </div>
+          )}
+
+          {showHistory && historicalMessages.length > 0 && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              padding: '10px 0 14px',
+              borderBottom: `1px dashed ${theme.chat.divider}`,
+              marginBottom: 8,
+              opacity: 0.78,
+            }}>
+              <div style={{
+                alignSelf: 'center',
+                fontSize: 10,
+                letterSpacing: 0.4,
+                textTransform: 'uppercase',
+                color: theme.chat.subtle,
+              }}>
+                Archive — read-only
+              </div>
+              {historicalMessages.map(msg => {
+                // Skip empty-text user tool-result turns entirely — their
+                // metadata is already reflected by the sibling assistant's
+                // tool chips.
+                if (!msg.content && msg.role === 'user' && msg.hasToolResult && !(msg.tools && msg.tools.length > 0)) {
+                  return null
+                }
+                return (
+                  <div
+                    key={`hist-${msg.id}`}
+                    style={{
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: CHAT_MESSAGE_MAX_WIDTH,
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      border: `1px solid ${theme.chat.divider}`,
+                      background: msg.role === 'user' ? theme.chat.userBubble : 'transparent',
+                      color: theme.chat.text,
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    <div style={{
+                      fontSize: 9,
+                      letterSpacing: 0.3,
+                      textTransform: 'uppercase',
+                      color: theme.chat.subtle,
+                      marginBottom: 4,
+                    }}>
+                      {msg.role}
+                    </div>
+                    {msg.content && <div>{msg.content}</div>}
+                    {msg.tools && msg.tools.length > 0 && (
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 4,
+                        marginTop: msg.content ? 6 : 0,
+                      }}>
+                        {msg.tools.map((toolName, idx) => (
+                          <span
+                            key={`${msg.id}-tool-${idx}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              border: `1px solid ${theme.chat.divider}`,
+                              background: theme.chat.userBubble,
+                              color: theme.chat.muted,
+                              fontSize: 10,
+                              lineHeight: 1.4,
+                              letterSpacing: 0.2,
+                            }}
+                          >
+                            <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
+                              <rect x="1" y="1" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="1" />
+                            </svg>
+                            {toolName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {(() => {
             // Walk the message list and group *consecutive* chip-only
             // assistant messages (thinking + tool calls, no prose text)
