@@ -104,6 +104,8 @@ interface ChatRequest {
     detachedDaemonPreferred: boolean
   }
   memoryPrompt?: string
+  skillsPrompt?: string
+  skillsSummary?: string | null
 }
 
 function log(...args: unknown[]): void {
@@ -597,19 +599,21 @@ function buildAsyncExecutionPrompt(asyncExecution: ChatRequest['asyncExecution']
 function buildClaudeAgentPrompt(
   basePrompt: string | undefined,
   memoryPrompt: string | undefined,
+  skillsPrompt: string | undefined,
   asyncExecution: ChatRequest['asyncExecution'],
 ): string | undefined {
   const asyncPrompt = buildAsyncExecutionPrompt(asyncExecution)
-  return joinPromptSections(basePrompt, memoryPrompt, asyncPrompt)
+  return joinPromptSections(basePrompt, memoryPrompt, skillsPrompt, asyncPrompt)
 }
 
 function buildCodexPrompt(
   userText: string,
   asyncExecution: ChatRequest['asyncExecution'],
   memoryPrompt?: string,
+  skillsPrompt?: string,
 ): string {
   const asyncPrompt = buildAsyncExecutionPrompt(asyncExecution)
-  const preamble = joinPromptSections(memoryPrompt, asyncPrompt)
+  const preamble = joinPromptSections(memoryPrompt, skillsPrompt, asyncPrompt)
   return preamble ? `${preamble}\n\n## User Request\n${userText}` : userText
 }
 
@@ -640,12 +644,43 @@ function emitMemoryContextLoaded(cardId: string, context: Awaited<ReturnType<typ
   sendStream(cardId, { type: 'tool_summary', toolId, toolName: 'Workspace Instructions', text: summary })
 }
 
+function summarizeSelectedSkills(index: Awaited<ReturnType<typeof daemonClient.listSkills>> | null | undefined): string | undefined {
+  return String(index?.selection?.summary ?? '').trim() || undefined
+}
+
+function buildSelectedSkillsPrompt(index: Awaited<ReturnType<typeof daemonClient.listSkills>> | null | undefined): string | undefined {
+  return String(index?.selection?.prompt ?? '').trim() || undefined
+}
+
+function emitSelectedSkillsLoaded(cardId: string, index: Awaited<ReturnType<typeof daemonClient.listSkills>> | null | undefined): void {
+  const summary = summarizeSelectedSkills(index)
+  if (!summary) return
+  const toolId = `codesurf-skills-${Date.now()}`
+  sendStream(cardId, { type: 'tool_start', toolId, toolName: 'Included Skills' })
+  const input = buildSelectedSkillsPrompt(index)
+  if (input) {
+    sendStream(cardId, { type: 'tool_input', toolId, text: input })
+  }
+  sendStream(cardId, { type: 'tool_summary', toolId, toolName: 'Included Skills', text: summary })
+}
+
 async function loadRuntimeMemoryContext(req: ChatRequest): Promise<Awaited<ReturnType<typeof daemonClient.loadMemoryContext>> | null> {
   if (!req.workspaceId) return null
   return await daemonClient.loadMemoryContext(
     req.workspaceId,
     req.executionTarget === 'cloud' ? 'cloud' : 'local',
   )
+}
+
+async function loadRuntimeSkillsContext(req: ChatRequest): Promise<Awaited<ReturnType<typeof daemonClient.listSkills>> | null> {
+  const workspaceId = String(req.workspaceId ?? '').trim()
+  const workspaceDir = String(req.workspaceDir ?? '').trim()
+  if (!workspaceId && !workspaceDir) return null
+  return await daemonClient.listSkills({
+    workspaceId: workspaceId || null,
+    workspaceDir: workspaceDir || null,
+    cardId: req.cardId,
+  })
 }
 
 async function selectChatExecutionHost(req: ChatRequest): Promise<ExecutionHostRecord | null> {
@@ -1345,7 +1380,7 @@ function chatClaude(req: ChatRequest): void {
     ].join('\n')
     log('systemPrompt built for', req.peers.length, 'peers, contex tools:', contexToolNames.length)
   }
-  systemPrompt = buildClaudeAgentPrompt(systemPrompt, req.memoryPrompt, req.asyncExecution)
+  systemPrompt = buildClaudeAgentPrompt(systemPrompt, req.memoryPrompt, req.skillsPrompt, req.asyncExecution)
 
   // Resolve claude binary from startup detection
   const claudePath = getAgentPath('claude')
@@ -2025,7 +2060,7 @@ function chatCodex(req: ChatRequest): void {
   } else {
     args.push('--skip-git-repo-check')
   }
-  args.push(buildCodexPrompt(lastUserMsg.content, req.asyncExecution, req.memoryPrompt))
+  args.push(buildCodexPrompt(lastUserMsg.content, req.asyncExecution, req.memoryPrompt, req.skillsPrompt))
 
   const proc = spawn(codexBin, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -2949,9 +2984,28 @@ export function registerChatIPC(): void {
       sendStream(req.cardId, { type: 'done' })
       return { ok: false }
     }
-    const requestWithMemory: ChatRequest = memoryPrompt
-      ? { ...effectiveRequest, memoryPrompt }
-      : effectiveRequest
+
+    let skillsPrompt: string | undefined
+    let skillsSummary: string | null = null
+    let skillsContext: Awaited<ReturnType<typeof daemonClient.listSkills>> | null = null
+    try {
+      skillsContext = await loadRuntimeSkillsContext(effectiveRequest)
+      skillsPrompt = buildSelectedSkillsPrompt(skillsContext)
+      skillsSummary = summarizeSelectedSkills(skillsContext) ?? null
+    } catch (error) {
+      sendStream(req.cardId, {
+        type: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      })
+      sendStream(req.cardId, { type: 'done' })
+      return { ok: false }
+    }
+
+    const requestWithContext: ChatRequest = {
+      ...effectiveRequest,
+      ...(memoryPrompt ? { memoryPrompt } : {}),
+      ...(skillsPrompt ? { skillsPrompt, skillsSummary } : {}),
+    }
 
     if (daemonHost) {
       log('chat execution route', {
@@ -2965,10 +3019,11 @@ export function registerChatIPC(): void {
         hostId: daemonHost.id,
         hostType: daemonHost.type,
       })
-      return await sendChatToDaemon(requestWithMemory, daemonHost)
+      return await sendChatToDaemon(requestWithContext, daemonHost)
     }
 
     emitMemoryContextLoaded(req.cardId, memoryContext)
+    emitSelectedSkillsLoaded(req.cardId, skillsContext)
 
     if (requestedRunMode === 'background') {
       sendStream(req.cardId, {
@@ -2989,18 +3044,18 @@ export function registerChatIPC(): void {
       backend: 'runtime',
     })
 
-    switch (requestWithMemory.provider) {
-      case 'claude': chatClaude(requestWithMemory); break
-      case 'codex': chatCodex(requestWithMemory); break
-      case 'opencode': chatOpencode(requestWithMemory); break
-      case 'openclaw': chatOpenclaw(requestWithMemory); break
-      case 'hermes': chatHermes(requestWithMemory); break
+    switch (requestWithContext.provider) {
+      case 'claude': chatClaude(requestWithContext); break
+      case 'codex': chatCodex(requestWithContext); break
+      case 'opencode': chatOpencode(requestWithContext); break
+      case 'openclaw': chatOpenclaw(requestWithContext); break
+      case 'hermes': chatHermes(requestWithContext); break
       default:
-        if (requestWithMemory.providerTransport?.type === 'local-proxy') {
-          chatLocalProxy(requestWithMemory)
+        if (requestWithContext.providerTransport?.type === 'local-proxy') {
+          chatLocalProxy(requestWithContext)
         } else {
-          sendStream(requestWithMemory.cardId, { type: 'error', error: `Unsupported provider: ${requestWithMemory.provider}` })
-          sendStream(requestWithMemory.cardId, { type: 'done' })
+          sendStream(requestWithContext.cardId, { type: 'error', error: `Unsupported provider: ${requestWithContext.provider}` })
+          sendStream(requestWithContext.cardId, { type: 'done' })
         }
     }
 
