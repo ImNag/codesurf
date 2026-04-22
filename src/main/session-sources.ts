@@ -398,7 +398,11 @@ function dedupeImportedMessages(messages: ImportedChatMessage[]): ImportedChatMe
   const out: ImportedChatMessage[] = []
   const seen = new Set<string>()
   for (const message of messages) {
-    const key = `${message.role}::${message.timestamp}::${message.content}`
+    const thinkingKey = message.thinking ? `${message.thinking.done ? '1' : '0'}::${message.thinking.content}` : ''
+    const toolKey = (message.toolBlocks ?? [])
+      .map(block => `${block.id}::${block.name}::${block.status}::${block.input}::${block.summary ?? ''}`)
+      .join('\u0001')
+    const key = `${message.role}::${message.timestamp}::${message.content}::${thinkingKey}::${toolKey}`
     if (seen.has(key)) continue
     seen.add(key)
     out.push(message)
@@ -767,6 +771,10 @@ interface PendingImportedToolCall {
   status: 'done' | 'error'
   fileChanges?: ImportedToolFileChange[]
   commandEntry?: ImportedToolCommandEntry
+}
+
+function isImportedPlanToolName(name: string | null | undefined): boolean {
+  return name === 'TodoWrite' || name === 'update_plan'
 }
 
 function buildImportedToolBlocks(calls: PendingImportedToolCall[]): ImportedToolBlock[] {
@@ -1770,6 +1778,40 @@ function parseCodexChatStateFromLines(lines: string[], entry: AggregatedSessionE
   }
 }
 
+async function findLatestCodexPlanSnapshotMessage(filePath: string): Promise<ImportedChatMessage | null> {
+  let latest: { lineNumber: number; timestamp: number; call: PendingImportedToolCall } | null = null
+
+  try {
+    await scanJsonlFile(filePath, (line, lineNumber) => {
+      try {
+        const evt = JSON.parse(line)
+        const payload = evt?.payload
+        if (evt?.type !== 'response_item') return
+        if (payload?.type !== 'function_call' && payload?.type !== 'custom_tool_call') return
+        if (!isImportedPlanToolName(typeof payload?.name === 'string' ? payload.name : null)) return
+        const call = parseCodexToolCall(payload)
+        if (!call) return
+        const timestamp = Date.parse(evt?.timestamp ?? '') || Date.now() + lineNumber
+        latest = { lineNumber, timestamp, call }
+      } catch {
+        // ignore malformed lines while scanning for plan snapshots
+      }
+    })
+  } catch {
+    return null
+  }
+
+  if (!latest) return null
+
+  return makeImportedRichMessage({
+    id: `codex-plan-${latest.lineNumber}`,
+    role: 'assistant',
+    content: '',
+    timestamp: latest.timestamp,
+    toolBlocks: buildImportedToolBlocks([latest.call]),
+  })
+}
+
 async function parseCodexChatState(
   filePath: string,
   entry: AggregatedSessionEntry,
@@ -1779,9 +1821,10 @@ async function parseCodexChatState(
   if (!stat?.isFile()) return null
 
   if (!options?.full && stat.size > LARGE_EXTERNAL_SESSION_BYTES) {
-    const [headRaw, tailRaw] = await Promise.all([
+    const [headRaw, tailRaw, recoveredPlanMessage] = await Promise.all([
       readTextPreviewSafe(filePath, EXTERNAL_SESSION_HEAD_SAMPLE_BYTES),
       readTextTailSafe(filePath, EXTERNAL_SESSION_TAIL_SAMPLE_BYTES),
+      findLatestCodexPlanSnapshotMessage(filePath),
     ])
     const headLines = parseJsonlLines(headRaw ?? '')
     const tailLines = parseJsonlLines(tailRaw ?? '')
@@ -1791,6 +1834,7 @@ async function parseCodexChatState(
     const messages = dedupeImportedMessages([
       ...(firstMessage ? [firstMessage] : []),
       makeTranscriptTruncationMessage('codex', stat.size),
+      ...(recoveredPlanMessage ? [recoveredPlanMessage] : []),
       ...recentChunk.messages,
     ])
     return {

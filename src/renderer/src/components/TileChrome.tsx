@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type { TileState, SkillConfig, ContextItem, ActivityStatus } from '../../../shared/types'
 import { getCurvierBlockRadius } from '../../../shared/types'
 import { buildObjective } from '../utils/objectiveBuilder'
@@ -6,6 +6,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 import { useTheme } from '../ThemeContext'
 import { useAppFonts } from '../FontContext'
 import { useTileColor } from '../TileColorContext'
+import { useTileTodos } from '../state/tileTodosStore'
 
 // --- Drawer data types ---
 
@@ -288,11 +289,12 @@ function parseTaskLines(input: string): string[] {
     .filter(Boolean)
 }
 
-function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask }: {
+function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask, readOnly = false }: {
   tasks: TaskItem[]
   onUpdateTask: (id: string, status: TaskItem['status']) => void
   onDeleteTask: (id: string) => void
   onAddTask: (title: string) => void
+  readOnly?: boolean
 }): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
@@ -387,62 +389,65 @@ function TasksPanel({ tasks, onUpdateTask, onDeleteTask, onAddTask }: {
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2v6M7 2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </ActionBtn>
         ) : null}
-        {!doneRow && (
+        {!readOnly && !doneRow && (
           <ActionBtn title="Done" color={theme.text.muted} onClick={() => onUpdateTask(task.id, 'done')}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5.5l2.5 2.5 3.5-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </ActionBtn>
         )}
-        <ActionBtn title="Delete" color={doneRow ? theme.text.disabled : theme.text.muted} onClick={() => onDeleteTask(task.id)}>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-        </ActionBtn>
+        {!readOnly && (
+          <ActionBtn title="Delete" color={doneRow ? theme.text.disabled : theme.text.muted} onClick={() => onDeleteTask(task.id)}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+          </ActionBtn>
+        )}
       </div>
     </div>
   )
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0', display: 'flex', flexDirection: 'column' }}>
-      {/* Task composer */}
-      <div style={{ padding: '4px 8px', flexShrink: 0 }}>
-        <textarea
-          ref={inputRef}
-          value={newTitle}
-          onChange={e => setNewTitle(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+      {!readOnly && (
+        <div style={{ padding: '4px 8px', flexShrink: 0 }}>
+          <textarea
+            ref={inputRef}
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+              if (e.key === 'Escape') setNewTitle('')
+            }}
+            onPaste={e => {
+              const pasted = e.clipboardData.getData('text/plain')
+              const lines = parseTaskLines(pasted)
+              if (lines.length <= 1) return
               e.preventDefault()
-              submit()
-            }
-            if (e.key === 'Escape') setNewTitle('')
-          }}
-          onPaste={e => {
-            const pasted = e.clipboardData.getData('text/plain')
-            const lines = parseTaskLines(pasted)
-            if (lines.length <= 1) return
-            e.preventDefault()
-            addMany(lines)
-          }}
-          placeholder="Add a task..."
-          rows={2}
-          style={{
-            width: '100%', borderRadius: 6, border: `1px solid ${theme.border.default}`, background: theme.surface.input,
-            color: theme.text.secondary, fontSize: fonts.secondarySize, fontWeight: fonts.secondaryWeight, padding: '4px 8px', resize: 'vertical', outline: 'none', minHeight: 36, maxHeight: 100, lineHeight: fonts.secondaryLineHeight,
-          }}
-          onFocus={e => {
-            e.currentTarget.style.borderColor = theme.border.accent
-            e.currentTarget.style.boxShadow = `0 0 0 0.5px ${theme.accent.soft}`
-          }}
-          onBlur={e => {
-            e.currentTarget.style.borderColor = theme.border.default
-            e.currentTarget.style.boxShadow = 'none'
-          }}
-        />
-        {newTitle.trim() && (
-          <button onClick={submit} style={{
-            marginTop: 3, height: 20, borderRadius: 4, border: 'none', background: theme.accent.base,
-            color: theme.text.inverse, fontSize: 10, fontWeight: 600, padding: '0 8px', cursor: 'pointer',
-          }}>Add task</button>
-        )}
-      </div>
+              addMany(lines)
+            }}
+            placeholder="Add a task..."
+            rows={2}
+            style={{
+              width: '100%', borderRadius: 6, border: `1px solid ${theme.border.default}`, background: theme.surface.input,
+              color: theme.text.secondary, fontSize: fonts.secondarySize, fontWeight: fonts.secondaryWeight, padding: '4px 8px', resize: 'vertical', outline: 'none', minHeight: 36, maxHeight: 100, lineHeight: fonts.secondaryLineHeight,
+            }}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = theme.border.accent
+              e.currentTarget.style.boxShadow = `0 0 0 0.5px ${theme.accent.soft}`
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = theme.border.default
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          />
+          {newTitle.trim() && (
+            <button onClick={submit} style={{
+              marginTop: 3, height: 20, borderRadius: 4, border: 'none', background: theme.accent.base,
+              color: theme.text.inverse, fontSize: 10, fontWeight: 600, padding: '0 8px', cursor: 'pointer',
+            }}>Add task</button>
+          )}
+        </div>
+      )}
 
       {tasks.length === 0 ? (
         <EmptyState text="No tasks yet" />
@@ -733,7 +738,7 @@ function Divider(): JSX.Element {
 
 // ─── Tabbed drawer container ─────────────────────────────────────────────────
 
-function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask, onAddTask, onToggleSkill, onAddNote, onRemoveContext }: {
+function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask, onAddTask, onToggleSkill, onAddNote, onRemoveContext, tasksReadOnly = false }: {
   data: DrawerData
   activeTab: DrawerTab
   onTabChange: (tab: DrawerTab) => void
@@ -743,6 +748,7 @@ function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask,
   onToggleSkill: (id: string) => void
   onAddNote: (text: string) => void
   onRemoveContext: (id: string) => void
+  tasksReadOnly?: boolean
 }): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
@@ -786,7 +792,7 @@ function DrawerPanel({ data, activeTab, onTabChange, onUpdateTask, onDeleteTask,
           {drawerTabTitle(activeTab)}
         </div>
       </div>
-      {activeTab === 'tasks' && <TasksPanel tasks={data.tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onAddTask={onAddTask} />}
+      {activeTab === 'tasks' && <TasksPanel tasks={data.tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onAddTask={onAddTask} readOnly={tasksReadOnly} />}
       {activeTab === 'tools' && <ToolsPanel tools={data.tools} availableTools={data.availableTools} />}
       {activeTab === 'skills' && <SkillsPanel skills={data.skills} onToggle={onToggleSkill} />}
       {activeTab === 'context' && <ContextPanel items={data.context} onAddNote={onAddNote} onRemoveItem={onRemoveContext} />}
@@ -1013,9 +1019,34 @@ export function TileChrome({
   const [activeTab, setActiveTab] = useState<DrawerTab>('tasks')
   const [data, setData] = useState<DrawerData>({ tasks: [], tools: [], availableTools: [], skills: [], context: [], messages: [] })
   const hasDrawer = DRAWER_TYPES.has(tile.type)
+  const agentTodos = useTileTodos(tile.type === 'chat' ? tile.id : null)
   const peerIds = React.useMemo(() => [...new Set((connectedPeers ?? []).filter(Boolean))], [connectedPeers])
   const busPopupButtonRef = useRef<HTMLButtonElement>(null)
   const busPopupRef = useRef<HTMLDivElement>(null)
+
+  const derivedChatTasks = useMemo<TaskItem[]>(() => {
+    if (tile.type !== 'chat' || !agentTodos || agentTodos.length === 0) return []
+    return agentTodos.map((todo, index) => {
+      let status: TaskItem['status'] = 'pending'
+      if (todo.status === 'completed') status = 'done'
+      else if (todo.status === 'in_progress') status = 'in-progress'
+      else if (todo.status === 'error') status = 'error'
+      else if (todo.status === 'paused') status = 'paused'
+      return {
+        id: `agent-todo-${tile.id}-${index}`,
+        title: todo.content,
+        status,
+        detail: todo.activeForm,
+        timestamp: index,
+      }
+    })
+  }, [agentTodos, tile.id, tile.type])
+
+  const drawerData = useMemo<DrawerData>(() => (
+    tile.type === 'chat' && derivedChatTasks.length > 0
+      ? { ...data, tasks: derivedChatTasks }
+      : data
+  ), [data, derivedChatTasks, tile.type])
 
   const toggle = () => {
     const next = !expanded
@@ -1284,8 +1315,8 @@ export function TileChrome({
     return () => el.removeEventListener('mousedown', handler)
   }, [])
 
-  const pendingTasks = data.tasks.filter(t => t.status !== 'done').length
-  const totalActivity = pendingTasks + data.tools.filter(t => t.status === 'running').length
+  const pendingTasks = drawerData.tasks.filter(t => t.status !== 'done').length
+  const totalActivity = pendingTasks + drawerData.tools.filter(t => t.status === 'running').length
 
   return (
     <div
@@ -1320,7 +1351,7 @@ export function TileChrome({
           paddingLeft: 12,
         }}>
           <DrawerPanel
-            data={data}
+            data={drawerData}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onUpdateTask={handleUpdateTask}
@@ -1329,6 +1360,7 @@ export function TileChrome({
             onToggleSkill={handleToggleSkill}
             onAddNote={handleAddNote}
             onRemoveContext={handleRemoveContext}
+            tasksReadOnly={tile.type === 'chat' && derivedChatTasks.length > 0}
           />
         </div>
       )}

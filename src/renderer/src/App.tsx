@@ -11,8 +11,8 @@ import { getTileNodeTools, withCapabilityPrefix, stripCapabilityPrefix, getAllNo
 import { FontProvider, FontTokenProvider, SANS_DEFAULT, MONO_DEFAULT } from './FontContext'
 import { ThemeProvider } from './ThemeContext'
 import { DEFAULT_THEME_ID, getThemeById, resolveEffectiveThemeId, registerCustomTheme, unregisterCustomTheme } from './theme'
-import type { PanelNode } from './components/PanelLayout'
-import { createLeaf, removeTileFromTree, addTabToLeaf, getAllTileIds, splitLeaf, closeOthersInLeaf, closeToRightInLeaf, findLeafById, setActiveTab } from './components/PanelLayout'
+import type { PanelLeaf, PanelNode } from './components/PanelLayout'
+import { createLeaf, removeTileFromTree, addTabToLeaf, getAllTileIds, splitLeaf, closeOthersInLeaf, closeToRightInLeaf, findLeafById, setActiveTab, pinTabInLeaf, replaceTabInLeaf } from './components/PanelLayout'
 import { basename, getDroppedPaths, toFileUrl, isMediaFile } from './utils/dnd'
 import { CODESURF_OPEN_LINK_EVENT, normalizeLocalPathCandidate, type CodeSurfOpenLinkDetail } from './utils/links'
 import { disposeChatTileRuntimeState, getChatTileRuntimeState, setChatTileRuntimeState } from './components/chatTileRuntimeState'
@@ -22,10 +22,11 @@ import { MainStatusBar } from './components/MainStatusBar'
 const LazyPanelLayout = React.lazy(() => import('./components/PanelLayout').then(m => ({ default: m.PanelLayout })))
 
 type PendingSessionOpen =
-  | { kind: 'chat'; session: SessionTargetEntry; workspaceId: string }
+  | { kind: 'chat'; session: SessionTargetEntry; workspaceId: string; options?: FocusOpenOptions }
   | { kind: 'app'; session: SessionTargetEntry; workspaceId: string }
 
 type SessionTargetEntry = AggregatedSessionEntry | WorkspaceSessionEntry
+type FocusOpenOptions = { persist?: boolean }
 
 const INITIAL_EXTERNAL_SESSION_TAIL_LOAD = 20
 
@@ -1749,16 +1750,18 @@ function App(): JSX.Element {
   const activeChatSessionMatch = useMemo(() => {
     if (!activeChatTileId) return { entryId: null, sessionId: null }
     const remembered = chatTileSessionMatches[activeChatTileId] ?? { entryId: null, sessionId: null }
-    const runtimeState = getChatTileRuntimeState<{ sessionId?: string | null }>(activeChatTileId)
+    const runtimeState = getChatTileRuntimeState<{ sessionId?: string | null; linkedSessionEntryId?: string | null }>(activeChatTileId)
+    const runtimeEntryId = typeof runtimeState?.linkedSessionEntryId === 'string' ? runtimeState.linkedSessionEntryId : null
     const runtimeSessionId = typeof runtimeState?.sessionId === 'string' ? runtimeState.sessionId : null
     return {
-      entryId: remembered.entryId,
+      entryId: runtimeEntryId ?? remembered.entryId,
       sessionId: runtimeSessionId ?? remembered.sessionId,
     }
   }, [activeChatTileId, chatTileSessionMatches])
+  const preferredBrowserOpenTargetRef = useRef<string | null>(null)
 
   // ─── Tile creation ────────────────────────────────────────────────────────
-  const addTile = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }, initialOptions?: { hideTitlebar?: boolean; hideNavbar?: boolean; launchBin?: string; launchArgs?: string[] }) => {
+  const buildTileState = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }, initialOptions?: { hideTitlebar?: boolean; hideNavbar?: boolean; launchBin?: string; launchArgs?: string[] }) => {
     const center = pos ?? viewportCenter()
     const { w, h } = getInitialTileSize(type)
     const minW = getMinTileWidth(type)
@@ -1779,37 +1782,125 @@ function App(): JSX.Element {
     const defaultHideTitlebar = isMedia ? true : undefined
     const defaultHideNavbar = isMedia ? true : undefined
 
-    const newTile: TileState = {
+    return {
       id: `tile-${Date.now()}`,
       type,
       x: position.x,
       y: position.y,
       width,
       height,
-      zIndex: nextZIndex,
+      zIndex: nextZIndexRef.current,
       filePath,
       hideTitlebar: initialOptions?.hideTitlebar ?? defaultHideTitlebar,
       hideNavbar: initialOptions?.hideNavbar ?? defaultHideNavbar,
       launchBin: initialOptions?.launchBin,
       launchArgs: initialOptions?.launchArgs,
     }
-    const newNZ = nextZIndex + 1
-    setTiles(prev => {
-      const updated = [...prev, newTile]
-      saveCanvas(updated, viewport, newNZ)
-      return updated
-    })
+  }, [viewportCenter, getInitialTileSize, snapValue, settings.gridSize, settings.gridSpacingSmall])
+
+  const getNavigationLeaf = useCallback((): PanelLeaf | null => {
+    const layout = panelLayoutRef.current
+    if (!layout) return null
+    if (activePanelIdRef.current) {
+      const activeLeaf = findLeafById(layout, activePanelIdRef.current)
+      if (activeLeaf) return activeLeaf
+    }
+    const firstLeafId = findFirstLeafId(layout)
+    return firstLeafId ? findLeafById(layout, firstLeafId) : null
+  }, [])
+
+  const isPreviewTabReplaceable = useCallback((tileId: string): boolean => {
+    const tile = tilesRef.current.find(candidate => candidate.id === tileId)
+    if (!tile) return false
+    if (tile.type === 'terminal') return false
+    if (tile.type === 'chat') {
+      const runtimeState = getChatTileRuntimeState<{ isStreaming?: boolean }>(tileId)
+      return runtimeState?.isStreaming !== true
+    }
+    return true
+  }, [])
+
+  const cleanupTileResources = useCallback((tileId: string) => {
+    const tile = tilesRef.current.find(t => t.id === tileId)
+    if (tile?.type === 'terminal') {
+      window.electron.terminal.destroy(tileId)
+    }
+    if (tile?.type === 'chat') {
+      disposeChatTileRuntimeState(tileId)
+    }
+    if (tile?.type === 'media') {
+      disposeMediaTile(tileId)
+    }
+    void window.electron.system.cleanupTile(tileId)
+    if (workspace?.id) {
+      void Promise.allSettled([
+        window.electron.canvas.deleteTileArtifacts(workspace.id, tileId),
+        window.electron.activity.clearTile(workspace.id, tileId),
+        workspace.path ? window.electron.collab.removeTileDir(workspace.path, tileId) : Promise.resolve(true),
+      ])
+    }
+  }, [workspace?.id, workspace?.path])
+
+  const mountTile = useCallback((
+    newTile: TileState,
+    options?: { panelId?: string | null; preview?: boolean },
+  ): string => {
+    const panelId = options?.panelId ?? activePanelIdRef.current
+    const updatedTiles = [...tilesRef.current, newTile]
+    const newNZ = Math.max(nextZIndexRef.current, newTile.zIndex) + 1
+    setTiles(updatedTiles)
     setNextZIndex(newNZ)
     setSelectedTileId(newTile.id)
-    window.setTimeout(() => triggerDiscoveryPulse(newTile.id, [...tilesRef.current, newTile]), 40)
-
-    // If in expanded/tabbed mode, add as a tab to the active panel
-    if (panelLayout && activePanelId) {
-      setPanelLayout(prev => prev ? addTabToLeaf(prev, activePanelId, newTile.id) : prev)
+    saveCanvas(updatedTiles, viewportRef.current, newNZ)
+    if (panelLayoutRef.current && panelId) {
+      setPanelLayout(prev => prev ? addTabToLeaf(prev, panelId, newTile.id, { preview: options?.preview }) : prev)
+      setActivePanelId(panelId)
     }
-
+    window.setTimeout(() => triggerDiscoveryPulse(newTile.id, updatedTiles), 40)
     return newTile.id
-  }, [nextZIndex, viewport, viewportCenter, saveCanvas, panelLayout, activePanelId, getInitialTileSize, snapValue, triggerDiscoveryPulse, settings.gridSize, settings.gridSpacingSmall])
+  }, [saveCanvas, triggerDiscoveryPulse])
+
+  const replacePreviewTile = useCallback((
+    currentTileId: string,
+    newTile: TileState,
+    panelId: string,
+    options?: { preview?: boolean },
+  ): string => {
+    cleanupTileResources(currentTileId)
+    const updatedTiles = [...tilesRef.current.filter(tile => tile.id !== currentTileId), newTile]
+    const newNZ = Math.max(nextZIndexRef.current, newTile.zIndex) + 1
+    setTiles(updatedTiles)
+    setNextZIndex(newNZ)
+    setSelectedTileId(newTile.id)
+    saveCanvas(updatedTiles, viewportRef.current, newNZ)
+    setPanelLayout(prev => prev
+      ? setActiveTab(replaceTabInLeaf(prev, panelId, currentTileId, newTile.id, { preview: options?.preview }), panelId, newTile.id)
+      : prev)
+    setActivePanelId(panelId)
+    setChatTileSessionMatches(prev => {
+      if (!(currentTileId in prev)) return prev
+      const next = { ...prev }
+      delete next[currentTileId]
+      return next
+    })
+    window.setTimeout(() => triggerDiscoveryPulse(newTile.id, updatedTiles), 40)
+    return newTile.id
+  }, [cleanupTileResources, saveCanvas, triggerDiscoveryPulse])
+
+  const pinPreviewTab = useCallback((tileId: string) => {
+    const layout = panelLayoutRef.current
+    if (!layout) return
+    const leafId = findLeafIdContainingTile(layout, tileId)
+    if (!leafId) return
+    const leaf = findLeafById(layout, leafId)
+    if (!leaf || leaf.previewTabId !== tileId) return
+    setPanelLayout(prev => prev ? pinTabInLeaf(prev, leafId, tileId) : prev)
+  }, [])
+
+  const addTile = useCallback((type: TileState['type'], filePath?: string, pos?: { x: number; y: number }, initialOptions?: { hideTitlebar?: boolean; hideNavbar?: boolean; launchBin?: string; launchArgs?: string[] }) => {
+    const newTile = buildTileState(type, filePath, pos, initialOptions)
+    return mountTile(newTile, { panelId: panelLayoutRef.current ? activePanelIdRef.current : null, preview: false })
+  }, [buildTileState, mountTile])
 
   useEffect(() => {
     const handleOpenLink = (event: Event) => {
@@ -1820,6 +1911,17 @@ function App(): JSX.Element {
       const localPath = hrefToLocalPath(href)
       if (localPath) {
         void resolveFileTileType(localPath).then(type => addTile(type, localPath))
+        return
+      }
+
+      const preferredBrowserTileId = preferredBrowserOpenTargetRef.current
+      if (preferredBrowserTileId) {
+        window.electron?.bus?.publish(
+          `tile:${preferredBrowserTileId}`,
+          'data',
+          'app:open-link',
+          { command: 'browser_navigate', url: href },
+        )
         return
       }
 
@@ -1885,29 +1987,7 @@ function App(): JSX.Element {
   }, [tiles, addTile])
 
   const closeTile = useCallback((id: string) => {
-    const tile = tilesRef.current.find(t => t.id === id)
-    if (tile?.type === 'terminal') {
-      window.electron.terminal.destroy(id)
-    }
-    if (tile?.type === 'chat') {
-      disposeChatTileRuntimeState(id)
-    }
-    if (tile?.type === 'media') {
-      // Pause, clear src, detach the persistent <video>/<audio> node so
-      // codecs are released and playback stops immediately.
-      disposeMediaTile(id)
-    }
-    // System-level cleanup for every tile type: drops bus history pinned to
-    // tile:${id}*, clears peer state, and schedules a debounced GC on main
-    // and all renderers (requires --expose-gc, see package.json dev script).
-    void window.electron.system.cleanupTile(id)
-    if (workspace?.id) {
-      void Promise.allSettled([
-        window.electron.canvas.deleteTileArtifacts(workspace.id, id),
-        window.electron.activity.clearTile(workspace.id, id),
-        workspace.path ? window.electron.collab.removeTileDir(workspace.path, id) : Promise.resolve(true),
-      ])
-    }
+    cleanupTileResources(id)
     setTiles(prev => {
       const updated = prev.filter(t => t.id !== id)
       saveCanvas(updated, viewport, nextZIndex)
@@ -1921,8 +2001,14 @@ function App(): JSX.Element {
       setActivePanelId(emptyLeaf.id)
       return emptyLeaf
     })
+    setChatTileSessionMatches(prev => {
+      if (!(id in prev)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
     if (selectedTileId === id) setSelectedTileId(null)
-  }, [workspace?.id, workspace?.path, selectedTileId, viewport, nextZIndex, saveCanvas])
+  }, [cleanupTileResources, selectedTileId, viewport, nextZIndex, saveCanvas])
 
   const bringToFront = useCallback((id: string) => {
     const nz = nextZIndex
@@ -2671,18 +2757,49 @@ function App(): JSX.Element {
     }
   }, [bringToFront])
 
-  const handleOpenFile = useCallback((filePath: string) => {
+  const findMatchingChatTileIdForSession = useCallback((session: AggregatedSessionEntry): string | null => {
+    return tilesRef.current.find(tile => {
+      if (tile.type !== 'chat') return false
+      if (session.tileId && tile.id === session.tileId) return true
+      const remembered = chatTileSessionMatches[tile.id]
+      const runtimeState = getChatTileRuntimeState<{ linkedSessionEntryId?: string | null }>(tile.id)
+      return remembered?.entryId === session.id || runtimeState?.linkedSessionEntryId === session.id
+    })?.id ?? null
+  }, [chatTileSessionMatches])
+
+  const handleOpenFile = useCallback((filePath: string, options?: FocusOpenOptions) => {
+    const persist = options?.persist === true
     setSidebarSelectedPath(filePath)
 
     // If this file is already open in a tile, focus it instead of creating a duplicate
     const existing = tilesRef.current.find(t => t.filePath === filePath)
     if (existing) {
       focusTileInWorkspace(existing.id)
+      if (persist) pinPreviewTab(existing.id)
       return
     }
 
-    void resolveFileTileType(filePath).then(type => addTile(type, filePath))
-  }, [addTile, focusTileInWorkspace])
+    let targetLeaf = panelLayoutRef.current ? getNavigationLeaf() : null
+    if (targetLeaf?.previewTabId && !persist && !isPreviewTabReplaceable(targetLeaf.previewTabId)) {
+      setPanelLayout(prev => prev ? pinTabInLeaf(prev, targetLeaf!.id, targetLeaf!.previewTabId!) : prev)
+      targetLeaf = { ...targetLeaf, previewTabId: null }
+    }
+
+    void resolveFileTileType(filePath).then(type => {
+      if (!targetLeaf) {
+        addTile(type, filePath)
+        return
+      }
+
+      const newTile = buildTileState(type, filePath)
+      if (!persist && targetLeaf.previewTabId && isPreviewTabReplaceable(targetLeaf.previewTabId)) {
+        replacePreviewTile(targetLeaf.previewTabId, newTile, targetLeaf.id, { preview: true })
+        return
+      }
+
+      mountTile(newTile, { panelId: targetLeaf.id, preview: !persist })
+    })
+  }, [addTile, buildTileState, focusTileInWorkspace, getNavigationLeaf, isPreviewTabReplaceable, mountTile, pinPreviewTab, replacePreviewTile])
 
   const resolveWorkspaceForProjectPath = useCallback(async (projectPath: string | null | undefined): Promise<Workspace | null> => {
     const normalizedProjectPath = normalizeWorkspacePath(projectPath)
@@ -2711,18 +2828,27 @@ function App(): JSX.Element {
     return resolveWorkspaceForProjectPath(session.projectPath)
   }, [resolveWorkspaceForProjectPath, workspace, workspaces])
 
-  const openSessionInChatCurrentWorkspace = useCallback(async (session: AggregatedSessionEntry, workspaceId: string) => {
+  const openSessionInChatCurrentWorkspace = useCallback(async (session: AggregatedSessionEntry, workspaceId: string, options?: FocusOpenOptions) => {
+    const persist = options?.persist === true
     const sessionHint = buildSessionEntryHint(session)
     const usePagedLinkedHistory = !isRuntimeSessionEntryId(session.id)
       && session.source !== 'codesurf'
       && Boolean(session.sessionId)
+    const existingTileId = findMatchingChatTileIdForSession(session)
+
+    if (existingTileId) {
+      rememberChatTileSessionMatch(existingTileId, session)
+      if (persist) pinPreviewTab(existingTileId)
+      focusTileInWorkspace(existingTileId)
+    }
 
     const state = await window.electron.canvas.getSessionState(workspaceId, session.id, {
       entryHint: sessionHint,
       tailLimit: usePagedLinkedHistory ? INITIAL_EXTERNAL_SESSION_TAIL_LOAD : undefined,
     }).catch(() => null)
     if (!state) {
-      if (!session.id.startsWith('codesurf-') && session.filePath) handleOpenFile(session.filePath)
+      if (existingTileId) return
+      if (!session.id.startsWith('codesurf-') && session.filePath) handleOpenFile(session.filePath, { persist })
       return
     }
 
@@ -2741,7 +2867,7 @@ function App(): JSX.Element {
       attachments: [],
       provider,
       model: typeof state.model === 'string' ? state.model : (session.model || ''),
-      mcpEnabled: false,
+      mcpEnabled: typeof state.mcpEnabled === 'boolean' ? state.mcpEnabled : true,
       mode: defaultModeByProvider[provider] ?? 'default',
       thinking: 'adaptive',
       agentMode: false,
@@ -2762,45 +2888,59 @@ function App(): JSX.Element {
       isStreaming: typeof state.isStreaming === 'boolean' ? state.isStreaming : false,
     }
 
-    const matchingChatTileId = tilesRef.current.find(tile => {
-      if (tile.type !== 'chat') return false
-      const remembered = chatTileSessionMatches[tile.id]
-      const runtimeState = getChatTileRuntimeState<{ sessionId?: string | null; linkedSessionEntryId?: string | null }>(tile.id)
-      if (remembered?.entryId === session.id || runtimeState?.linkedSessionEntryId === session.id) return true
-      const requestedSessionId = nextChatState.sessionId
-      return Boolean(requestedSessionId && (remembered?.sessionId === requestedSessionId || runtimeState?.sessionId === requestedSessionId))
-    })?.id ?? null
+    const matchingChatTileId = existingTileId ?? findMatchingChatTileIdForSession(session)
 
-    const reusableChatTileId = matchingChatTileId ?? activeChatTileId
+    const shouldOpenPermanent = persist || nextChatState.isStreaming === true
 
-    if (reusableChatTileId) {
-      rememberChatTileSessionMatch(reusableChatTileId, session, nextChatState.sessionId ?? null)
-      setChatTileRuntimeState(reusableChatTileId, nextChatState)
-      await window.electron.canvas.saveTileState(workspaceId, reusableChatTileId, nextChatState).catch(() => {})
-      setChatReloadTokens(prev => ({ ...prev, [reusableChatTileId]: (prev[reusableChatTileId] ?? 0) + 1 }))
-      focusTileInWorkspace(reusableChatTileId)
+    if (matchingChatTileId) {
+      rememberChatTileSessionMatch(matchingChatTileId, session, nextChatState.sessionId ?? null)
+      setChatTileRuntimeState(matchingChatTileId, nextChatState)
+      await window.electron.canvas.saveTileState(workspaceId, matchingChatTileId, nextChatState).catch(() => {})
+      if (shouldOpenPermanent) pinPreviewTab(matchingChatTileId)
+      setChatReloadTokens(prev => ({ ...prev, [matchingChatTileId]: (prev[matchingChatTileId] ?? 0) + 1 }))
+      focusTileInWorkspace(matchingChatTileId)
       return
     }
 
-    const chatTileId = addTile('chat')
+    let targetLeaf = panelLayoutRef.current ? getNavigationLeaf() : null
+    if (targetLeaf?.previewTabId && !shouldOpenPermanent && !isPreviewTabReplaceable(targetLeaf.previewTabId)) {
+      setPanelLayout(prev => prev ? pinTabInLeaf(prev, targetLeaf!.id, targetLeaf!.previewTabId!) : prev)
+      targetLeaf = { ...targetLeaf, previewTabId: null }
+    }
+
+    const chatTileId = targetLeaf
+      ? (() => {
+          const newTile = buildTileState('chat')
+          if (!shouldOpenPermanent && targetLeaf?.previewTabId && isPreviewTabReplaceable(targetLeaf.previewTabId)) {
+            return replacePreviewTile(targetLeaf.previewTabId, newTile, targetLeaf.id, { preview: true })
+          }
+          return mountTile(newTile, { panelId: targetLeaf.id, preview: !shouldOpenPermanent })
+        })()
+      : addTile('chat')
+
     rememberChatTileSessionMatch(chatTileId, session, nextChatState.sessionId ?? null)
+    setChatTileRuntimeState(chatTileId, nextChatState)
     await window.electron.canvas.saveTileState(workspaceId, chatTileId, {
       ...nextChatState,
     }).catch(() => {})
+    if (targetLeaf) {
+      if (shouldOpenPermanent) pinPreviewTab(chatTileId)
+      return
+    }
     bringToFront(chatTileId)
-  }, [activeChatTileId, addTile, bringToFront, chatTileSessionMatches, focusTileInWorkspace, handleOpenFile, rememberChatTileSessionMatch])
+  }, [addTile, bringToFront, buildTileState, findMatchingChatTileIdForSession, focusTileInWorkspace, getNavigationLeaf, handleOpenFile, isPreviewTabReplaceable, mountTile, pinPreviewTab, rememberChatTileSessionMatch, replacePreviewTile])
 
-  const openSessionInChat = useCallback(async (session: SessionTargetEntry) => {
+  const openSessionInChat = useCallback(async (session: SessionTargetEntry, options?: FocusOpenOptions) => {
     const targetWorkspace = await resolveWorkspaceForSession(session)
     if (!targetWorkspace?.id) return
 
     if (targetWorkspace.id !== workspace?.id) {
-      setPendingSessionOpen({ kind: 'chat', session, workspaceId: targetWorkspace.id })
+      setPendingSessionOpen({ kind: 'chat', session, workspaceId: targetWorkspace.id, options })
       await handleSwitchWorkspace(targetWorkspace.id)
       return
     }
 
-    await openSessionInChatCurrentWorkspace(session, targetWorkspace.id)
+    await openSessionInChatCurrentWorkspace(session, targetWorkspace.id, options)
   }, [resolveWorkspaceForSession, workspace?.id, handleSwitchWorkspace, openSessionInChatCurrentWorkspace])
 
   const openSessionInAppCurrentWorkspace = useCallback((session: AggregatedSessionEntry) => {
@@ -2869,7 +3009,7 @@ function App(): JSX.Element {
     setPendingSessionOpen(null)
 
     if (nextPending.kind === 'chat') {
-      void openSessionInChatCurrentWorkspace(nextPending.session, workspace.id)
+      void openSessionInChatCurrentWorkspace(nextPending.session, workspace.id, nextPending.options)
       return
     }
 
@@ -3311,7 +3451,7 @@ function App(): JSX.Element {
 
   // ─── Render tile body ─────────────────────────────────────────────────────
   const renderTileBody = (tile: TileState, options?: { isInteracting?: boolean; isActive?: boolean }): React.ReactNode => {
-    const isTileInteracting = dragState.type !== null || Boolean(options?.isInteracting)
+    const isTileInteracting = Boolean(options?.isInteracting)
     switch (tile.type) {
       case 'terminal':
         return (
@@ -3527,10 +3667,27 @@ function App(): JSX.Element {
       if (!pair) continue
       const route = getOrthogonalRoute(pair.source, pair.target, gridStep)
       const dist = pair.distance
+      const sharedCaps = getCapabilityMatches(srcCaps, tgtCaps)
+      const srcTools = srcCaps.tools ?? []
+      const tgtTools = tgtCaps.tools ?? []
 
       if (!alreadyLinkedByProximity) {
-        const srcLink: DiscoveryCapabilityLink = { peerId: tgt.id, peerType: tgt.type, distance: dist, route, capabilities: [...tgtCaps.provides.map(c => `cap:${c}`), ...srcCaps.accepts.map(c => `accept:${c}`)], lastSeen: Date.now() }
-        const tgtLink: DiscoveryCapabilityLink = { peerId: src.id, peerType: src.type, distance: dist, route: [...route].reverse(), capabilities: [...srcCaps.provides.map(c => `cap:${c}`), ...tgtCaps.accepts.map(c => `accept:${c}`)], lastSeen: Date.now() }
+        const srcLink: DiscoveryCapabilityLink = {
+          peerId: tgt.id,
+          peerType: tgt.type,
+          distance: dist,
+          route,
+          capabilities: uniq([...tgtTools, ...sharedCaps]),
+          lastSeen: Date.now(),
+        }
+        const tgtLink: DiscoveryCapabilityLink = {
+          peerId: src.id,
+          peerType: src.type,
+          distance: dist,
+          route: [...route].reverse(),
+          capabilities: uniq([...srcTools, ...sharedCaps]),
+          lastSeen: Date.now(),
+        }
         connectionGraph.connectedTileIds.add(src.id)
         connectionGraph.connectedTileIds.add(tgt.id)
         const srcLinks = connectionGraph.byTile.get(src.id) ?? []
@@ -3569,6 +3726,33 @@ function App(): JSX.Element {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelTileIds, settings.gridSize, settings.gridSpacingSmall, settings.gridSpacingLarge, tiles, lockedConnections, suppressedConnections, extActionsVersion])
+
+  useEffect(() => {
+    const sourceTileIds = [activeChatTileId, selectedTileId].filter((value): value is string => Boolean(value))
+    let nextTarget: string | null = null
+
+    for (const sourceTileId of sourceTileIds) {
+      const sourceTile = tileByIdMap.get(sourceTileId)
+      if (!sourceTile) continue
+      if (sourceTile.type === 'browser') {
+        nextTarget = sourceTile.id
+        break
+      }
+      const links = negotiatedDiscoveryState.byTileConnections.get(sourceTileId) ?? []
+      const browserPeer = links.find(link => tileByIdMap.get(link.peerId)?.type === 'browser')
+      if (browserPeer) {
+        nextTarget = browserPeer.peerId
+        break
+      }
+    }
+
+    if (!nextTarget) {
+      const browserTiles = tiles.filter(tile => tile.type === 'browser')
+      if (browserTiles.length === 1) nextTarget = browserTiles[0].id
+    }
+
+    preferredBrowserOpenTargetRef.current = nextTarget
+  }, [activeChatTileId, selectedTileId, negotiatedDiscoveryState.byTileConnections, tileByIdMap, tiles])
 
   // Push peer updates to terminal tiles when discovery state changes
   const prevTerminalPeersRef = useRef<Map<string, string>>(new Map())
@@ -5217,7 +5401,7 @@ function App(): JSX.Element {
                     titlebarExtra={tile.type === 'note' && !tile.filePath ? <Suspense fallback={null}><LazyStickyColorPicker /></Suspense> : undefined}
                   >
                     <Suspense fallback={<div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.text.muted, fontSize: 12, background: theme.surface.panelMuted }}>Loading block…</div>}>
-                      {renderTileBody(tile)}
+                      {renderTileBody(tile, { isInteracting: isActiveDrag })}
                     </Suspense>
                   </LazyTileChrome>
                   </TileColorProvider>

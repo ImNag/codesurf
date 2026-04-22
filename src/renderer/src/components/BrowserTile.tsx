@@ -655,6 +655,22 @@ export function BrowserTile({ tileId, workspaceId, initialUrl, width, height, zI
     }).catch(() => {})
   }, [workspaceId, tileId, addressBar, currentUrl, canGoBack, canGoForward, isLoading, mode])
 
+  useEffect(() => {
+    if (!workspaceId || !window.electron?.tileContext) return
+    void Promise.allSettled([
+      window.electron.tileContext.set(workspaceId, tileId, 'ctx:browser:url', currentUrl),
+      window.electron.tileContext.set(workspaceId, tileId, 'ctx:browser:mode', mode),
+      window.electron.tileContext.set(workspaceId, tileId, 'ctx:browser:loading', isLoading),
+      window.electron.tileContext.set(workspaceId, tileId, 'ctx:browser:navigation', {
+        currentUrl,
+        canGoBack,
+        canGoForward,
+        isLoading,
+        mode,
+      }),
+    ])
+  }, [workspaceId, tileId, currentUrl, mode, isLoading, canGoBack, canGoForward])
+
   // Fan-out bus traffic from this browser tile to canvas peers (unrelated to ContexRelay mailbox).
   useEffect(() => {
     const peers = new Set(connectedPeers)

@@ -319,6 +319,28 @@ function mergeSessionEntries(localSessions: AggregatedSessionEntry[], nativeSess
     return 1
   }
 
+  const mergeCanonicalMetadata = (
+    preferred: AggregatedSessionEntry,
+    alternate: AggregatedSessionEntry,
+  ): AggregatedSessionEntry => {
+    const canonical = [preferred, alternate].find(candidate =>
+      candidate.source !== 'codesurf'
+      && typeof candidate.title === 'string'
+      && candidate.title.trim().length > 0,
+    ) ?? null
+
+    if (!canonical) return preferred
+
+    return {
+      ...preferred,
+      title: canonical.title,
+      filePath: preferred.filePath || canonical.filePath,
+      sizeBytes: (typeof preferred.sizeBytes === 'number' && preferred.sizeBytes > 0) ? preferred.sizeBytes : canonical.sizeBytes,
+      sourceDetail: preferred.sourceDetail || canonical.sourceDetail,
+      model: preferred.model || canonical.model,
+    }
+  }
+
   for (const entry of [...nativeSessions, ...localSessions]) {
     const key = entry.sessionId ? `session:${sessionIdentityAgent(entry)}:${entry.sessionId}` : `entry:${entry.id}`
     const existing = byKey.get(key)
@@ -329,8 +351,10 @@ function mergeSessionEntries(localSessions: AggregatedSessionEntry[], nativeSess
     const existingPriority = priority(existing)
     const nextPriority = priority(entry)
     if (nextPriority > existingPriority || (nextPriority === existingPriority && entry.updatedAt > existing.updatedAt)) {
-      byKey.set(key, entry)
+      byKey.set(key, mergeCanonicalMetadata(entry, existing))
+      continue
     }
+    byKey.set(key, mergeCanonicalMetadata(existing, entry))
   }
 
   return [...byKey.values()].sort((a, b) => b.updatedAt - a.updatedAt)

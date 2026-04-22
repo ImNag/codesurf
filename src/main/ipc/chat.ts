@@ -15,9 +15,10 @@ import { promises as fs, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { promisify } from 'util'
-import { getMCPPort, getMCPToken, getContexMcpToolNames } from '../mcp-server'
+import { getMCPPort, getMCPToken, getContexMcpToolNames, writeMCPConfigToWorkspace } from '../mcp-server'
 import { getAgentPath, getShellEnvPath } from '../agent-paths'
 import { updateLinks } from '../peer-state'
+import { CONTEX_HOME } from '../paths'
 import { parseClaudeStream } from '../agent-stream'
 import { ensureLocalProxyRunning } from './localProxy'
 import {
@@ -700,12 +701,82 @@ function buildClaudeAgentPrompt(
 function buildCodexPrompt(
   userText: string,
   asyncExecution: ChatRequest['asyncExecution'],
+  basePrompt?: string,
   memoryPrompt?: string,
   skillsPrompt?: string,
 ): string {
   const asyncPrompt = buildAsyncExecutionPrompt(asyncExecution)
-  const preamble = joinPromptSections(memoryPrompt, skillsPrompt, asyncPrompt)
+  const preamble = joinPromptSections(basePrompt, memoryPrompt, skillsPrompt, asyncPrompt)
   return preamble ? `${preamble}\n\n## User Request\n${userText}` : userText
+}
+
+function buildPeerSystemPrompt(peers?: PeerContext[]): string | undefined {
+  if (!peers || peers.length === 0) return undefined
+
+  const hasExtensionActions = peers.some(peer => peer.actions && peer.actions.length > 0)
+  const browserPeers = peers.filter(peer => peer.tools.some(tool => tool.startsWith('browser_')))
+  const peerLines = peers.map(peer => {
+    const lines: string[] = []
+    if (peer.tools.length > 0) {
+      lines.push('  Tools: ' + peer.tools.join(', '))
+    }
+    if (peer.actions && peer.actions.length > 0) {
+      lines.push('  Actions (call via ext_invoke_action):')
+      for (const action of peer.actions) {
+        lines.push(`    - ${action.name}: ${action.description}`)
+      }
+    }
+    if (peer.context && Object.keys(peer.context).length > 0) {
+      lines.push('  Current context:')
+      for (const [key, value] of Object.entries(peer.context)) {
+        const display = value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value) : String(value)
+        lines.push(`    ${key}: ${display}`)
+      }
+    }
+    if (lines.length === 0) lines.push('  (no specific tools)')
+    return `- Block "${peer.peerId}" (${peer.peerType}):\n${lines.join('\n')}`
+  }).join('\n')
+
+  const browserGuide = browserPeers.length > 0 ? [
+    '',
+    '## Browser Control',
+    'If a connected browser block is relevant, use its browser_* tools with that block\'s tile_id instead of asking the user to navigate manually.',
+    'Use the browser context values (for example ctx:browser:url and ctx:browser:navigation) to understand where the browser currently is before deciding the next action.',
+  ] : []
+  const extActionGuide = hasExtensionActions ? [
+    '',
+    '## Extension Actions',
+    'To control extension blocks, use ext_invoke_action(tile_id, action, params).',
+    'To read extension state afterwards, use tile_context_get(tile_id, tag).',
+    'IMPORTANT: For artifact/content generation, ALWAYS prefer the "generate" action over "setHtml".',
+    'Do NOT generate HTML yourself — let the extension handle it. Just describe what you want in the prompt.',
+  ] : []
+
+  return [
+    'You are an AI agent running inside CodeSurf, an infinite canvas workspace.',
+    '',
+    'The following peer blocks are directly connected to you on the canvas:',
+    peerLines,
+    '',
+    'Treat the connected peer list above as authoritative for this turn.',
+    'Do not waste time rediscovering tools or the canvas when a connected peer already exposes the needed tool.',
+    '',
+    '## Peer Collaboration',
+    'Use these MCP tools to coordinate with linked peers:',
+    '- peer_set_state: Declare your status, task, and files (do this when starting work)',
+    '- peer_get_state: See what peers are working on, their todos, and files',
+    '- peer_send_message: Send a direct message to a peer',
+    '- peer_read_messages: Read incoming messages from peers',
+    '- peer_add_todo: Add a shared todo (peers are notified)',
+    '- peer_complete_todo: Mark a todo done',
+    '',
+    'Peer bridge tools for connected blocks require the block ID from the list above as tile_id.',
+    'When a connected block already exposes a direct tool for the job, use it immediately instead of stalling or asking the user to perform the action manually.',
+    'Do not call canvas_list_tiles or list_extensions first unless the connected peers above do not cover the request.',
+    'All tools are prefixed mcp__contex__ (for example mcp__contex__peer_get_state).',
+    ...browserGuide,
+    ...extActionGuide,
+  ].join('\n')
 }
 
 function normalizeContextBucketBundle(context: LoadedMemoryContext | null | undefined): ChatContextBucketBundle | undefined {
@@ -1519,61 +1590,12 @@ function chatClaude(req: ChatRequest): void {
   }
 
   // Build system prompt context about connected peer blocks and their tools
-  let systemPrompt: string | undefined
   if (req.peers && req.peers.length > 0) {
     log('Peer data:', JSON.stringify(req.peers.map(p => ({ id: p.peerId, type: p.peerType, tools: p.tools.length, actions: p.actions?.length ?? 0 }))))
-    const hasExtensionActions = req.peers.some(p => p.actions && p.actions.length > 0)
-    log('hasExtensionActions:', hasExtensionActions)
-    const peerLines = req.peers.map(p => {
-      const lines: string[] = []
-      if (p.tools.length > 0) {
-        lines.push('  Tools: ' + p.tools.join(', '))
-      }
-      if (p.actions && p.actions.length > 0) {
-        lines.push('  Actions (call via ext_invoke_action):')
-        for (const a of p.actions) {
-          lines.push(`    - ${a.name}: ${a.description}`)
-        }
-      }
-      if (p.context && Object.keys(p.context).length > 0) {
-        lines.push('  Current context:')
-        for (const [key, value] of Object.entries(p.context)) {
-          const display = value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value) : String(value)
-          lines.push(`    ${key}: ${display}`)
-        }
-      }
-      if (lines.length === 0) lines.push('  (no specific tools)')
-      return `- Block "${p.peerId}" (${p.peerType}):\n${lines.join('\n')}`
-    }).join('\n')
-    const extActionGuide = hasExtensionActions ? [
-      '',
-      '## Extension Actions',
-      'To control extension blocks, use ext_invoke_action(tile_id, action, params).',
-      'To read extension state afterwards, use tile_context_get(tile_id, tag).',
-      'IMPORTANT: For artifact/content generation, ALWAYS prefer the "generate" action over "setHtml".',
-      'The "generate" action sends your prompt to the extension\'s own AI which streams content in real-time with live preview.',
-      'Do NOT generate HTML yourself — let the extension handle it. Just describe what you want in the prompt.',
-    ] : []
-    systemPrompt = [
-      'You are an AI agent running inside CodeSurf, an infinite canvas workspace.',
-      '',
-      'The following peer blocks are directly connected to you on the canvas:',
-      peerLines,
-      '',
-      '## Peer Collaboration',
-      'Use these MCP tools to coordinate with linked peers:',
-      '- peer_set_state: Declare your status, task, and files (do this when starting work)',
-      '- peer_get_state: See what peers are working on, their todos, and files',
-      '- peer_send_message: Send a direct message to a peer',
-      '- peer_read_messages: Read incoming messages from peers',
-      '- peer_add_todo: Add a shared todo (peers are notified)',
-      '- peer_complete_todo: Mark a todo done',
-      '',
-      'Peer bridge tools (for direct control) need a block ID from the list above (passed as tile_id).',
-      'All tools are prefixed mcp__contex__ (e.g. mcp__contex__peer_get_state).',
-      ...extActionGuide,
-    ].join('\n')
-    log('systemPrompt built for', req.peers.length, 'peers, contex tools:', contexToolNames.length)
+  }
+  let systemPrompt = buildPeerSystemPrompt(req.peers)
+  if (systemPrompt) {
+    log('systemPrompt built for', req.peers?.length ?? 0, 'peers, contex tools:', contexToolNames.length)
   }
   systemPrompt = buildClaudeAgentPrompt(systemPrompt, req.memoryPrompt, req.skillsPrompt, req.asyncExecution)
 
@@ -2236,6 +2258,7 @@ function chatCodex(req: ChatRequest): void {
 
   const codexBin = getAgentPath('codex') || 'codex'
   const shellPath = getShellEnvPath()
+  const peerPrompt = buildPeerSystemPrompt(req.peers)
   const runtimeMessages = cloneChatMessages(req.messages)
   const runtimeSession: RuntimeChatSessionState = {
     provider: req.provider,
@@ -2255,11 +2278,18 @@ function chatCodex(req: ChatRequest): void {
   } else {
     args.push('--skip-git-repo-check')
   }
-  args.push(buildCodexPrompt(lastUserMsg.content, req.asyncExecution, req.memoryPrompt, req.skillsPrompt))
+  args.push(buildCodexPrompt(lastUserMsg.content, req.asyncExecution, peerPrompt, req.memoryPrompt, req.skillsPrompt))
+
+  if (req.workspaceDir) {
+    void writeMCPConfigToWorkspace(req.workspaceDir).catch(() => {})
+  }
+
+  const spawnEnv: Record<string, string> = { ...process.env, ...(shellPath && { PATH: shellPath }) }
+  spawnEnv.CONTEX_MCP_CONFIG = join(CONTEX_HOME, 'mcp-server.json')
 
   const proc = spawn(codexBin, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...(shellPath && { PATH: shellPath }) },
+    env: spawnEnv,
   })
 
   activeProcesses.set(req.cardId, proc)

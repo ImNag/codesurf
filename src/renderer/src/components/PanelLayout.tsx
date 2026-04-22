@@ -11,6 +11,7 @@ export interface PanelLeaf {
   id: string
   tabs: string[]
   activeTab: string
+  previewTabId?: string | null
 }
 
 export interface PanelSplit {
@@ -90,8 +91,18 @@ function setWebviewsInteractionBlocked(blocked: boolean): void {
 let panelCounter = 0
 export const newPanelId = (): string => `panel-${Date.now()}-${panelCounter++}`
 
-export function createLeaf(tileIds: string[], activeTab?: string): PanelLeaf {
-  return { type: 'leaf', id: newPanelId(), tabs: tileIds, activeTab: activeTab ?? tileIds[0] ?? '' }
+function normalizePreviewTabId(tabs: string[], previewTabId?: string | null): string | null {
+  return previewTabId && tabs.includes(previewTabId) ? previewTabId : null
+}
+
+export function createLeaf(tileIds: string[], activeTab?: string, previewTabId?: string | null): PanelLeaf {
+  return {
+    type: 'leaf',
+    id: newPanelId(),
+    tabs: tileIds,
+    activeTab: activeTab ?? tileIds[0] ?? '',
+    previewTabId: normalizePreviewTabId(tileIds, previewTabId),
+  }
 }
 
 export function findLeafByTileId(node: PanelNode, tileId: string): PanelLeaf | null {
@@ -164,7 +175,12 @@ export function removeTileFromTree(node: PanelNode, tileId: string): PanelNode |
   if (node.type === 'leaf') {
     const newTabs = node.tabs.filter(id => id !== tileId)
     if (newTabs.length === 0) return null
-    return { ...node, tabs: newTabs, activeTab: node.activeTab === tileId ? newTabs[0] : node.activeTab }
+    return {
+      ...node,
+      tabs: newTabs,
+      activeTab: node.activeTab === tileId ? newTabs[0] : node.activeTab,
+      previewTabId: normalizePreviewTabId(newTabs, node.previewTabId),
+    }
   }
   const newChildren: PanelNode[] = []
   const newSizes: number[] = []
@@ -178,13 +194,34 @@ export function removeTileFromTree(node: PanelNode, tileId: string): PanelNode |
   return { ...node, children: newChildren, sizes: newSizes.map(s => (s / total) * 100) }
 }
 
-export function addTabToLeaf(node: PanelNode, panelId: string, tileId: string): PanelNode {
+export function addTabToLeaf(
+  node: PanelNode,
+  panelId: string,
+  tileId: string,
+  options?: { preview?: boolean },
+): PanelNode {
   if (node.type === 'leaf') {
     if (node.id !== panelId) return node
-    if (node.tabs.includes(tileId)) return { ...node, activeTab: tileId }
-    return { ...node, tabs: [...node.tabs, tileId], activeTab: tileId }
+    if (node.tabs.includes(tileId)) {
+      return {
+        ...node,
+        activeTab: tileId,
+        previewTabId: options?.preview === true
+          ? tileId
+          : options?.preview === false && node.previewTabId === tileId
+            ? null
+            : normalizePreviewTabId(node.tabs, node.previewTabId),
+      }
+    }
+    const nextTabs = [...node.tabs, tileId]
+    return {
+      ...node,
+      tabs: nextTabs,
+      activeTab: tileId,
+      previewTabId: options?.preview === true ? tileId : normalizePreviewTabId(nextTabs, node.previewTabId),
+    }
   }
-  return { ...node, children: node.children.map(c => addTabToLeaf(c, panelId, tileId)) }
+  return { ...node, children: node.children.map(c => addTabToLeaf(c, panelId, tileId, options)) }
 }
 
 export function setActiveTab(node: PanelNode, panelId: string, tileId: string): PanelNode {
@@ -192,11 +229,45 @@ export function setActiveTab(node: PanelNode, panelId: string, tileId: string): 
   return { ...node, children: node.children.map(c => setActiveTab(c, panelId, tileId)) }
 }
 
+export function pinTabInLeaf(node: PanelNode, panelId: string, tileId: string): PanelNode {
+  if (node.type === 'leaf') {
+    if (node.id !== panelId || node.previewTabId !== tileId) return node
+    return { ...node, previewTabId: null, activeTab: tileId }
+  }
+  return { ...node, children: node.children.map(c => pinTabInLeaf(c, panelId, tileId)) }
+}
+
+export function replaceTabInLeaf(
+  node: PanelNode,
+  panelId: string,
+  currentTileId: string,
+  nextTileId: string,
+  options?: { preview?: boolean },
+): PanelNode {
+  if (node.type === 'leaf') {
+    if (node.id !== panelId) return node
+    const currentIndex = node.tabs.indexOf(currentTileId)
+    if (currentIndex < 0) return node
+    const replacedTabs = node.tabs.map(tabId => tabId === currentTileId ? nextTileId : tabId)
+    const nextTabs = replacedTabs.filter((tabId, index) => replacedTabs.indexOf(tabId) === index)
+    const nextPreviewTabId = node.previewTabId === currentTileId
+      ? (options?.preview === false ? null : nextTileId)
+      : normalizePreviewTabId(nextTabs, node.previewTabId)
+    return {
+      ...node,
+      tabs: nextTabs,
+      activeTab: node.activeTab === currentTileId ? nextTileId : node.activeTab,
+      previewTabId: normalizePreviewTabId(nextTabs, nextPreviewTabId),
+    }
+  }
+  return { ...node, children: node.children.map(c => replaceTabInLeaf(c, panelId, currentTileId, nextTileId, options)) }
+}
+
 export function closeOthersInLeaf(root: PanelNode, panelId: string, keepId: string): PanelNode {
   const update = (n: PanelNode): PanelNode => {
     if (n.type === 'leaf') {
       if (n.id !== panelId) return n
-      return { ...n, tabs: [keepId], activeTab: keepId }
+      return { ...n, tabs: [keepId], activeTab: keepId, previewTabId: n.previewTabId === keepId ? keepId : null }
     }
     return { ...n, children: n.children.map(update) }
   }
@@ -210,7 +281,12 @@ export function closeToRightInLeaf(root: PanelNode, panelId: string, tileId: str
       const idx = n.tabs.indexOf(tileId)
       if (idx < 0) return n
       const newTabs = n.tabs.slice(0, idx + 1)
-      return { ...n, tabs: newTabs, activeTab: newTabs.includes(n.activeTab) ? n.activeTab : tileId }
+      return {
+        ...n,
+        tabs: newTabs,
+        activeTab: newTabs.includes(n.activeTab) ? n.activeTab : tileId,
+        previewTabId: normalizePreviewTabId(newTabs, n.previewTabId),
+      }
     }
     return { ...n, children: n.children.map(update) }
   }
@@ -324,8 +400,10 @@ function ResizeHandle({ direction, onResize, onInteractionChange }: { direction:
 interface TabBarProps {
   tabs: { id: string; label: string }[]
   activeTab: string
+  previewTabId?: string | null
   panelId: string
   onActivate: (tileId: string) => void
+  onPinTab: (tileId: string) => void
   onClose: (tileId: string) => void
   onTabMouseDown: (tileId: string, panelId: string, label: string, e: React.MouseEvent) => void
   onExit?: () => void
@@ -337,7 +415,7 @@ interface TabBarProps {
 
 interface CtxMenu { tileId: string; tileType: string; x: number; y: number }
 
-function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown, getTileType, onSplitNew, onCloseOthers, onCloseToRight }: TabBarProps): JSX.Element {
+function TabBar({ tabs, activeTab, previewTabId = null, panelId, onActivate, onPinTab, onClose, onTabMouseDown, getTileType, onSplitNew, onCloseOthers, onCloseToRight }: TabBarProps): JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
@@ -381,19 +459,30 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
       }}>
         {tabs.map(tab => {
           const isActive = tab.id === activeTab
+          const isPreview = tab.id === previewTabId
           const tileType = getTileType(tab.id)
           return (
             <div
               key={tab.id}
               data-tab-id={tab.id}
-              title={tab.label}
+              title={isPreview ? `${tab.label} (Preview)` : tab.label}
               onMouseDown={e => {
                 if (e.button !== 0) return
                 e.preventDefault()
                 e.stopPropagation()
                 onTabMouseDown(tab.id, panelId, tab.label, e)
               }}
-              onClick={() => onActivate(tab.id)}
+              onClick={() => {
+                if (isPreview && isActive) {
+                  onPinTab(tab.id)
+                  return
+                }
+                onActivate(tab.id)
+              }}
+              onDoubleClick={e => {
+                e.stopPropagation()
+                onPinTab(tab.id)
+              }}
               onContextMenu={e => {
                 e.preventDefault()
                 setCtxMenu({ tileId: tab.id, tileType: getTileType(tab.id), x: e.clientX, y: e.clientY })
@@ -406,11 +495,15 @@ function TabBar({ tabs, activeTab, panelId, onActivate, onClose, onTabMouseDown,
                 background: isActive ? compactTabBackground : compactTabInactiveBackground,
                 marginBottom: 3,
                 borderRadius: 8,
-                transition: 'color 0.15s, background 0.15s, box-shadow 0.15s',
+                transition: 'color 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s',
                 flexShrink: 0, maxWidth: compactTabMaxWidth,
                 fontWeight: isActive ? 650 : 550,
                 letterSpacing: 0,
                 boxShadow: isActive ? compactTabActiveOutline : 'none',
+                border: isPreview
+                  ? `1px dashed ${isActive ? theme.border.accent : theme.border.subtle}`
+                  : '1px solid transparent',
+                fontStyle: isPreview ? 'italic' : 'normal',
               }}
               onMouseEnter={e => {
                 if (!isActive) {
@@ -685,6 +778,7 @@ interface LeafPanelProps {
   renderTile: (tileId: string, options?: { isInteracting?: boolean; isActive?: boolean }) => React.ReactNode
   isInteracting: boolean
   onActivate: (panelId: string, tileId: string) => void
+  onPinTab: (panelId: string, tileId: string) => void
   onCloseTab: (tileId: string) => void
   onTabMouseDown: (tileId: string, panelId: string, label: string, e: React.MouseEvent) => void
   onPanelFocus: (panelId: string) => void
@@ -698,7 +792,7 @@ interface LeafPanelProps {
   onLaunchTemplate?: (template: import('../../../shared/types').LayoutTemplate) => void
 }
 
-function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, onCloseTab, onTabMouseDown, onPanelFocus, onAddTile, dragTarget, onExit, getTileType, onSplitNew, onCloseOthers, onCloseToRight, onLaunchTemplate }: LeafPanelProps): JSX.Element {
+function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, onPinTab, onCloseTab, onTabMouseDown, onPanelFocus, onAddTile, dragTarget, onExit, getTileType, onSplitNew, onCloseOthers, onCloseToRight, onLaunchTemplate }: LeafPanelProps): JSX.Element {
   const theme = useTheme()
   const keepMountedWhenInactive = useCallback((tileId: string) => {
     const type = getTileType(tileId)
@@ -740,8 +834,10 @@ function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, 
         <TabBar
           tabs={tabs}
           activeTab={leaf.activeTab}
+          previewTabId={leaf.previewTabId ?? null}
           panelId={leaf.id}
           onActivate={tileId => onActivate(leaf.id, tileId)}
+          onPinTab={tileId => onPinTab(leaf.id, tileId)}
           onClose={onCloseTab}
           onTabMouseDown={onTabMouseDown}
           onExit={onExit}
@@ -814,6 +910,11 @@ export function PanelLayout({ root, getTileLabel, renderTile, onLayoutChange, on
   const handleActivate = useCallback((panelId: string, tileId: string) => {
     onActivePanelChange(panelId)
     onLayoutChange(setActiveTab(root, panelId, tileId))
+  }, [root, onLayoutChange, onActivePanelChange])
+
+  const handlePinTab = useCallback((panelId: string, tileId: string) => {
+    onActivePanelChange(panelId)
+    onLayoutChange(pinTabInLeaf(root, panelId, tileId))
   }, [root, onLayoutChange, onActivePanelChange])
 
   const handleDock = useCallback((tileId: string, fromPanelId: string, targetPanelId: string, zone: DockZone) => {
@@ -920,6 +1021,7 @@ export function PanelLayout({ root, getTileLabel, renderTile, onLayoutChange, on
           renderTile={renderTile}
           isInteracting={panelInteractionActive}
           onActivate={handleActivate}
+          onPinTab={handlePinTab}
           onCloseTab={onCloseTab}
           onTabMouseDown={handleTabMouseDown}
           onPanelFocus={onActivePanelChange}

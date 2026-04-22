@@ -8,12 +8,11 @@ export interface ActiveSessionMatchState {
 }
 
 export function isSessionActive(session: SessionEntry, activeState: ActiveSessionMatchState): boolean {
-  const { activeChatTileId = null, activeChatSessionId = null, activeChatSessionEntryId = null } = activeState
-  const hasSpecificActiveSession = Boolean(activeChatSessionEntryId || activeChatSessionId)
+  const { activeChatTileId = null, activeChatSessionEntryId = null } = activeState
+  const hasSpecificActiveSession = Boolean(activeChatSessionEntryId)
   return hasSpecificActiveSession
     ? (
         session.id === activeChatSessionEntryId
-        || (Boolean(activeChatSessionId) && session.sessionId === activeChatSessionId)
       )
     : (
         Boolean(activeChatTileId) && session.tileId === activeChatTileId

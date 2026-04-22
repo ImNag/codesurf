@@ -2420,7 +2420,7 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
   // Plan pane (right-docked inline plan panel). Subscribes to the per-tile
   // todos store so the pane, the composer chip, and the transcript's inline
-  // PlanCard all share one source of truth (latest TodoWrite block).
+  // PlanCard all share one source of truth (latest TodoWrite/update_plan block).
   const planTodos = useTileTodos(tileId)
   const [isPlanOpen, setIsPlanOpen] = useState(false)
   // Auto-close when the plan goes away (conversation cleared / new chat).
@@ -3002,47 +3002,30 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
     }
   }, [tileId, messages, input, attachments, queuedTurns, executionTarget, provider, model, mcpEnabled, mode, thinking, effectiveAgentMode, autoAgentMode, preserveSessionSummary, linkedSessionEntryId, linkedSessionHint, hasEarlierMessages, sessionId, jobId, jobSequence, cloudHostId, isStreaming])
 
-  // Publish latest TodoWrite todos for this tile so external chrome (tab bar,
-  // sidebar) can surface the agent's current todo list without drilling into
-  // ChatTile internals. Walks messages in reverse to find the most recent
-  // TodoWrite tool_use and parses its input JSON.
+  // Publish the latest task list for this tile so external chrome (tab bar,
+  // sidebar) can surface the agent's current plan without drilling into
+  // ChatTile internals. Walks reverse-chronologically across both the live
+  // tail and any paged-in history so linked external sessions still surface
+  // Codex `update_plan` data even when it lived outside the recent tail.
   useEffect(() => {
     let latest: TileTodoItem[] | null = null
-    outer: for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const msg = messages[i]
+    const allMessages = historicalMessages.length > 0
+      ? [...historicalMessages, ...messages]
+      : messages
+    outer: for (let i = allMessages.length - 1; i >= 0; i -= 1) {
+      const msg = allMessages[i]
       const blocks = msg.toolBlocks
       if (!blocks || blocks.length === 0) continue
       for (let j = blocks.length - 1; j >= 0; j -= 1) {
         const tb = blocks[j]
-        if (tb.name !== 'TodoWrite') continue
-        try {
-          const parsed = JSON.parse(tb.input || '{}') as unknown
-          const todosRaw = parsed && typeof parsed === 'object'
-            ? (parsed as Record<string, unknown>).todos
-            : null
-          if (Array.isArray(todosRaw)) {
-            const normalized: TileTodoItem[] = []
-            for (const item of todosRaw) {
-              if (!item || typeof item !== 'object') continue
-              const rec = item as Record<string, unknown>
-              const content = typeof rec.content === 'string' ? rec.content : ''
-              if (!content) continue
-              const status = typeof rec.status === 'string' ? rec.status : 'pending'
-              const activeForm = typeof rec.activeForm === 'string' ? rec.activeForm : undefined
-              normalized.push({ content, status, activeForm })
-            }
-            if (normalized.length > 0) {
-              latest = normalized
-              break outer
-            }
-          }
-        } catch {
-          // Partial/streaming JSON — ignore and keep looking.
-        }
+        const parsedPlan = parsePlanToolTodos(tb.name, tb.input || '{}')
+        if (!parsedPlan) continue
+        latest = parsedPlan.todos.length > 0 ? parsedPlan.todos : null
+        break outer
       }
     }
     setTileTodos(tileId, latest)
-  }, [tileId, messages])
+  }, [tileId, historicalMessages, messages])
 
   // Clear the published todos when the tile unmounts so stale state doesn't
   // linger in the store.
@@ -7335,52 +7318,12 @@ const WorkingChipView = React.memo(function WorkingChipView({ message }: { messa
     return null
   })()
 
-  // Remember when the current running tool was first observed so elapsed
-  // time reflects "since this tool started", not "since the chip mounted".
-  // Reset whenever the running tool id changes (or disappears).
-  const toolStartRef = useRef<{ id: string; at: number } | null>(null)
-  if (activeTool) {
-    if (!toolStartRef.current || toolStartRef.current.id !== activeTool.id) {
-      toolStartRef.current = { id: activeTool.id, at: Date.now() }
-    }
-  } else if (toolStartRef.current) {
-    toolStartRef.current = null
-  }
-
-  // Remember when the streaming message first mounted so the generic
-  // "Working for Ns" timer can honor the 2s show-delay.
-  const msgStartRef = useRef<number | null>(null)
-  if (message.isStreaming && msgStartRef.current == null) {
-    msgStartRef.current = Date.now()
-  } else if (!message.isStreaming) {
-    msgStartRef.current = null
-  }
-
-  // One timer ticks everything. 250ms is smooth enough for seconds display.
-  const [, setTick] = useState(0)
-  const isActive = Boolean(message.isStreaming && !activeThinking)
-  useEffect(() => {
-    if (!isActive) return
-    const id = setInterval(() => setTick(t => (t + 1) % 1_000_000), 250)
-    return () => clearInterval(id)
-  }, [isActive])
-
   if (!message.isStreaming) return null
   if (activeThinking) return null
 
-  const now = Date.now()
-  const toolElapsed = activeTool && toolStartRef.current
-    ? Math.max(0, Math.floor((now - toolStartRef.current.at) / 1000))
-    : 0
-  const msgElapsed = msgStartRef.current
-    ? Math.max(0, Math.floor((now - msgStartRef.current) / 1000))
-    : 0
-
-  if (!activeTool && msgElapsed < 2) return null
-
   const label = activeTool
-    ? `Running ${activeTool.name} · ${toolElapsed}s`
-    : `Working for ${msgElapsed}s`
+    ? `Running ${activeTool.name}`
+    : 'Working'
 
   return (
     <div style={{
@@ -7541,6 +7484,8 @@ function getGroupedToolLabel(name: string, count: number): string {
       return `Searched the web ${count} time${count === 1 ? '' : 's'}`
     case 'TodoWrite':
       return `Updated todos ${count} time${count === 1 ? '' : 's'}`
+    case 'update_plan':
+      return `Updated plan ${count} time${count === 1 ? '' : 's'}`
     case 'Task':
       return `Ran ${count} sub-agent${count === 1 ? '' : 's'}`
     default:
@@ -7970,6 +7915,52 @@ function getBool(obj: unknown, key: string): boolean | null {
   return typeof v === 'boolean' ? v : null
 }
 
+function isPlanToolName(toolName: string): boolean {
+  return toolName === 'TodoWrite' || toolName === 'update_plan'
+}
+
+function extractPlanTodosFromParsedInput(toolName: string, parsed: unknown): TileTodoItem[] {
+  if (!parsed || typeof parsed !== 'object') return []
+
+  if (toolName === 'TodoWrite') {
+    const todosRaw = Array.isArray((parsed as Record<string, unknown>).todos)
+      ? (parsed as Record<string, unknown>).todos as unknown[]
+      : []
+    const normalized: TileTodoItem[] = []
+    for (const t of todosRaw) {
+      const content = getStr(t, 'content') ?? ''
+      if (!content) continue
+      const status = (getStr(t, 'status') ?? 'pending') as TileTodoItem['status']
+      const activeForm = getStr(t, 'activeForm') ?? undefined
+      normalized.push({ content, status, activeForm })
+    }
+    return normalized
+  }
+
+  if (toolName === 'update_plan') {
+    const planRaw = Array.isArray((parsed as Record<string, unknown>).plan)
+      ? (parsed as Record<string, unknown>).plan as unknown[]
+      : []
+    const normalized: TileTodoItem[] = []
+    for (const step of planRaw) {
+      const content = getStr(step, 'step') ?? getStr(step, 'content') ?? ''
+      if (!content) continue
+      const status = (getStr(step, 'status') ?? 'pending') as TileTodoItem['status']
+      normalized.push({ content, status })
+    }
+    return normalized
+  }
+
+  return []
+}
+
+function parsePlanToolTodos(toolName: string, input: string): { todos: TileTodoItem[] } | null {
+  if (!isPlanToolName(toolName)) return null
+  const parsed = tryParseToolInput(input)
+  if (!parsed || typeof parsed !== 'object') return null
+  return { todos: extractPlanTodosFromParsedInput(toolName, parsed) }
+}
+
 function ToolInputView({ toolName, input, codePanelFontSize }: {
   toolName: string
   input: string
@@ -8180,17 +8171,15 @@ function ToolInputView({ toolName, input, codePanelFontSize }: {
     )
   }
 
-  if (toolName === 'TodoWrite' && parsed) {
-    const todosRaw = Array.isArray((parsed as Record<string, unknown>).todos)
-      ? (parsed as Record<string, unknown>).todos as unknown[]
-      : []
-    const normalized: TileTodoItem[] = []
-    for (const t of todosRaw) {
-      const content = getStr(t, 'content') ?? ''
-      if (!content) continue
-      const status = (getStr(t, 'status') ?? 'pending') as TileTodoItem['status']
-      const activeForm = getStr(t, 'activeForm') ?? undefined
-      normalized.push({ content, status, activeForm })
+  if (parsed && isPlanToolName(toolName)) {
+    const normalized = extractPlanTodosFromParsedInput(toolName, parsed)
+    if (normalized.length === 0) {
+      return (
+        <>
+          {noticeBanner}
+          <pre style={codeStyle}>{formatToolInput(body)}</pre>
+        </>
+      )
     }
     return (
       <>

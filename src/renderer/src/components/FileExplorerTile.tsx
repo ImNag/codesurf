@@ -406,7 +406,7 @@ interface TreeNodeProps {
   createName: string
   setCreateName: (value: string) => void
   onToggle: (path: string) => void
-  onOpenFile: (path: string) => void
+  onOpenFile: (path: string, options?: { persist?: boolean }) => void
   onCtxMenu: (e: React.MouseEvent, entry: FsEntry) => void
   onSubmitCreate: () => void
   onCancelCreate: () => void
@@ -459,6 +459,10 @@ function TreeNode({
           onSelectPath?.(entry.path)
           if (entry.isDir) onToggle(entry.path)
           else onOpenFile(entry.path)
+        }}
+        onDoubleClick={isRenaming || entry.isDir ? undefined : () => {
+          onSelectPath?.(entry.path)
+          onOpenFile(entry.path, { persist: true })
         }}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onCtxMenu(e, entry) }}
         draggable={!entry.isDir && !isRenaming}
@@ -569,7 +573,7 @@ function FlatEntry({
   entry: TreeEntry
   rootPath: string
   gitStatus: Record<string, GitStatus>
-  onOpenFile: (path: string) => void
+  onOpenFile: (path: string, options?: { persist?: boolean }) => void
   onCtxMenu: (e: React.MouseEvent, entry: FsEntry) => void
   renamingPath: string | null
   selectedPath?: string | null
@@ -609,6 +613,10 @@ function FlatEntry({
       onClick={isRenaming ? undefined : () => {
         onSelectPath?.(entry.path)
         onOpenFile(entry.path)
+      }}
+      onDoubleClick={isRenaming ? undefined : () => {
+        onSelectPath?.(entry.path)
+        onOpenFile(entry.path, { persist: true })
       }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onCtxMenu(e, entry) }}
     >
@@ -654,7 +662,7 @@ interface FileExplorerTileProps {
   workspacePath: string
   width: number
   height: number
-  onOpenFile: (filePath: string) => void
+  onOpenFile: (filePath: string, options?: { persist?: boolean }) => void
   onOpenWorkspace?: () => void
   selectedFilePath?: string | null
   connectedTerminalIds?: string[]

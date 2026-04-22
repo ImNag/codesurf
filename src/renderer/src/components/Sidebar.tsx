@@ -123,6 +123,7 @@ function SessionSidebarRow({
   extra,
   extraWidth,
   title,
+  onDoubleClick,
 }: {
   label: string
   meta?: string
@@ -137,6 +138,7 @@ function SessionSidebarRow({
   extra?: React.ReactNode
   extraWidth?: number
   title?: string
+  onDoubleClick?: () => void
 }): React.JSX.Element {
   const theme = useTheme()
   const fonts = useAppFonts()
@@ -165,6 +167,7 @@ function SessionSidebarRow({
     <div
       title={title}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -424,7 +427,7 @@ interface Props {
   onDeleteWorkspace: (id: string) => void
   onNewWorkspace: (name: string) => void
   onOpenFolder: () => void
-  onOpenFile: (filePath: string) => void
+  onOpenFile: (filePath: string, options?: { persist?: boolean }) => void
   onFocusTile: (tileId: string) => void
   onUpdateTile: (tileId: string, patch: Partial<TileState>) => void
   onCloseTile: (tileId: string) => void
@@ -440,7 +443,7 @@ interface Props {
   onNewChatForProject?: (args: { projectId: string; projectPath: string; workspaceId: string | null }) => void
   onNewFiles: () => void
   onOpenSettings: (tab: string) => void
-  onOpenSessionInChat: (session: SessionEntry) => void
+  onOpenSessionInChat: (session: SessionEntry, options?: { persist?: boolean }) => void
   onOpenSessionInApp: (session: SessionEntry) => void
   extensionTiles?: ExtTileEntry[]
   extensionEntries?: ExtensionEntrySummary[]
@@ -470,7 +473,7 @@ const SESSION_FOCUS_REFRESH_STALE_MS = 15_000
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 export function Sidebar({
-  workspace, workspaces, tiles, onSwitchWorkspace: _onSwitchWorkspace, onDeleteWorkspace: _onDeleteWorkspace, onNewWorkspace: _onNewWorkspace, onOpenFolder, onOpenFile, onFocusTile, onUpdateTile: _onUpdateTile, onCloseTile: _onCloseTile,
+  workspace, workspaces, tiles: _tiles, onSwitchWorkspace: _onSwitchWorkspace, onDeleteWorkspace: _onDeleteWorkspace, onNewWorkspace: _onNewWorkspace, onOpenFolder, onOpenFile, onFocusTile: _onFocusTile, onUpdateTile: _onUpdateTile, onCloseTile: _onCloseTile,
   onNewTerminal, onNewKanban, onNewBrowser, onNewChat, onNewChatForProject, onNewFiles, onOpenSettings,
   onOpenSessionInChat, onOpenSessionInApp,
   extensionTiles, extensionEntries, onAddExtensionTile, pinnedExtensionIds = [],
@@ -495,7 +498,7 @@ export function Sidebar({
   const [threadSortMode, setThreadSortMode] = useState<ThreadSortMode>('updated')
   const [showArchivedSessions, setShowArchivedSessions] = useState(false)
   const [showCronSessions, setShowCronSessions] = useState(false)
-  const [showSubagentSessions, setShowSubagentSessions] = useState(false)
+  const [showSubagentSessions, setShowSubagentSessions] = useState(true)
   const [hiddenSessionAgents, setHiddenSessionAgents] = useState<Record<string, boolean>>({})
   const [collapsedThreadGroups, setCollapsedThreadGroups] = useState<Record<string, boolean>>({})
   const [loadedSessionWorkspaceIds, setLoadedSessionWorkspaceIds] = useState<string[]>([])
@@ -641,7 +644,6 @@ export function Sidebar({
     lastPromotedSeqRef.current = sentSnapshot.seq
     const match = sessions.find(session => {
       if (sentSnapshot.entryId && session.id === sentSnapshot.entryId) return true
-      if (sentSnapshot.sessionId && session.sessionId === sentSnapshot.sessionId) return true
       if (sentSnapshot.tileId && session.tileId === sentSnapshot.tileId) return true
       return false
     })
@@ -782,8 +784,6 @@ export function Sidebar({
     }
   }, [isThreadGroupCollapsed, loadWorkspaceSessions, loadedSessionWorkspaceIdSet, projectEntries, workspace?.id, workspaceById])
 
-  const openTileIdSet = useMemo(() => new Set(tiles.map(tile => tile.id)), [tiles])
-
   const promotedSessions = useMemo(() => applySessionPromotions(sessions, sessionPromotions), [sessions, sessionPromotions])
 
   const orderedProjectEntries = useMemo(
@@ -797,21 +797,25 @@ export function Sidebar({
 
   const toggleThreadGroup = useCallback((key: string) => {
     const projectEntry = projectEntries.find(entry => entry.id === key) ?? null
-    const nextCollapsed = !(collapsedThreadGroups[key] ?? (key !== activeProjectId))
-    setCollapsedThreadGroups(prev => ({ ...prev, [key]: nextCollapsed }))
-    if (!nextCollapsed && projectEntry) {
+    const isActiveGroup = key === activeProjectId
+    const isCollapsed = collapsedThreadGroups[key] ?? (key !== activeProjectId)
+
+    if (!isActiveGroup && projectEntry) {
+      setCollapsedThreadGroups(prev => ({ ...prev, [key]: false }))
       for (const workspaceId of projectEntry.workspaceIds) {
         const workspaceEntry = workspaceById.get(workspaceId)
         if (workspaceEntry) void loadWorkspaceSessions(workspaceEntry)
       }
-      // Switch to this project's workspace (also reopens the tab if it was closed).
-      // Prefer the representative workspace (which tracks the currently-active one
-      // when this project has it) so we don't flip to a different tab unnecessarily.
+      // Switching to a different project should jump back to that project's
+      // existing workspace/tab state rather than acting like a collapse toggle.
       const targetWsId = projectEntry.representativeWorkspaceId ?? projectEntry.workspaceIds[0]
       if (targetWsId && targetWsId !== workspace?.id) {
         _onSwitchWorkspace(targetWsId)
       }
+      return
     }
+
+    setCollapsedThreadGroups(prev => ({ ...prev, [key]: !isCollapsed }))
   }, [activeProjectId, collapsedThreadGroups, loadWorkspaceSessions, projectEntries, workspaceById, workspace?.id, _onSwitchWorkspace])
 
   useEffect(() => {
@@ -1052,13 +1056,9 @@ export function Sidebar({
 
   const sessionContextMenuItems = useCallback((session: SessionEntry): MenuItem[] => {
     const items: MenuItem[] = []
-    const hasOpenTile = Boolean(session.tileId && openTileIdSet.has(session.tileId))
-
-    if (hasOpenTile) {
-      items.push({ label: 'Focus Existing Chat', action: () => onFocusTile(session.tileId!) })
-    }
     if (session.canOpenInChat !== false) {
-      items.push({ label: hasOpenTile ? 'Open in New Chat' : 'Open in Chat', action: () => onOpenSessionInChat(session) })
+      items.push({ label: 'Open in Chat', action: () => onOpenSessionInChat(session) })
+      items.push({ label: 'Open in Pinned Tab', action: () => onOpenSessionInChat(session, { persist: true }) })
     }
     if (session.canOpenInApp) {
       items.push({ label: `Open in ${session.sourceLabel}`, action: () => onOpenSessionInApp(session) })
@@ -1092,6 +1092,7 @@ export function Sidebar({
     }
     if (session.filePath) {
       items.push({ label: 'Open Raw File', action: () => onOpenFile(session.filePath!) })
+      items.push({ label: 'Open Raw File in Pinned Tab', action: () => onOpenFile(session.filePath!, { persist: true }) })
     }
 
     items.push({
@@ -1123,7 +1124,7 @@ export function Sidebar({
     })
 
     return items.length > 0 ? items : [{ label: 'No actions available', action: () => {} }]
-  }, [loadWorkspaceSessions, onFocusTile, onOpenFile, onOpenSessionInApp, onOpenSessionInChat, openTileIdSet, setSessionArchived, workspaceById])
+  }, [loadWorkspaceSessions, onOpenFile, onOpenSessionInApp, onOpenSessionInChat, setSessionArchived, workspaceById])
 
   const handleOpenProjectFromSidebar = useCallback(() => {
     onOpenFolder()
@@ -1644,7 +1645,6 @@ export function Sidebar({
                     })
                     const isStreaming =
                       (session.tileId ? streamingSnapshot.tileIds.has(session.tileId) : false)
-                      || (session.sessionId ? streamingSnapshot.sessionIds.has(session.sessionId) : false)
                       || streamingSnapshot.entryIds.has(session.id)
                     const sessionMeta = formatSessionSidebarMeta(session)
                     return (
@@ -1659,13 +1659,8 @@ export function Sidebar({
                         title={`${session.title}${sessionMeta ? `\n${sessionMeta}` : ''}\n${session.sourceLabel}${session.messageCount > 0 ? ` · ${session.messageCount} msg` : ''}${(session.checkpointCount ?? 0) > 0 ? ` · ${session.checkpointCount} checkpoint${session.checkpointCount === 1 ? '' : 's'}` : ''}${session.isArchived ? ' · archived' : ''}`}
                         active={isSelected}
                         muted={session.isArchived === true && !isSelected}
-                        onClick={() => {
-                          if (session.tileId && openTileIdSet.has(session.tileId)) {
-                            onFocusTile(session.tileId)
-                            return
-                          }
-                          onOpenSessionInChat(session)
-                        }}
+                        onClick={() => { onOpenSessionInChat(session) }}
+                        onDoubleClick={() => { onOpenSessionInChat(session, { persist: true }) }}
                         onContextMenu={e => {
                           e.preventDefault()
                           setSessionCtx({ x: e.clientX, y: e.clientY, session })

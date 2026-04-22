@@ -732,8 +732,10 @@
 
   function setGenerating(value) {
     state.generating = value;
-    $('generateBtn').disabled = value || !state.config.apiKey;
-    $('statusPill').textContent = value ? 'generating' : (state.variants.length ? 'ready' : 'empty');
+    var generateBtn = $('generateBtn');
+    if (generateBtn) generateBtn.disabled = value || !state.config.apiKey;
+    var statusPill = $('statusPill');
+    if (statusPill) statusPill.textContent = value ? 'generating' : (state.variants.length ? 'ready' : 'empty');
   }
 
   function setVariantCount(count) {
