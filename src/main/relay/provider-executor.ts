@@ -255,7 +255,7 @@ function parseOpenClawAgents(openclawBin: string, shellPath?: string | null): Ar
   }
 }
 
-function selectOpenClawAgentId(openclawBin: string, shellPath?: string | null, preferredModel?: string | null): string {
+function selectOpenClawAgentId(openclawBin: string, shellPath?: string | null, preferredModel?: string | null): string | null {
   const agents = parseOpenClawAgents(openclawBin, shellPath)
   if (agents.length === 0) return 'main'
 
@@ -275,13 +275,7 @@ function selectOpenClawAgentId(openclawBin: string, shellPath?: string | null, p
     const exactAny = agents.find(agent => normalizeOpenClawModelRef(agent.model) === requested)
     if (exactAny) return exactAny.id
 
-    const requestedFamily = requested.includes('/') ? requested.split('/')[0] : requested.split('-')[0]
-    const familyStable = agents.find(agent => {
-      if (!isStable(agent.id)) return false
-      const model = normalizeOpenClawModelRef(agent.model)
-      return model.startsWith(`${requestedFamily}/`) || model.includes(requestedFamily)
-    })
-    if (familyStable) return familyStable.id
+    return null
   }
 
   return agents.find(agent => agent.isDefault)?.id ?? agents[0]?.id ?? 'main'
@@ -306,6 +300,14 @@ async function runOpenClawTurn(spawnRequest: RelaySpawnRequest, input: RelayTurn
   const openclawBin = getAgentPath('openclaw') || 'openclaw'
   const shellPath = getShellEnvPath()
   const agentId = selectOpenClawAgentId(openclawBin, shellPath, spawnRequest.model)
+  if (!agentId) {
+    const agents = parseOpenClawAgents(openclawBin, shellPath)
+    const available = agents
+      .map(agent => agent.model || agent.id)
+      .filter((value, index, all): value is string => typeof value === 'string' && value.trim().length > 0 && all.indexOf(value) === index)
+    const details = available.length > 0 ? ` Available: ${available.join(', ')}` : ''
+    throw new Error(`OpenClaw model must match exactly: ${spawnRequest.model}.${details}`)
+  }
 
   return await new Promise<string>((resolve, reject) => {
     const args = ['agent', '--json', '--agent', agentId, '--message', input.prompt]

@@ -2972,7 +2972,7 @@ function parseOpenClawAgents(openclawBin: string, shellPath?: string | null): Ar
   }
 }
 
-function selectOpenClawAgentId(openclawBin: string, shellPath?: string | null, preferredModel?: string | null): string {
+function selectOpenClawAgentId(openclawBin: string, shellPath?: string | null, preferredModel?: string | null): string | null {
   const agents = parseOpenClawAgents(openclawBin, shellPath)
   if (agents.length === 0) return 'main'
 
@@ -2992,13 +2992,7 @@ function selectOpenClawAgentId(openclawBin: string, shellPath?: string | null, p
     const exactAny = agents.find(agent => normalizeModelRef(agent.model) === requested)
     if (exactAny) return exactAny.id
 
-    const requestedFamily = requested.includes('/') ? requested.split('/')[0] : requested.split('-')[0]
-    const familyStable = agents.find(agent => {
-      if (!isStable(agent.id)) return false
-      const model = normalizeModelRef(agent.model)
-      return model.startsWith(`${requestedFamily}/`) || model.includes(requestedFamily)
-    })
-    if (familyStable) return familyStable.id
+    return null
   }
 
   return agents.find(agent => agent.isDefault)?.id ?? agents[0]?.id ?? 'main'
@@ -3038,6 +3032,17 @@ function chatOpenclaw(req: ChatRequest): void {
   }
   const existingSessionId = openclawSessionIds.get(req.cardId)
   const selectedAgentId = existingSessionId ? null : selectOpenClawAgentId(openclawBin, shellPath, req.model)
+
+  if (!existingSessionId && req.model && !selectedAgentId) {
+    const agents = parseOpenClawAgents(openclawBin, shellPath)
+    const available = agents
+      .map(agent => agent.model || agent.id)
+      .filter((value, index, all): value is string => typeof value === 'string' && value.trim().length > 0 && all.indexOf(value) === index)
+    const details = available.length > 0 ? ` Available: ${available.join(', ')}` : ''
+    sendStream(req.cardId, { type: 'error', error: `OpenClaw model must match exactly: ${req.model}.${details}` })
+    sendStream(req.cardId, { type: 'done' })
+    return
+  }
 
   log('chatOpenclaw starting', {
     model: req.model,

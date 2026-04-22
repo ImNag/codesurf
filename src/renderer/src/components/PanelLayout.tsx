@@ -27,6 +27,23 @@ export type PanelNode = PanelLeaf | PanelSplit
 export type DockZone = 'left' | 'right' | 'top' | 'bottom' | 'center'
 
 const PANEL_SPLIT_GUTTER_PX = 6
+const PANEL_SHELL_RADIUS_PX = 16
+const PANEL_LEAF_RADIUS_PX = 12
+
+interface PanelOuterEdges {
+  top: boolean
+  right: boolean
+  bottom: boolean
+  left: boolean
+}
+
+function getLeafBorderRadius(edges: PanelOuterEdges): string {
+  const topLeft = edges.top && edges.left ? PANEL_SHELL_RADIUS_PX : PANEL_LEAF_RADIUS_PX
+  const topRight = edges.top && edges.right ? PANEL_SHELL_RADIUS_PX : PANEL_LEAF_RADIUS_PX
+  const bottomRight = edges.bottom && edges.right ? PANEL_SHELL_RADIUS_PX : PANEL_LEAF_RADIUS_PX
+  const bottomLeft = edges.bottom && edges.left ? PANEL_SHELL_RADIUS_PX : PANEL_LEAF_RADIUS_PX
+  return `${topLeft}px ${topRight}px ${bottomRight}px ${bottomLeft}px`
+}
 
 // ─── Panel element registry ───────────────────────────────────────────────────
 // Mouse-event drag needs to know where each panel is on screen.
@@ -774,6 +791,7 @@ function EmptyPanel({ onAddTile, onLaunchTemplate }: { onAddTile: (type: string)
 
 interface LeafPanelProps {
   leaf: PanelLeaf
+  outerEdges: PanelOuterEdges
   getTileLabel: (tileId: string) => string
   renderTile: (tileId: string, options?: { isInteracting?: boolean; isActive?: boolean }) => React.ReactNode
   isInteracting: boolean
@@ -792,7 +810,7 @@ interface LeafPanelProps {
   onLaunchTemplate?: (template: import('../../../shared/types').LayoutTemplate) => void
 }
 
-function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, onPinTab, onCloseTab, onTabMouseDown, onPanelFocus, onAddTile, dragTarget, onExit, getTileType, onSplitNew, onCloseOthers, onCloseToRight, onLaunchTemplate }: LeafPanelProps): JSX.Element {
+function LeafPanel({ leaf, outerEdges, getTileLabel, renderTile, isInteracting, onActivate, onPinTab, onCloseTab, onTabMouseDown, onPanelFocus, onAddTile, dragTarget, onExit, getTileType, onSplitNew, onCloseOthers, onCloseToRight, onLaunchTemplate }: LeafPanelProps): JSX.Element {
   const theme = useTheme()
   const keepMountedWhenInactive = useCallback((tileId: string) => {
     const type = getTileType(tileId)
@@ -802,6 +820,7 @@ function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, 
   const tabs = leaf.tabs.map(id => ({ id, label: getTileLabel(id) }))
   const isEmpty = tabs.length === 0
   const dockZone = dragTarget?.panelId === leaf.id ? dragTarget.zone : null
+  const borderRadius = getLeafBorderRadius(outerEdges)
 
   useEffect(() => {
     const el = panelRef.current
@@ -819,7 +838,7 @@ function LeafPanel({ leaf, getTileLabel, renderTile, isInteracting, onActivate, 
         minWidth: 0,
         minHeight: 0,
         position: 'relative',
-        borderRadius: 12,
+        borderRadius,
         overflow: 'hidden',
         background: theme.surface.panel,
         // 0.5px hairline edge (1 physical pixel on retina). The flex-item
@@ -1011,12 +1030,13 @@ export function PanelLayout({ root, getTileLabel, renderTile, onLayoutChange, on
     onLayoutChange(update(root))
   }, [root, onLayoutChange, getTileType])
 
-  const renderNode = (node: PanelNode): React.ReactNode => {
+  const renderNode = (node: PanelNode, outerEdges: PanelOuterEdges): React.ReactNode => {
     if (node.type === 'leaf') {
       return (
         <LeafPanel
           key={node.id}
           leaf={node}
+          outerEdges={outerEdges}
           getTileLabel={getTileLabel}
           renderTile={renderTile}
           isInteracting={panelInteractionActive}
@@ -1057,7 +1077,22 @@ export function PanelLayout({ root, getTileLabel, renderTile, onLayoutChange, on
               // own content, and hiding overflow on this flex-item wrapper was
               // dropping the LeafPanel's 1px bottom border on Chromium.
             }}>
-              {renderNode(child)}
+              {renderNode(
+                child,
+                node.direction === 'horizontal'
+                  ? {
+                    top: outerEdges.top,
+                    right: outerEdges.right && i === node.children.length - 1,
+                    bottom: outerEdges.bottom,
+                    left: outerEdges.left && i === 0,
+                  }
+                  : {
+                    top: outerEdges.top && i === 0,
+                    right: outerEdges.right,
+                    bottom: outerEdges.bottom && i === node.children.length - 1,
+                    left: outerEdges.left,
+                  },
+              )}
             </div>
             {i < node.children.length - 1 && (
               <ResizeHandle
@@ -1085,7 +1120,7 @@ export function PanelLayout({ root, getTileLabel, renderTile, onLayoutChange, on
     >
       {/* Panel tree */}
       <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-        {renderNode(root)}
+        {renderNode(root, { top: true, right: true, bottom: true, left: true })}
       </div>
 
       {panelInteractionActive && (

@@ -4766,9 +4766,14 @@ function App(): JSX.Element {
             left: mainPanelLeft,
             right: 6,
             bottom: mainPanelBottomInset,
-            background: panelLayout ? 'transparent' : canvasLayerBackground,
+            // Focus mode still needs a filled rounded surface so the outer
+            // corners and split gutters don't reveal the app backdrop.
+            background: panelLayout ? theme.surface.panelMuted : canvasLayerBackground,
             borderRadius: mainPanelRadius,
-            border: `0.5px solid ${theme.border.subtle}`,
+            // Panel mode draws per-leaf hairline edges. Keeping the shared
+            // shell border underneath causes a second line to peek through at
+            // rounded outer corners.
+            border: panelLayout ? '0.5px solid transparent' : `0.5px solid ${theme.border.subtle}`,
             boxShadow: theme.shadow.panel,
             cursor: isDraggingCanvas ? 'grabbing' : (spaceHeld.current ? 'grab' : 'default'),
             userSelect: 'none',

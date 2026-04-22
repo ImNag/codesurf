@@ -1215,39 +1215,99 @@ function trimToolBlockForMemory(block: ToolBlock, aggressive: boolean): ToolBloc
   return { ...block, input, summary, fileChanges, commandEntries }
 }
 
-function compactMessageForMemory(message: ChatMessage, options: { aggressive: boolean; preserveRichLayout: boolean }): ChatMessage {
-  const aggressive = options.aggressive && !message.isStreaming
-  const content = truncateTextForMemory(message.content, CHAT_MEMORY_SINGLE_MESSAGE_LIMIT, 'message content')
-  let next: ChatMessage = content === message.content ? message : { ...message, content }
+function mergeToolBlockDuplicate(existing: ToolBlock, incoming: ToolBlock): ToolBlock {
+  return {
+    ...existing,
+    ...incoming,
+    name: incoming.name || existing.name,
+    input: incoming.input || existing.input,
+    summary: incoming.summary ?? existing.summary,
+    status: incoming.status === 'running' && existing.status !== 'running'
+      ? existing.status
+      : incoming.status,
+    elapsed: incoming.elapsed ?? existing.elapsed,
+    fileChanges: incoming.fileChanges ?? existing.fileChanges,
+    commandEntries: incoming.commandEntries ?? existing.commandEntries,
+  }
+}
 
-  if (message.thinking?.content) {
+function normalizeMessageStructure(message: ChatMessage): ChatMessage {
+  const toolBlocks = message.toolBlocks
+  const contentBlocks = message.contentBlocks
+  if ((!toolBlocks || toolBlocks.length <= 1) && (!contentBlocks || contentBlocks.length <= 1)) return message
+
+  let nextToolBlocks = toolBlocks
+  if (toolBlocks?.length) {
+    const seen = new Map<string, number>()
+    const deduped: ToolBlock[] = []
+    let changed = false
+    for (const block of toolBlocks) {
+      const existingIndex = seen.get(block.id)
+      if (existingIndex == null) {
+        seen.set(block.id, deduped.length)
+        deduped.push(block)
+        continue
+      }
+      deduped[existingIndex] = mergeToolBlockDuplicate(deduped[existingIndex], block)
+      changed = true
+    }
+    if (changed) nextToolBlocks = deduped
+  }
+
+  let nextContentBlocks = contentBlocks
+  if (contentBlocks?.length) {
+    const seenToolRefs = new Set<string>()
+    const deduped = contentBlocks.filter(block => {
+      if (block.type !== 'tool') return true
+      if (seenToolRefs.has(block.toolId)) return false
+      seenToolRefs.add(block.toolId)
+      return true
+    })
+    if (deduped.length !== contentBlocks.length) nextContentBlocks = deduped
+  }
+
+  if (nextToolBlocks === toolBlocks && nextContentBlocks === contentBlocks) return message
+  return {
+    ...message,
+    toolBlocks: nextToolBlocks,
+    contentBlocks: nextContentBlocks,
+  }
+}
+
+function compactMessageForMemory(message: ChatMessage, options: { aggressive: boolean; preserveRichLayout: boolean }): ChatMessage {
+  const normalizedMessage = normalizeMessageStructure(message)
+  const aggressive = options.aggressive && !message.isStreaming
+  const content = truncateTextForMemory(normalizedMessage.content, CHAT_MEMORY_SINGLE_MESSAGE_LIMIT, 'message content')
+  let next: ChatMessage = content === normalizedMessage.content ? normalizedMessage : { ...normalizedMessage, content }
+
+  if (normalizedMessage.thinking?.content) {
     const thinkingContent = truncateTextForMemory(
-      message.thinking.content,
+      normalizedMessage.thinking.content,
       aggressive ? CHAT_MEMORY_THINKING_LIMIT_AGGRESSIVE : CHAT_MEMORY_THINKING_LIMIT,
       'thinking text',
     )
-    if (thinkingContent !== message.thinking.content) {
-      next = next === message ? { ...message } : next
-      next.thinking = { ...message.thinking, content: thinkingContent }
+    if (thinkingContent !== normalizedMessage.thinking.content) {
+      next = next === normalizedMessage ? { ...normalizedMessage } : next
+      next.thinking = { ...normalizedMessage.thinking, content: thinkingContent }
     }
   }
 
-  if (message.toolBlocks?.length) {
-    const sourceBlocks = aggressive && message.toolBlocks.length > 3
-      ? message.toolBlocks.slice(-3)
-      : message.toolBlocks
+  if (normalizedMessage.toolBlocks?.length) {
+    const sourceBlocks = aggressive && normalizedMessage.toolBlocks.length > 3
+      ? normalizedMessage.toolBlocks.slice(-3)
+      : normalizedMessage.toolBlocks
     const trimmedBlocks = sourceBlocks.map(block => trimToolBlockForMemory(block, aggressive))
-    const blocksChanged = sourceBlocks.length !== message.toolBlocks.length
+    const blocksChanged = sourceBlocks.length !== normalizedMessage.toolBlocks.length
       || trimmedBlocks.some((block, index) => block !== sourceBlocks[index])
     if (blocksChanged) {
-      next = next === message ? { ...message } : next
+      next = next === normalizedMessage ? { ...normalizedMessage } : next
       next.toolBlocks = trimmedBlocks.length > 0 ? trimmedBlocks : undefined
     }
   }
 
-  if (message.contentBlocks?.length) {
-    if (message.isStreaming || options.preserveRichLayout) {
-      const nextContentBlocks = message.contentBlocks.map(block => {
+  if (normalizedMessage.contentBlocks?.length) {
+    if (normalizedMessage.isStreaming || options.preserveRichLayout) {
+      const nextContentBlocks = normalizedMessage.contentBlocks.map(block => {
         if (block.type !== 'text') return block
         const text = truncateTextForMemory(
           block.text,
@@ -1260,12 +1320,12 @@ function compactMessageForMemory(message: ChatMessage, options: { aggressive: bo
           text,
         }
       })
-      if (nextContentBlocks.some((block, index) => block !== message.contentBlocks?.[index])) {
-        next = next === message ? { ...message } : next
+      if (nextContentBlocks.some((block, index) => block !== normalizedMessage.contentBlocks?.[index])) {
+        next = next === normalizedMessage ? { ...normalizedMessage } : next
         next.contentBlocks = nextContentBlocks
       }
     } else {
-      next = next === message ? { ...message } : next
+      next = next === normalizedMessage ? { ...normalizedMessage } : next
       next.contentBlocks = undefined
     }
   }
@@ -3979,16 +4039,26 @@ export function ChatTile({ tileId, workspaceId, workspaceDir: _workspaceDir, wid
 
         case 'tool_start': {
           const toolId = event.toolId ?? `tool-${Date.now()}`
-          updateLast(m => ({
-            ...m,
-            toolBlocks: [...(m.toolBlocks ?? []), {
+          updateLast(m => {
+            const nextBlock: ToolBlock = {
               id: toolId,
               name: event.toolName ?? 'tool',
               input: '',
               status: 'running',
-            }],
-            contentBlocks: [...(m.contentBlocks ?? []), { type: 'tool' as const, toolId }],
-          }))
+            }
+            const existingIndex = (m.toolBlocks ?? []).findIndex(block => block.id === toolId)
+            const toolBlocks = existingIndex >= 0
+              ? (m.toolBlocks ?? []).map((block, index) => index === existingIndex ? mergeToolBlockDuplicate(block, nextBlock) : block)
+              : [...(m.toolBlocks ?? []), nextBlock]
+            const hasContentRef = (m.contentBlocks ?? []).some(block => block.type === 'tool' && block.toolId === toolId)
+            return {
+              ...m,
+              toolBlocks,
+              contentBlocks: hasContentRef
+                ? m.contentBlocks
+                : [...(m.contentBlocks ?? []), { type: 'tool' as const, toolId }],
+            }
+          })
           break
         }
 
